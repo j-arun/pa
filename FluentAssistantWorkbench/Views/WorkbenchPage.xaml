@@ -4,41 +4,108 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Cloud Atmospheric Backdrop -->
-    <Grid>
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="0.4,1">
-                <GradientStop Color="#1438BDF8" Offset="0.0" />
-                <GradientStop Color="#0AE0F2FE" Offset="0.55" />
-                <GradientStop Color="#00FFFFFF" Offset="1.0" />
-            </LinearGradientBrush>
-        </Grid.Background>
+    <Page.Resources>
+        <Storyboard x:Name="AmbientMistStoryboard" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation
+                Storyboard.TargetName="Orb1Transform"
+                Storyboard.TargetProperty="TranslateX"
+                From="-40"
+                To="70"
+                Duration="0:0:12" />
+            <DoubleAnimation
+                Storyboard.TargetName="Orb1Transform"
+                Storyboard.TargetProperty="TranslateY"
+                From="-20"
+                To="35"
+                Duration="0:0:15" />
+            <DoubleAnimation
+                Storyboard.TargetName="Orb2Transform"
+                Storyboard.TargetProperty="TranslateX"
+                From="50"
+                To="-65"
+                Duration="0:0:14" />
+            <DoubleAnimation
+                Storyboard.TargetName="Orb2Transform"
+                Storyboard.TargetProperty="TranslateY"
+                From="25"
+                To="-30"
+                Duration="0:0:11" />
+        </Storyboard>
+    </Page.Resources>
 
+    <!-- Plain Light Translucent Animated Backdrop -->
+    <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Continual Conversational Cloud Ladder -->
+        <Grid Grid.RowSpan="3" IsHitTestVisible="False">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0.5,1">
+                    <GradientStop Color="#14FFFFFF" Offset="0.0" />
+                    <GradientStop Color="#0AE0F2FE" Offset="0.6" />
+                    <GradientStop Color="#10FFFFFF" Offset="1.0" />
+                </LinearGradientBrush>
+            </Grid.Background>
+
+            <Ellipse
+                Width="520"
+                Height="380"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="-120,-110,0,0"
+                Opacity="0.65">
+                <Ellipse.RenderTransform>
+                    <CompositeTransform x:Name="Orb1Transform" />
+                </Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#2238BDF8" Offset="0.0" />
+                        <GradientStop Color="#0038BDF8" Offset="1.0" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Ellipse
+                Width="460"
+                Height="360"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,-100,-90"
+                Opacity="0.6">
+                <Ellipse.RenderTransform>
+                    <CompositeTransform x:Name="Orb2Transform" />
+                </Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#1C7DD3FC" Offset="0.0" />
+                        <GradientStop Color="#007DD3FC" Offset="1.0" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+        </Grid>
+
+        <!-- Continual Conversational Bubble Ladder -->
         <ScrollViewer
             x:Name="LadderScrollViewer"
             Grid.Row="0"
-            Padding="24,20"
+            Padding="24,18"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel MaxWidth="860" HorizontalAlignment="Stretch" Spacing="16">
+            <StackPanel MaxWidth="840" HorizontalAlignment="Stretch" Spacing="16">
 
-                <!-- Empty State Cloud Welcome -->
+                <!-- Empty State Welcome Bubble -->
                 <Border
                     x:Name="EmptyCloudCard"
                     Padding="32"
-                    CornerRadius="20"
+                    CornerRadius="28"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     HorizontalAlignment="Center"
-                    MaxWidth="620"
-                    Margin="0,36,0,0">
+                    MaxWidth="600"
+                    Margin="0,32,0,0">
                     <StackPanel Spacing="12" HorizontalAlignment="Center">
                         <FontIcon Glyph="&#xE77B;" FontSize="36" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                         <TextBlock
@@ -48,63 +115,85 @@
                             TextAlignment="Center" />
                         <TextBlock
                             x:Name="EmptySubtitleText"
-                            Text="Type or speak using your Windows microphone. Queries route to your Private Windows Ollama model or your selected Public LLM adapter."
+                            Text="Type or speak using your Windows microphone. Questions and answers appear together in one clean bubble."
                             TextWrapping="Wrap"
                             TextAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </Border>
 
-                <!-- Conversation Ladder -->
+                <!-- Unified Q&A Conversation Bubbles -->
                 <ItemsControl x:Name="ConversationItemsControl">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,0,0,12">
-                                <!-- User Query Bubble (Right) -->
-                                <Border
-                                    Visibility="{Binding UserVisibility}"
-                                    HorizontalAlignment="Right"
-                                    MaxWidth="620"
-                                    Padding="16,12"
-                                    CornerRadius="16"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                            <Border
+                                Margin="0,0,0,14"
+                                MaxWidth="780"
+                                HorizontalAlignment="Stretch"
+                                Padding="20,16"
+                                CornerRadius="26,26,26,8"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                                <StackPanel Spacing="10">
+                                    <!-- Question Header & Prompt -->
                                     <StackPanel Spacing="4">
                                         <TextBlock
-                                            Text="{Binding HeaderLabel}"
+                                            Text="{Binding QuestionHeaderLabel}"
                                             FontSize="11"
-                                            Foreground="#DCEEFB" />
+                                            FontWeight="SemiBold"
+                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                         <TextBlock
-                                            Text="{Binding Content}"
+                                            Text="{Binding QuestionContent}"
+                                            FontSize="15"
+                                            FontWeight="Medium"
                                             TextWrapping="Wrap"
-                                            IsTextSelectionEnabled="True"
-                                            Foreground="White" />
+                                            IsTextSelectionEnabled="True" />
                                     </StackPanel>
-                                </Border>
 
-                                <!-- Assistant Cloud Response (Left) -->
-                                <Border
-                                    Visibility="{Binding AssistantVisibility}"
-                                    HorizontalAlignment="Left"
-                                    MaxWidth="680"
-                                    Padding="18,14"
-                                    CornerRadius="16"
-                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                    BorderThickness="1">
-                                    <StackPanel Spacing="8">
+                                    <!-- Divider between Prompt and Appended Reply -->
+                                    <Border
+                                        Visibility="{Binding DividerVisibility}"
+                                        Height="1"
+                                        Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        Margin="0,2" />
+
+                                    <!-- In-Bubble Working / Hourglass Indicator -->
+                                    <StackPanel
+                                        Visibility="{Binding WaitingVisibility}"
+                                        Orientation="Horizontal"
+                                        Spacing="10"
+                                        Padding="0,2">
+                                        <ProgressRing
+                                            IsActive="True"
+                                            Width="16"
+                                            Height="16" />
+                                        <FontIcon Glyph="&#xE823;" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                         <TextBlock
-                                            Text="{Binding HeaderLabel}"
+                                            Text="Thinking..."
+                                            FontSize="13"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <!-- Appended Assistant Reply inside the Same Bubble -->
+                                    <StackPanel Visibility="{Binding ReplyVisibility}" Spacing="8">
+                                        <TextBlock
+                                            Text="{Binding ReplyHeaderLabel}"
                                             FontSize="11"
+                                            FontWeight="SemiBold"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         <TextBlock
-                                            Text="{Binding Content}"
+                                            Text="{Binding ReplyContent}"
+                                            FontSize="14"
                                             TextWrapping="Wrap"
                                             IsTextSelectionEnabled="True" />
                                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                                             <Button
                                                 Click="SpeakTurnButton_Click"
-                                                Tag="{Binding Content}"
-                                                Padding="10,5">
+                                                Tag="{Binding ReplyContent}"
+                                                CornerRadius="14"
+                                                Padding="12,5">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <FontIcon Glyph="&#xE767;" FontSize="13" />
                                                     <TextBlock Text="Play in Windows Speaker" FontSize="12" />
@@ -112,68 +201,33 @@
                                             </Button>
                                         </StackPanel>
                                     </StackPanel>
-                                </Border>
 
-                                <!-- Error Notice (Left) -->
-                                <Border
-                                    Visibility="{Binding ErrorVisibility}"
-                                    HorizontalAlignment="Left"
-                                    MaxWidth="680"
-                                    Padding="16,12"
-                                    CornerRadius="16"
-                                    Background="#1ADC2626"
-                                    BorderBrush="#66DC2626"
-                                    BorderThickness="1">
-                                    <StackPanel Spacing="6">
+                                    <!-- Error Notice inside the Same Bubble -->
+                                    <StackPanel Visibility="{Binding ErrorVisibility}" Spacing="4">
                                         <TextBlock
-                                            Text="{Binding HeaderLabel}"
+                                            Text="{Binding ReplyHeaderLabel}"
                                             FontSize="11"
                                             FontWeight="SemiBold"
                                             Foreground="#DC2626" />
                                         <TextBlock
-                                            Text="{Binding Content}"
-                                            TextWrapping="Wrap" />
+                                            Text="{Binding ReplyContent}"
+                                            TextWrapping="Wrap"
+                                            Foreground="#DC2626" />
                                     </StackPanel>
-                                </Border>
-                            </Grid>
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <!-- Processing Indicator Card (Hourglass + ProgressRing) -->
-                <Border
-                    x:Name="ProcessingCloudCard"
-                    Visibility="Collapsed"
-                    HorizontalAlignment="Left"
-                    MaxWidth="520"
-                    Padding="16,12"
-                    CornerRadius="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1">
-                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                        <ProgressRing
-                            x:Name="ProcessingRing"
-                            IsActive="False"
-                            Width="18"
-                            Height="18" />
-                        <FontIcon Glyph="&#xE823;" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                        <TextBlock
-                            x:Name="ProcessingStatusText"
-                            Text="Processing in Private Ollama..."
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
-                </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Microphone / Speech Privacy Guidance Banner -->
+        <!-- Microphone / Export Status Banner -->
         <InfoBar
             x:Name="MicErrorInfoBar"
             Grid.Row="1"
             Margin="24,0,24,4"
-            MaxWidth="860"
+            MaxWidth="840"
             IsOpen="False"
             IsClosable="True"
             Severity="Warning">
@@ -185,13 +239,13 @@
             </InfoBar.ActionButton>
         </InfoBar>
 
-        <!-- Floating Cloud Composer Dock -->
+        <!-- Tall Floating Bubble Composer Dock (3x Prompt Space + Save PDF) -->
         <Border
             Grid.Row="2"
-            Margin="24,8,24,20"
-            Padding="10"
-            MaxWidth="860"
-            CornerRadius="16"
+            Margin="24,8,24,18"
+            Padding="12"
+            MaxWidth="840"
+            CornerRadius="24"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1">
@@ -201,6 +255,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <Button
@@ -208,41 +263,64 @@
                     Grid.Column="0"
                     Click="MicButton_Click"
                     ToolTipService.ToolTip="Speak via Windows Microphone (click again to stop)"
-                    Height="40"
+                    VerticalAlignment="Bottom"
+                    Height="42"
                     Width="44"
-                    CornerRadius="10">
+                    CornerRadius="14">
                     <FontIcon x:Name="MicButtonIcon" Glyph="&#xE720;" FontSize="16" />
                 </Button>
 
                 <TextBox
                     x:Name="PromptTextBox"
                     Grid.Column="1"
-                    AcceptsReturn="False"
-                    KeyDown="PromptTextBox_KeyDown"
-                    PlaceholderText="Type or speak your prompt..."
-                    VerticalAlignment="Center" />
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    MinHeight="118"
+                    MaxHeight="220"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    PreviewKeyDown="PromptTextBox_PreviewKeyDown"
+                    PlaceholderText="Type or speak your prompt... (Enter to send, Shift+Enter for new line)"
+                    CornerRadius="16"
+                    Padding="14,10"
+                    VerticalAlignment="Stretch" />
+
+                <Button
+                    x:Name="SavePdfButton"
+                    Grid.Column="2"
+                    Click="SavePdfButton_Click"
+                    ToolTipService.ToolTip="Save Conversation as PDF"
+                    AutomationProperties.Name="Save Conversation as PDF"
+                    VerticalAlignment="Bottom"
+                    Height="42"
+                    Width="42"
+                    Padding="0"
+                    CornerRadius="14">
+                    <FontIcon Glyph="&#xEA90;" FontSize="15" />
+                </Button>
 
                 <Button
                     x:Name="NewSessionButton"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     Click="NewSession_Click"
                     ToolTipService.ToolTip="New Session"
                     AutomationProperties.Name="New Session"
-                    Height="40"
-                    Width="40"
+                    VerticalAlignment="Bottom"
+                    Height="42"
+                    Width="42"
                     Padding="0"
-                    CornerRadius="10">
+                    CornerRadius="14">
                     <FontIcon Glyph="&#xE72C;" FontSize="15" />
                 </Button>
 
                 <Button
                     x:Name="SendButton"
-                    Grid.Column="3"
+                    Grid.Column="4"
                     Click="SendButton_Click"
                     Style="{StaticResource AccentButtonStyle}"
-                    Height="40"
-                    Padding="16,0"
-                    CornerRadius="10">
+                    VerticalAlignment="Bottom"
+                    Height="42"
+                    Padding="18,0"
+                    CornerRadius="14">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <ProgressRing
                             x:Name="SendSpinner"

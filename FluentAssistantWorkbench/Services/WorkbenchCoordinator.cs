@@ -13,6 +13,7 @@ public sealed class WorkbenchCoordinator
 
     public WorkbenchConfig Config { get; private set; }
     public ObservableCollection<ConversationTurn> Turns { get; } = [];
+    public ObservableCollection<ConversationExchange> Exchanges { get; } = [];
     public bool IsMuted { get; set; }
 
     public event EventHandler? ConfigChanged;
@@ -23,6 +24,37 @@ public sealed class WorkbenchCoordinator
         foreach (var turn in ConfigStore.LoadHistory())
         {
             Turns.Add(turn);
+        }
+        RebuildExchangesFromTurns();
+    }
+
+    private void RebuildExchangesFromTurns()
+    {
+        Exchanges.Clear();
+        ConversationExchange? current = null;
+
+        foreach (var turn in Turns)
+        {
+            if (turn.IsUser || current is null)
+            {
+                current = new ConversationExchange
+                {
+                    Id = turn.Id,
+                    QuestionContent = turn.IsUser ? turn.Content : string.Empty,
+                    QuestionTimestamp = turn.Timestamp,
+                    Scope = turn.Scope
+                };
+                if (!turn.IsUser)
+                {
+                    current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
+                }
+                Exchanges.Add(current);
+            }
+            else
+            {
+                current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
+                current = null;
+            }
         }
     }
 
@@ -76,6 +108,7 @@ public sealed class WorkbenchCoordinator
     public void ClearHistory()
     {
         Turns.Clear();
+        Exchanges.Clear();
         ConfigStore.SaveHistory(Turns);
     }
 
@@ -94,14 +127,24 @@ public sealed class WorkbenchCoordinator
                 _ => Config.PublicLlm.Gemini.Model
             };
 
+        var trimmedMessage = message.Trim();
         var userTurn = new ConversationTurn
         {
             Role = "user",
-            Content = message.Trim(),
+            Content = trimmedMessage,
             InputMode = inputMode,
             Scope = Config.ActiveScope,
             AdapterId = adapter.AdapterId,
             Model = model
+        };
+
+        var exchange = new ConversationExchange
+        {
+            Id = userTurn.Id,
+            QuestionContent = trimmedMessage,
+            QuestionTimestamp = userTurn.Timestamp,
+            Scope = Config.ActiveScope,
+            IsWaitingReply = true
         };
 
         var history = Turns
@@ -111,12 +154,13 @@ public sealed class WorkbenchCoordinator
             .ToList();
 
         Turns.Add(userTurn);
+        Exchanges.Add(exchange);
         ConfigStore.SaveHistory(Turns);
 
         try
         {
             var reply = await adapter.SendMessageAsync(
-                new LlmChatRequest(message.Trim(), history, Config),
+                new LlmChatRequest(trimmedMessage, history, Config),
                 ct);
 
             var assistantTurn = new ConversationTurn
@@ -130,6 +174,7 @@ public sealed class WorkbenchCoordinator
             };
 
             Turns.Add(assistantTurn);
+            exchange.SetReply(assistantTurn.Content, assistantTurn.Timestamp, isError: false);
             ConfigStore.SaveHistory(Turns);
 
             var shouldAutoSpeak =
@@ -154,6 +199,7 @@ public sealed class WorkbenchCoordinator
                 Model = model
             };
             Turns.Add(errTurn);
+            exchange.SetReply(errTurn.Content, errTurn.Timestamp, isError: true);
             ConfigStore.SaveHistory(Turns);
             return errTurn;
         }

@@ -165,10 +165,10 @@ public sealed partial class MainWindow : Window
 
     private static Brush GetThemeCanvasBrush(AppThemeMode mode) => mode switch
     {
-        AppThemeMode.EmeraldMist => new SolidColorBrush(ColorHelper.FromArgb(255, 240, 253, 244)),
+        AppThemeMode.EmeraldMist => new SolidColorBrush(ColorHelper.FromArgb(32, 236, 253, 245)),
         AppThemeMode.RoyalAmethyst => new SolidColorBrush(ColorHelper.FromArgb(255, 20, 12, 34)),
         AppThemeMode.MidnightSlate or AppThemeMode.Dark => new SolidColorBrush(ColorHelper.FromArgb(255, 15, 23, 42)),
-        AppThemeMode.ArcticSky or AppThemeMode.Light => new SolidColorBrush(ColorHelper.FromArgb(255, 240, 247, 255)),
+        AppThemeMode.ArcticSky or AppThemeMode.Light => new SolidColorBrush(ColorHelper.FromArgb(28, 255, 255, 255)),
         _ => new SolidColorBrush(Colors.Transparent)
     };
 

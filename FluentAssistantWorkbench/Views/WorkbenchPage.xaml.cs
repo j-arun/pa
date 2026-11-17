@@ -1,9 +1,13 @@
 using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.Storage.Pickers;
 using Windows.System;
+using Windows.UI.Core;
+using WinRT.Interop;
 
 namespace FluentAssistantWorkbench.Views;
 
@@ -17,14 +21,15 @@ public sealed partial class WorkbenchPage : Page
     public WorkbenchPage()
     {
         InitializeComponent();
-        ConversationItemsControl.ItemsSource = App.Coordinator.Turns;
-        App.Coordinator.Turns.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(OnTurnsChanged);
-        OnTurnsChanged();
+        ConversationItemsControl.ItemsSource = App.Coordinator.Exchanges;
+        App.Coordinator.Exchanges.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(OnExchangesChanged);
+        Loaded += (_, _) => AmbientMistStoryboard.Begin();
+        OnExchangesChanged();
     }
 
-    private void OnTurnsChanged()
+    private void OnExchangesChanged()
     {
-        EmptyCloudCard.Visibility = App.Coordinator.Turns.Count == 0
+        EmptyCloudCard.Visibility = App.Coordinator.Exchanges.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
         LadderScrollViewer.UpdateLayout();
@@ -41,13 +46,6 @@ public sealed partial class WorkbenchPage : Page
         SendIcon.Visibility = Visibility.Collapsed;
         SendLabel.Text = "Working...";
 
-        var cfg = App.Coordinator.Config;
-        ProcessingStatusText.Text = cfg.ActiveScope == ConversationScope.Private
-            ? $"Processing in Private Windows Ollama ({(string.IsNullOrWhiteSpace(cfg.PrivateLlm.SelectedModel) ? "no model selected" : cfg.PrivateLlm.SelectedModel)})..."
-            : $"Processing via Public Adapter ({cfg.PublicLlm.ActiveAdapter})...";
-
-        ProcessingCloudCard.Visibility = Visibility.Visible;
-        ProcessingRing.IsActive = true;
         LadderScrollViewer.UpdateLayout();
         LadderScrollViewer.ChangeView(null, LadderScrollViewer.ScrollableHeight, null);
 
@@ -58,13 +56,12 @@ public sealed partial class WorkbenchPage : Page
         finally
         {
             _isSending = false;
-            ProcessingRing.IsActive = false;
-            ProcessingCloudCard.Visibility = Visibility.Collapsed;
             SendSpinner.IsActive = false;
             SendSpinner.Visibility = Visibility.Collapsed;
             SendIcon.Visibility = Visibility.Visible;
             SendLabel.Text = "Send";
             SendButton.IsEnabled = true;
+            DispatcherQueue.TryEnqueue(OnExchangesChanged);
         }
     }
 
@@ -76,14 +73,19 @@ public sealed partial class WorkbenchPage : Page
         await DispatchPromptAsync(text, "Typed");
     }
 
-    private async void PromptTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    private async void PromptTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter)
         {
-            var text = PromptTextBox.Text.Trim();
-            if (string.IsNullOrEmpty(text)) return;
-            PromptTextBox.Text = string.Empty;
-            await DispatchPromptAsync(text, "Typed");
+            var shiftState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+            if (!shiftState.HasFlag(CoreVirtualKeyStates.Down))
+            {
+                e.Handled = true;
+                var text = PromptTextBox.Text.Trim();
+                if (string.IsNullOrEmpty(text)) return;
+                PromptTextBox.Text = string.Empty;
+                await DispatchPromptAsync(text, "Typed");
+            }
         }
     }
 
@@ -162,7 +164,7 @@ public sealed partial class WorkbenchPage : Page
             _listenCts?.Dispose();
             _listenCts = null;
             MicButtonIcon.Glyph = "\uE720";
-            PromptTextBox.PlaceholderText = "Type or speak your prompt...";
+            PromptTextBox.PlaceholderText = "Type or speak your prompt... (Enter to send, Shift+Enter for new line)";
         }
     }
 
@@ -185,6 +187,55 @@ public sealed partial class WorkbenchPage : Page
             await App.Coordinator.Speech.SpeakAsync(
                 text,
                 App.Coordinator.Config.Voice.SelectedVoiceId);
+        }
+    }
+
+    private async void SavePdfButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.Coordinator.Exchanges.Count == 0)
+        {
+            MicErrorInfoBar.Severity = InfoBarSeverity.Informational;
+            MicErrorInfoBar.Title = "Nothing to export";
+            MicErrorInfoBar.Message = "Start a conversation first, then click Save PDF.";
+            MicFixActionButton.Visibility = Visibility.Collapsed;
+            MicErrorInfoBar.IsOpen = true;
+            return;
+        }
+
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = $"PersonalAssistant-Conversation-{DateTime.Now:yyyyMMdd-HHmm}"
+            };
+            picker.FileTypeChoices.Add("PDF Document", [".pdf"]);
+
+            if (MainWindow.CurrentWindow is not null)
+            {
+                var hwnd = WindowNative.GetWindowHandle(MainWindow.CurrentWindow);
+                InitializeWithWindow.Initialize(picker, hwnd);
+            }
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            var pdfBytes = ConversationPdfExporter.ExportExchangesToPdf(App.Coordinator.Exchanges);
+            await File.WriteAllBytesAsync(file.Path, pdfBytes);
+
+            MicErrorInfoBar.Severity = InfoBarSeverity.Success;
+            MicErrorInfoBar.Title = "Saved as PDF";
+            MicErrorInfoBar.Message = $"Conversation exported to {file.Path}";
+            MicFixActionButton.Visibility = Visibility.Collapsed;
+            MicErrorInfoBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            MicErrorInfoBar.Severity = InfoBarSeverity.Error;
+            MicErrorInfoBar.Title = "PDF export failed";
+            MicErrorInfoBar.Message = ex.Message;
+            MicFixActionButton.Visibility = Visibility.Collapsed;
+            MicErrorInfoBar.IsOpen = true;
         }
     }
 

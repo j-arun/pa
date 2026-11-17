@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Microsoft.UI.Xaml;
 
@@ -42,10 +44,108 @@ public sealed class ConversationTurn
 
     [JsonIgnore]
     public string HeaderLabel => IsUser
-        ? $"You · {InputMode} · {Scope} · {Timestamp:t}"
+        ? $"You · {Timestamp:t}"
         : IsError
-            ? $"Adapter Error · {AdapterId} · {Timestamp:t}"
-            : $"{Scope} · {AdapterId} · {Model}{(DurationMs.HasValue ? $" · {DurationMs} ms" : "")} · {Timestamp:t}";
+            ? $"Error · {Timestamp:t}"
+            : $"{Scope} · {Timestamp:t}";
+}
+
+public sealed class ConversationExchange : INotifyPropertyChanged
+{
+    private string _replyContent = string.Empty;
+    private DateTimeOffset? _replyTimestamp;
+    private bool _isReplyError;
+    private bool _isWaitingReply;
+
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string QuestionContent { get; init; } = string.Empty;
+    public DateTimeOffset QuestionTimestamp { get; init; } = DateTimeOffset.Now;
+    public ConversationScope Scope { get; init; } = ConversationScope.Private;
+
+    public string QuestionHeaderLabel => $"You · {QuestionTimestamp:t}";
+
+    public string ReplyContent
+    {
+        get => _replyContent;
+        private set
+        {
+            if (_replyContent == value) return;
+            _replyContent = value;
+            NotifyAllReplyProperties();
+        }
+    }
+
+    public bool IsReplyError
+    {
+        get => _isReplyError;
+        private set
+        {
+            if (_isReplyError == value) return;
+            _isReplyError = value;
+            NotifyAllReplyProperties();
+        }
+    }
+
+    public bool IsWaitingReply
+    {
+        get => _isWaitingReply;
+        set
+        {
+            if (_isWaitingReply == value) return;
+            _isWaitingReply = value;
+            NotifyAllReplyProperties();
+        }
+    }
+
+    public string ReplyHeaderLabel
+    {
+        get
+        {
+            var ts = _replyTimestamp ?? QuestionTimestamp;
+            return IsReplyError ? $"Error · {ts:t}" : $"{Scope} · {ts:t}";
+        }
+    }
+
+    public Visibility WaitingVisibility =>
+        IsWaitingReply ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility DividerVisibility =>
+        IsWaitingReply || !string.IsNullOrWhiteSpace(ReplyContent)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public Visibility ReplyVisibility =>
+        !IsReplyError && !string.IsNullOrWhiteSpace(ReplyContent)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public Visibility ErrorVisibility =>
+        IsReplyError && !string.IsNullOrWhiteSpace(ReplyContent)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    public void SetReply(string content, DateTimeOffset timestamp, bool isError)
+    {
+        _replyTimestamp = timestamp;
+        _isWaitingReply = false;
+        _isReplyError = isError;
+        _replyContent = content;
+        NotifyAllReplyProperties();
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void NotifyAllReplyProperties([CallerMemberName] string? _ = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyContent)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyHeaderLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsReplyError)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWaitingReply)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DividerVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorVisibility)));
+    }
 }
 
 public sealed class OllamaModelInfo
@@ -148,7 +248,7 @@ public sealed class VoiceConfig
 
 public sealed class WorkbenchConfig
 {
-    public AppThemeMode Theme { get; set; } = AppThemeMode.System;
+    public AppThemeMode Theme { get; set; } = AppThemeMode.ArcticSky;
     public ConversationScope ActiveScope { get; set; } = ConversationScope.Private;
     public UserProfileConfig UserProfile { get; set; } = new();
     public PrivateLlmConfig PrivateLlm { get; set; } = new();
