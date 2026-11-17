@@ -25,7 +25,14 @@ public sealed partial class MainWindow : Window
         InitializeTrayIcon();
 
         AppWindow.Closing += MainWindow_Closing;
-        Closed += (_, _) => _trayIcon?.Dispose();
+        Closed += (_, _) =>
+        {
+            _trayIcon?.Dispose();
+            if (Application.Current is App app)
+            {
+                app.ShutdownInstanceResources();
+            }
+        };
 
         App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
         SyncMenuBarState();
@@ -52,6 +59,10 @@ public sealed partial class MainWindow : Window
             {
                 _isExiting = true;
                 _trayIcon?.Dispose();
+                if (Application.Current is App app)
+                {
+                    app.ShutdownInstanceResources();
+                }
                 Close();
             });
     }
@@ -59,6 +70,12 @@ public sealed partial class MainWindow : Window
     public void HideToTray()
     {
         _trayIcon?.HideWindowToTray();
+    }
+
+    public void RestoreFromTray()
+    {
+        _trayIcon?.ShowAndFocusWindow();
+        NavigateToWorkbench();
     }
 
     private void MainWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
@@ -117,6 +134,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private static Brush GetPrimaryTextBrush()
+    {
+        if (Application.Current.Resources.TryGetValue("TextFillColorPrimaryBrush", out var res) && res is Brush brush)
+        {
+            return brush;
+        }
+        return new SolidColorBrush(Colors.Gray);
+    }
+
     private void SyncToolbarSelection()
     {
         bool onSettings = SettingsModalOverlay.Visibility == Visibility.Visible;
@@ -126,7 +152,7 @@ public sealed partial class MainWindow : Window
             : new SolidColorBrush(Colors.Transparent);
         SettingsToolbarButton.Foreground = onSettings
             ? new SolidColorBrush(Colors.White)
-            : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            : GetPrimaryTextBrush();
     }
 
     private static Color GetThemeAccentColor(AppThemeMode mode) => mode switch
@@ -157,14 +183,14 @@ public sealed partial class MainWindow : Window
             : new SolidColorBrush(Colors.Transparent);
         PrivateScopeButton.Foreground = isPrivate
             ? new SolidColorBrush(Colors.White)
-            : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            : GetPrimaryTextBrush();
 
         PublicScopeButton.Background = !isPrivate
             ? accentBrush
             : new SolidColorBrush(Colors.Transparent);
         PublicScopeButton.Foreground = !isPrivate
             ? new SolidColorBrush(Colors.White)
-            : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+            : GetPrimaryTextBrush();
 
         bool isMuted = App.Coordinator.IsMuted;
         MuteToggleButton.IsChecked = isMuted;

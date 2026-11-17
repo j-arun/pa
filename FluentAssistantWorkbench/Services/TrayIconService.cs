@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using WinRT.Interop;
 
@@ -6,6 +7,8 @@ namespace FluentAssistantWorkbench.Services;
 
 public sealed class TrayIconService : IDisposable
 {
+    private const uint WM_NULL = 0x0000;
+    private const uint WM_NCDESTROY = 0x0082;
     private const uint WM_APP_TRAY = 0x8000 + 42;
     private const uint WM_LBUTTONUP = 0x0202;
     private const uint WM_LBUTTONDBLCLK = 0x0203;
@@ -28,7 +31,6 @@ public sealed class TrayIconService : IDisposable
     private const uint TPM_RIGHTBUTTON = 0x0002;
     private const uint TPM_RETURNCMD = 0x0100;
 
-    private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
     private const int SW_RESTORE = 9;
 
@@ -83,6 +85,22 @@ public sealed class TrayIconService : IDisposable
 
     public void ShowAndFocusWindow()
     {
+        try
+        {
+            if (_window.AppWindow.Presenter is OverlappedPresenter presenter &&
+                presenter.State == OverlappedPresenterState.Minimized)
+            {
+                presenter.Restore();
+            }
+
+            _window.AppWindow.Show(true);
+            _window.AppWindow.MoveInZOrderAtTop();
+        }
+        catch
+        {
+            // Fallback to Win32 show if AppWindow is unavailable
+        }
+
         ShowWindow(_hwnd, SW_SHOW);
         ShowWindow(_hwnd, SW_RESTORE);
         SetForegroundWindow(_hwnd);
@@ -91,7 +109,14 @@ public sealed class TrayIconService : IDisposable
 
     public void HideWindowToTray()
     {
-        ShowWindow(_hwnd, SW_HIDE);
+        try
+        {
+            _window.AppWindow.Hide();
+        }
+        catch
+        {
+            // Ignore hide errors
+        }
     }
 
     private NOTIFYICONDATA CreateNotifyIconData(string tooltip)
@@ -119,7 +144,11 @@ public sealed class TrayIconService : IDisposable
         nuint uIdSubclass,
         nuint dwRefData)
     {
-        if (uMsg == WM_APP_TRAY)
+        if (uMsg == WM_NCDESTROY)
+        {
+            RemoveWindowSubclass(hWnd, _subclassProc, uIdSubclass);
+        }
+        else if (uMsg == WM_APP_TRAY)
         {
             uint mouseMsg = (uint)(lParam.ToInt64() & 0xFFFF);
             if (mouseMsg is WM_LBUTTONUP or WM_LBUTTONDBLCLK)
@@ -158,6 +187,8 @@ public sealed class TrayIconService : IDisposable
             SetForegroundWindow(_hwnd);
 
             uint cmd = TrackPopupMenuEx(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD, pt.X, pt.Y, _hwnd, 0);
+            PostMessageW(_hwnd, WM_NULL, 0, 0);
+
             if (cmd == ID_OPEN)
             {
                 _window.DispatcherQueue.TryEnqueue(() =>
@@ -299,6 +330,9 @@ public sealed class TrayIconService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(nint hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool PostMessageW(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [DllImport("user32.dll")]
     private static extern nint CreatePopupMenu();

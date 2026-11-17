@@ -30,16 +30,39 @@ public sealed class WindowsSpeechService : IDisposable
     private const int HResultPrivacyPolicyNotAccepted = unchecked((int)0x80045509);
     private const int HResultAccessDenied = unchecked((int)0x80070005);
 
-    private readonly SpeechSynthesizer _synthesizer = new();
-    private readonly MediaPlayer _player = new();
+    private SpeechSynthesizer? _synthesizer;
+    private MediaPlayer? _player;
 
-    public IReadOnlyList<VoiceInformation> InstalledVoices => SpeechSynthesizer.AllVoices;
+    public IReadOnlyList<VoiceInformation> InstalledVoices
+    {
+        get
+        {
+            try
+            {
+                return SpeechSynthesizer.AllVoices;
+            }
+            catch
+            {
+                return [];
+            }
+        }
+    }
 
     public event EventHandler? PlaybackEnded;
 
-    public WindowsSpeechService()
+    private SpeechSynthesizer EnsureSynthesizer()
     {
-        _player.MediaEnded += (_, _) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+        return _synthesizer ??= new SpeechSynthesizer();
+    }
+
+    private MediaPlayer EnsurePlayer()
+    {
+        if (_player is null)
+        {
+            _player = new MediaPlayer();
+            _player.MediaEnded += (_, _) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+        }
+        return _player;
     }
 
     public async Task<string> ListenOnceAsync(CancellationToken ct = default)
@@ -256,22 +279,25 @@ public sealed class WindowsSpeechService : IDisposable
 
         StopSpeaking();
 
+        var synthesizer = EnsureSynthesizer();
         if (!string.IsNullOrWhiteSpace(voiceId))
         {
             var matched = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId);
             if (matched is not null)
             {
-                _synthesizer.Voice = matched;
+                synthesizer.Voice = matched;
             }
         }
 
-        var stream = await _synthesizer.SynthesizeTextToStreamAsync(text);
-        _player.Source = MediaSource.CreateFromStream(stream, stream.ContentType);
-        _player.Play();
+        var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
+        var player = EnsurePlayer();
+        player.Source = MediaSource.CreateFromStream(stream, stream.ContentType);
+        player.Play();
     }
 
     public void StopSpeaking()
     {
+        if (_player is null) return;
         try
         {
             _player.Pause();
@@ -285,7 +311,7 @@ public sealed class WindowsSpeechService : IDisposable
 
     public void Dispose()
     {
-        _player.Dispose();
-        _synthesizer.Dispose();
+        _player?.Dispose();
+        _synthesizer?.Dispose();
     }
 }
