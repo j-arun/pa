@@ -7,19 +7,89 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot "FluentAssistantWorkbench\FluentAssistantWorkbench.csproj"
 
-Write-Host "Publishing Personal Assistant (Release, self-contained win-x64)..." -ForegroundColor Cyan
-dotnet publish $ProjectPath `
-    -c Release `
-    -p:Platform=x64 `
-    -r win-x64 `
-    --self-contained true `
-    -o $InstallDir
+# Stop running tray instance if active so executables/DLLs can be replaced cleanly
+Get-Process -Name "FluentAssistantWorkbench" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+function Find-VisualStudioMsBuild {
+    $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
+        $found = & $vsWhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find "MSBuild\Current\Bin\MSBuild.exe" | Select-Object -First 1
+        if ($found -and (Test-Path $found)) {
+            return $found
+        }
+        $foundAny = & $vsWhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+        if ($foundAny -and (Test-Path $foundAny)) {
+            return $foundAny
+        }
+    }
+
+    $candidates = @(
+        "$env:ProgramFiles\Microsoft Visual Studio\18\Preview\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\18\Professional\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+$MsBuildPath = Find-VisualStudioMsBuild
+$PublishDirArg = ($InstallDir.TrimEnd('\') + "/")
+
+if ($MsBuildPath) {
+    Write-Host "Using Visual Studio MSBuild: $MsBuildPath" -ForegroundColor DarkGray
+    Write-Host "Restoring NuGet packages (win-x64)..." -ForegroundColor Cyan
+    & $MsBuildPath $ProjectPath `
+        -t:Restore `
+        -p:Configuration=Release `
+        -p:Platform=x64 `
+        -p:RuntimeIdentifier=win-x64 `
+        -v:minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSBuild Restore failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Host "Publishing Personal Assistant (Release, self-contained win-x64)..." -ForegroundColor Cyan
+    & $MsBuildPath $ProjectPath `
+        -t:Publish `
+        -p:Configuration=Release `
+        -p:Platform=x64 `
+        -p:RuntimeIdentifier=win-x64 `
+        -p:SelfContained=true `
+        -p:WindowsAppSDKSelfContained=true `
+        "-p:PublishDir=$PublishDirArg" `
+        -m `
+        -v:minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSBuild Publish failed with exit code $LASTEXITCODE"
+    }
+}
+else {
+    Write-Host "Visual Studio MSBuild not found; falling back to dotnet publish..." -ForegroundColor Yellow
+    dotnet publish $ProjectPath `
+        -c Release `
+        -p:Platform=x64 `
+        -r win-x64 `
+        --self-contained true `
+        -o $InstallDir
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish failed with exit code $LASTEXITCODE"
+    }
+}
 
 $ExePath = Join-Path $InstallDir "FluentAssistantWorkbench.exe"
 $IconPath = Join-Path $InstallDir "Assets\PersonalAssistant.ico"
 
 if (-not (Test-Path $ExePath)) {
-    throw "Publish succeeded but executable was not found at $ExePath"
+    throw "Publish completed but executable was not found at $ExePath"
 }
 
 $WshShell = New-Object -ComObject WScript.Shell

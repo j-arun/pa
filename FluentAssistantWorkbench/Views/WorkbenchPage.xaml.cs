@@ -1,4 +1,5 @@
 using FluentAssistantWorkbench.Models;
+using FluentAssistantWorkbench.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -10,6 +11,8 @@ public sealed partial class WorkbenchPage : Page
 {
     private bool _isListening;
     private bool _isSending;
+    private CancellationTokenSource? _listenCts;
+    private string _pendingSettingsUri = "ms-settings:privacy-speech";
 
     public WorkbenchPage()
     {
@@ -86,38 +89,92 @@ public sealed partial class WorkbenchPage : Page
 
     private async void MicButton_Click(object sender, RoutedEventArgs e)
     {
-        if (App.Coordinator.IsMuted)
+        if (_isListening)
         {
-            PromptTextBox.PlaceholderText = "Microphone is muted in the top bar.";
+            _listenCts?.Cancel();
             return;
         }
 
-        if (_isListening) return;
+        if (App.Coordinator.IsMuted)
+        {
+            MicErrorInfoBar.Severity = InfoBarSeverity.Informational;
+            MicErrorInfoBar.Title = "Microphone is muted";
+            MicErrorInfoBar.Message = "Unmute the microphone in the top bar to use voice input.";
+            MicFixActionButton.Visibility = Visibility.Collapsed;
+            MicErrorInfoBar.IsOpen = true;
+            return;
+        }
 
+        MicErrorInfoBar.IsOpen = false;
         _isListening = true;
+        _listenCts?.Dispose();
+        _listenCts = new CancellationTokenSource();
         MicButtonIcon.Glyph = "\uE71A";
         PromptTextBox.PlaceholderText = "Listening via Windows microphone...";
 
         try
         {
-            var spokenText = await App.Coordinator.Speech.ListenOnceAsync();
+            var spokenText = await App.Coordinator.Speech.ListenOnceAsync(_listenCts.Token);
             if (!string.IsNullOrWhiteSpace(spokenText))
             {
                 await DispatchPromptAsync(spokenText, "Voice");
             }
         }
+        catch (OperationCanceledException)
+        {
+            // User cancelled microphone listening
+        }
+        catch (SpeechSetupException setupEx)
+        {
+            if (setupEx.Issue == SpeechSetupIssue.SpeechPrivacyPolicy)
+            {
+                _pendingSettingsUri = "ms-settings:privacy-speech";
+                MicErrorInfoBar.Severity = InfoBarSeverity.Warning;
+                MicErrorInfoBar.Title = "Windows Speech Privacy needs to be enabled";
+                MicErrorInfoBar.Message =
+                    "Online Speech Recognition is turned off in Windows Settings and no offline speech pack was detected. Turn it on in Privacy & security > Speech, or press Win + H inside the text box for Windows Voice Typing.";
+                MicFixActionButton.Content = "Open Speech Privacy";
+                MicFixActionButton.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _pendingSettingsUri = "ms-settings:privacy-microphone";
+                MicErrorInfoBar.Severity = InfoBarSeverity.Warning;
+                MicErrorInfoBar.Title = "Microphone permission or device needed";
+                MicErrorInfoBar.Message = setupEx.Message;
+                MicFixActionButton.Content = "Open Mic Privacy";
+                MicFixActionButton.Visibility = Visibility.Visible;
+            }
+
+            MicErrorInfoBar.IsOpen = true;
+        }
         catch (Exception ex)
         {
-            PromptTextBox.PlaceholderText = $"Microphone error: {ex.Message}";
+            MicErrorInfoBar.Severity = InfoBarSeverity.Error;
+            MicErrorInfoBar.Title = "Microphone error";
+            MicErrorInfoBar.Message = ex.Message;
+            MicFixActionButton.Visibility = Visibility.Collapsed;
+            MicErrorInfoBar.IsOpen = true;
         }
         finally
         {
             _isListening = false;
+            _listenCts?.Dispose();
+            _listenCts = null;
             MicButtonIcon.Glyph = "\uE720";
-            if (PromptTextBox.PlaceholderText.StartsWith("Listening", StringComparison.Ordinal))
-            {
-                PromptTextBox.PlaceholderText = "Type or speak your prompt...";
-            }
+            PromptTextBox.PlaceholderText = "Type or speak your prompt...";
+        }
+    }
+
+    private async void MicFixActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await Launcher.LaunchUriAsync(new Uri(_pendingSettingsUri));
+        }
+        catch
+        {
+            // Ignore launcher failures
         }
     }
 

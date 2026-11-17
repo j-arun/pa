@@ -17,6 +17,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Continual Conversational Cloud Ladder -->
@@ -167,9 +168,26 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- Microphone / Speech Privacy Guidance Banner -->
+        <InfoBar
+            x:Name="MicErrorInfoBar"
+            Grid.Row="1"
+            Margin="24,0,24,4"
+            MaxWidth="860"
+            IsOpen="False"
+            IsClosable="True"
+            Severity="Warning">
+            <InfoBar.ActionButton>
+                <Button
+                    x:Name="MicFixActionButton"
+                    Content="Open Speech Settings"
+                    Click="MicFixActionButton_Click" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <!-- Floating Cloud Composer Dock -->
         <Border
-            Grid.Row="1"
+            Grid.Row="2"
             Margin="24,8,24,20"
             Padding="10"
             MaxWidth="860"
@@ -189,7 +207,7 @@
                     x:Name="MicButton"
                     Grid.Column="0"
                     Click="MicButton_Click"
-                    ToolTipService.ToolTip="Speak via Windows Microphone"
+                    ToolTipService.ToolTip="Speak via Windows Microphone (click again to stop)"
                     Height="40"
                     Width="44"
                     CornerRadius="10">
