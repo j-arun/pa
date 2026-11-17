@@ -44,6 +44,7 @@ public sealed class WorkbenchCoordinator
                     QuestionTimestamp = turn.Timestamp,
                     Scope = turn.Scope
                 };
+                current.ApplyAppearance(Config.Theme, Config.FontFamily);
                 if (!turn.IsUser)
                 {
                     current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
@@ -55,6 +56,14 @@ public sealed class WorkbenchCoordinator
                 current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
                 current = null;
             }
+        }
+    }
+
+    public void RefreshExchangesAppearance()
+    {
+        foreach (var ex in Exchanges)
+        {
+            ex.ApplyAppearance(Config.Theme, Config.FontFamily);
         }
     }
 
@@ -89,12 +98,14 @@ public sealed class WorkbenchCoordinator
     public void ReloadConfig()
     {
         Config = ConfigStore.LoadConfig();
+        RefreshExchangesAppearance();
         ConfigChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SaveConfig()
     {
         ConfigStore.SaveConfig(Config);
+        RefreshExchangesAppearance();
         ConfigChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -146,6 +157,7 @@ public sealed class WorkbenchCoordinator
             Scope = Config.ActiveScope,
             IsWaitingReply = true
         };
+        exchange.ApplyAppearance(Config.Theme, Config.FontFamily);
 
         var history = Turns
             .Where(t => t.IsUser || t.IsAssistant)

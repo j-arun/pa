@@ -23,8 +23,22 @@ public sealed partial class WorkbenchPage : Page
         InitializeComponent();
         ConversationItemsControl.ItemsSource = App.Coordinator.Exchanges;
         App.Coordinator.Exchanges.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(OnExchangesChanged);
-        Loaded += (_, _) => AmbientMistStoryboard.Begin();
+        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplyFontFromConfig);
+        Loaded += (_, _) =>
+        {
+            AmbientMistStoryboard.Begin();
+            ApplyFontFromConfig();
+        };
+        ApplyFontFromConfig();
         OnExchangesChanged();
+    }
+
+    private void ApplyFontFromConfig()
+    {
+        var fontName = WorkbenchThemeHelper.GetFontFamilyName(App.Coordinator.Config.FontFamily);
+        var family = new Microsoft.UI.Xaml.Media.FontFamily(fontName);
+        FontFamily = family;
+        PromptTextBox.FontFamily = family;
     }
 
     private void OnExchangesChanged()

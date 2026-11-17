@@ -5,7 +5,8 @@ const CONVERSATION_KEY = 'fluent_paw_conversation_v1';
 const SCOPE_KEY = 'fluent_paw_scope_v1';
 
 export const DEFAULT_SETTINGS: WorkbenchSettings = {
-  theme: 'system',
+  theme: 'arctic-sky',
+  fontFamily: 'segoe',
   profile: {
     displayName: 'Local User',
     avatarDataUrl: '',
@@ -68,6 +69,13 @@ export function normalizeThemeMode(raw?: string): WorkbenchSettings['theme'] {
   return 'system';
 }
 
+export function normalizeFontOption(raw?: string): WorkbenchSettings['fontFamily'] {
+  if (raw === 'calibri' || raw === 'georgia' || raw === 'cascadia') {
+    return raw;
+  }
+  return 'segoe';
+}
+
 export function loadSettings(): WorkbenchSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
@@ -75,9 +83,11 @@ export function loadSettings(): WorkbenchSettings {
     const parsed = JSON.parse(raw) as Partial<WorkbenchSettings>;
 
     const theme = normalizeThemeMode(parsed.theme);
+    const fontFamily = normalizeFontOption(parsed.fontFamily);
 
     return {
       theme,
+      fontFamily,
       profile: {
         ...DEFAULT_SETTINGS.profile,
         ...(parsed.profile || {}),

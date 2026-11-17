@@ -6,10 +6,31 @@
     --font-display: "Plus Jakarta Sans", "Segoe UI Variable Display", system-ui, sans-serif;
     --font-sans: "DM Sans", "Segoe UI Variable Text", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+    --pa-font-body: var(--font-sans);
     --pa-accent: #0284c7;
     --pa-accent-hover: #0369a1;
     --pa-accent-soft: rgba(2, 132, 199, 0.12);
     --pa-accent-text: #0369a1;
+    --pa-q-bg: rgba(2, 132, 199, 0.09);
+    --pa-q-accent: #0284c7;
+    --pa-a-bg: rgba(13, 148, 136, 0.08);
+    --pa-a-accent: #0f766e;
+  }
+
+  [data-pa-font="segoe"] {
+    --pa-font-body: "Segoe UI Variable Text", "DM Sans", system-ui, sans-serif;
+  }
+
+  [data-pa-font="calibri"] {
+    --pa-font-body: Calibri, "Plus Jakarta Sans", system-ui, sans-serif;
+  }
+
+  [data-pa-font="georgia"] {
+    --pa-font-body: Georgia, "Times New Roman", serif;
+  }
+
+  [data-pa-font="cascadia"] {
+    --pa-font-body: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   }
 
   [data-pa-theme="arctic-sky"] {
@@ -17,6 +38,10 @@
     --pa-accent-hover: #0369a1;
     --pa-accent-soft: rgba(2, 132, 199, 0.12);
     --pa-accent-text: #0369a1;
+    --pa-q-bg: rgba(2, 132, 199, 0.09);
+    --pa-q-accent: #0284c7;
+    --pa-a-bg: rgba(13, 148, 136, 0.08);
+    --pa-a-accent: #0f766e;
   }
 
   [data-pa-theme="midnight-slate"] {
@@ -24,6 +49,10 @@
     --pa-accent-hover: #0284c7;
     --pa-accent-soft: rgba(56, 189, 248, 0.14);
     --pa-accent-text: #38bdf8;
+    --pa-q-bg: rgba(56, 189, 248, 0.14);
+    --pa-q-accent: #38bdf8;
+    --pa-a-bg: rgba(16, 185, 129, 0.13);
+    --pa-a-accent: #34d399;
   }
 
   [data-pa-theme="emerald-mist"] {
@@ -31,6 +60,10 @@
     --pa-accent-hover: #047857;
     --pa-accent-soft: rgba(5, 150, 105, 0.12);
     --pa-accent-text: #047857;
+    --pa-q-bg: rgba(5, 150, 105, 0.10);
+    --pa-q-accent: #047857;
+    --pa-a-bg: rgba(2, 132, 199, 0.08);
+    --pa-a-accent: #0369a1;
   }
 
   [data-pa-theme="royal-amethyst"] {
@@ -38,6 +71,10 @@
     --pa-accent-hover: #7e22ce;
     --pa-accent-soft: rgba(168, 85, 247, 0.16);
     --pa-accent-text: #c084fc;
+    --pa-q-bg: rgba(168, 85, 247, 0.16);
+    --pa-q-accent: #c084fc;
+    --pa-a-bg: rgba(45, 212, 191, 0.13);
+    --pa-a-accent: #2dd4bf;
   }
 
   html,

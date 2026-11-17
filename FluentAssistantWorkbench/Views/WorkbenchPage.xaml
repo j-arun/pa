@@ -130,40 +130,50 @@
                                 Margin="0,0,0,14"
                                 MaxWidth="780"
                                 HorizontalAlignment="Stretch"
-                                Padding="20,16"
+                                Padding="16"
                                 CornerRadius="26,26,26,8"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1">
                                 <StackPanel Spacing="10">
-                                    <!-- Question Header & Prompt -->
-                                    <StackPanel Spacing="4">
-                                        <TextBlock
-                                            Text="{Binding QuestionHeaderLabel}"
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                        <TextBlock
-                                            Text="{Binding QuestionContent}"
-                                            FontSize="15"
-                                            FontWeight="Medium"
-                                            TextWrapping="Wrap"
-                                            IsTextSelectionEnabled="True" />
-                                    </StackPanel>
-
-                                    <!-- Divider between Prompt and Appended Reply -->
+                                    <!-- Question Block (Theme Question Color Code + Accent Bar) -->
                                     <Border
-                                        Visibility="{Binding DividerVisibility}"
-                                        Height="1"
-                                        Background="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        Margin="0,2" />
+                                        Padding="14,11"
+                                        CornerRadius="18"
+                                        Background="{Binding QuestionBackgroundBrush}">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="4" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Grid.Column="0"
+                                                CornerRadius="2"
+                                                Background="{Binding QuestionAccentBrush}" />
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock
+                                                    Text="{Binding QuestionHeaderLabel}"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    Foreground="{Binding QuestionAccentBrush}" />
+                                                <TextBlock
+                                                    Text="{Binding QuestionContent}"
+                                                    FontSize="15"
+                                                    FontWeight="Medium"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    TextWrapping="Wrap"
+                                                    IsTextSelectionEnabled="True" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
 
                                     <!-- In-Bubble Working / Hourglass Indicator -->
                                     <StackPanel
                                         Visibility="{Binding WaitingVisibility}"
                                         Orientation="Horizontal"
                                         Spacing="10"
-                                        Padding="0,2">
+                                        Padding="12,4">
                                         <ProgressRing
                                             IsActive="True"
                                             Width="16"
@@ -172,48 +182,75 @@
                                         <TextBlock
                                             Text="Thinking..."
                                             FontSize="13"
+                                            FontFamily="{Binding BubbleFontFamily}"
                                             VerticalAlignment="Center"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
 
-                                    <!-- Appended Assistant Reply inside the Same Bubble -->
-                                    <StackPanel Visibility="{Binding ReplyVisibility}" Spacing="8">
-                                        <TextBlock
-                                            Text="{Binding ReplyHeaderLabel}"
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        <TextBlock
-                                            Text="{Binding ReplyContent}"
-                                            FontSize="14"
-                                            TextWrapping="Wrap"
-                                            IsTextSelectionEnabled="True" />
-                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                            <Button
-                                                Click="SpeakTurnButton_Click"
-                                                Tag="{Binding ReplyContent}"
-                                                CornerRadius="14"
-                                                Padding="12,5">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <FontIcon Glyph="&#xE767;" FontSize="13" />
-                                                    <TextBlock Text="Play in Windows Speaker" FontSize="12" />
+                                    <!-- Answer Block inside Same Bubble (Theme Answer Color Code + Accent Bar) -->
+                                    <Border
+                                        Visibility="{Binding ReplyVisibility}"
+                                        Padding="14,12"
+                                        CornerRadius="18"
+                                        Background="{Binding AnswerBackgroundBrush}">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="4" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Grid.Column="0"
+                                                CornerRadius="2"
+                                                Background="{Binding AnswerAccentBrush}" />
+                                            <StackPanel Grid.Column="1" Spacing="8">
+                                                <TextBlock
+                                                    Text="{Binding ReplyHeaderLabel}"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    Foreground="{Binding AnswerAccentBrush}" />
+                                                <TextBlock
+                                                    Text="{Binding ReplyContent}"
+                                                    FontSize="14"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    TextWrapping="Wrap"
+                                                    IsTextSelectionEnabled="True" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                                    <Button
+                                                        Click="SpeakTurnButton_Click"
+                                                        Tag="{Binding ReplyContent}"
+                                                        CornerRadius="14"
+                                                        Padding="12,5">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <FontIcon Glyph="&#xE767;" FontSize="13" />
+                                                            <TextBlock Text="Play in Windows Speaker" FontSize="12" />
+                                                        </StackPanel>
+                                                    </Button>
                                                 </StackPanel>
-                                            </Button>
-                                        </StackPanel>
-                                    </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
 
                                     <!-- Error Notice inside the Same Bubble -->
-                                    <StackPanel Visibility="{Binding ErrorVisibility}" Spacing="4">
-                                        <TextBlock
-                                            Text="{Binding ReplyHeaderLabel}"
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Foreground="#DC2626" />
-                                        <TextBlock
-                                            Text="{Binding ReplyContent}"
-                                            TextWrapping="Wrap"
-                                            Foreground="#DC2626" />
-                                    </StackPanel>
+                                    <Border
+                                        Visibility="{Binding ErrorVisibility}"
+                                        Padding="14,11"
+                                        CornerRadius="18"
+                                        Background="#1ADC2626">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock
+                                                Text="{Binding ReplyHeaderLabel}"
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                FontFamily="{Binding BubbleFontFamily}"
+                                                Foreground="#DC2626" />
+                                            <TextBlock
+                                                Text="{Binding ReplyContent}"
+                                                FontFamily="{Binding BubbleFontFamily}"
+                                                TextWrapping="Wrap"
+                                                Foreground="#DC2626" />
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>

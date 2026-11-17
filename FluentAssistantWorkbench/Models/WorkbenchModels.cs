@@ -1,7 +1,10 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace FluentAssistantWorkbench.Models;
 
@@ -10,6 +13,77 @@ public enum ConversationScope
 {
     Private,
     Public
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AppThemeMode
+{
+    System,
+    ArcticSky,
+    MidnightSlate,
+    EmeraldMist,
+    RoyalAmethyst,
+    Light,
+    Dark
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AppFontFamily
+{
+    SegoeUI,
+    Calibri,
+    Georgia,
+    CascadiaMono
+}
+
+public static class WorkbenchThemeHelper
+{
+    public static AppThemeMode NormalizeTheme(AppThemeMode mode) => mode switch
+    {
+        AppThemeMode.Light => AppThemeMode.ArcticSky,
+        AppThemeMode.Dark => AppThemeMode.MidnightSlate,
+        _ => mode
+    };
+
+    public static string GetFontFamilyName(AppFontFamily font) => font switch
+    {
+        AppFontFamily.Calibri => "Calibri",
+        AppFontFamily.Georgia => "Georgia",
+        AppFontFamily.CascadiaMono => "Cascadia Code, Consolas",
+        _ => "Segoe UI Variable Text, Segoe UI"
+    };
+
+    public static (Color QuestionBg, Color QuestionAccent, Color AnswerBg, Color AnswerAccent) GetBubblePalette(AppThemeMode theme)
+    {
+        return NormalizeTheme(theme) switch
+        {
+            AppThemeMode.EmeraldMist => (
+                ColorHelper.FromArgb(26, 5, 150, 105),    // Question: soft emerald tint
+                ColorHelper.FromArgb(255, 4, 120, 87),    // Question accent: emerald-700
+                ColorHelper.FromArgb(22, 2, 132, 199),    // Answer: crisp sky-blue tint
+                ColorHelper.FromArgb(255, 3, 105, 161)    // Answer accent: sky-700
+            ),
+            AppThemeMode.MidnightSlate => (
+                ColorHelper.FromArgb(38, 56, 189, 248),   // Question: luminous sky tint
+                ColorHelper.FromArgb(255, 56, 189, 248),  // Question accent: sky-400
+                ColorHelper.FromArgb(34, 16, 185, 129),   // Answer: distinct emerald-teal tint
+                ColorHelper.FromArgb(255, 52, 211, 153)   // Answer accent: emerald-400
+            ),
+            AppThemeMode.RoyalAmethyst => (
+                ColorHelper.FromArgb(42, 168, 85, 247),   // Question: royal amethyst tint
+                ColorHelper.FromArgb(255, 192, 132, 252), // Question accent: purple-300
+                ColorHelper.FromArgb(34, 45, 212, 191),   // Answer: contrasting teal tint
+                ColorHelper.FromArgb(255, 45, 212, 191)   // Answer accent: teal-400
+            ),
+            _ => (
+                // ArcticSky / System default: clear Sky Question vs Warm Teal/Mint Answer
+                ColorHelper.FromArgb(24, 2, 132, 199),    // Question: soft sky-blue tint
+                ColorHelper.FromArgb(255, 2, 132, 199),   // Question accent: sky-600
+                ColorHelper.FromArgb(22, 13, 148, 136),   // Answer: distinct soft teal tint
+                ColorHelper.FromArgb(255, 15, 118, 110)   // Answer accent: teal-700
+            )
+        };
+    }
 }
 
 public sealed class ConversationTurn
@@ -56,6 +130,8 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     private DateTimeOffset? _replyTimestamp;
     private bool _isReplyError;
     private bool _isWaitingReply;
+    private AppThemeMode _themeMode = AppThemeMode.ArcticSky;
+    private AppFontFamily _fontMode = AppFontFamily.SegoeUI;
 
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public string QuestionContent { get; init; } = string.Empty;
@@ -123,6 +199,32 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         IsReplyError && !string.IsNullOrWhiteSpace(ReplyContent)
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+    public Brush QuestionBackgroundBrush =>
+        new SolidColorBrush(WorkbenchThemeHelper.GetBubblePalette(_themeMode).QuestionBg);
+
+    public Brush QuestionAccentBrush =>
+        new SolidColorBrush(WorkbenchThemeHelper.GetBubblePalette(_themeMode).QuestionAccent);
+
+    public Brush AnswerBackgroundBrush =>
+        new SolidColorBrush(WorkbenchThemeHelper.GetBubblePalette(_themeMode).AnswerBg);
+
+    public Brush AnswerAccentBrush =>
+        new SolidColorBrush(WorkbenchThemeHelper.GetBubblePalette(_themeMode).AnswerAccent);
+
+    public FontFamily BubbleFontFamily =>
+        new(WorkbenchThemeHelper.GetFontFamilyName(_fontMode));
+
+    public void ApplyAppearance(AppThemeMode theme, AppFontFamily font)
+    {
+        _themeMode = theme;
+        _fontMode = font;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuestionBackgroundBrush)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuestionAccentBrush)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AnswerBackgroundBrush)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AnswerAccentBrush)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BubbleFontFamily)));
+    }
 
     public void SetReply(string content, DateTimeOffset timestamp, bool isError)
     {
@@ -221,18 +323,6 @@ public sealed class PublicLlmConfig
     };
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter))]
-public enum AppThemeMode
-{
-    System,
-    ArcticSky,
-    MidnightSlate,
-    EmeraldMist,
-    RoyalAmethyst,
-    Light,
-    Dark
-}
-
 public sealed class UserProfileConfig
 {
     public string DisplayName { get; set; } = Environment.UserName;
@@ -249,6 +339,7 @@ public sealed class VoiceConfig
 public sealed class WorkbenchConfig
 {
     public AppThemeMode Theme { get; set; } = AppThemeMode.ArcticSky;
+    public AppFontFamily FontFamily { get; set; } = AppFontFamily.SegoeUI;
     public ConversationScope ActiveScope { get; set; } = ConversationScope.Private;
     public UserProfileConfig UserProfile { get; set; } = new();
     public PrivateLlmConfig PrivateLlm { get; set; } = new();

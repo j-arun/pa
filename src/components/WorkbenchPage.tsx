@@ -247,13 +247,22 @@ export function WorkbenchPage({
                   transition={{ duration: 0.18 }}
                   className="flex justify-start"
                 >
-                  <div className="w-full max-w-3xl cloud-surface rounded-[28px] rounded-bl-lg border border-white/85 dark:border-slate-700/70 shadow-[0_10px_34px_rgba(2,132,199,0.07)] px-6 py-4.5 text-slate-900 dark:text-slate-100">
-                    {/* User Question Section */}
+                  <div
+                    className="w-full max-w-3xl cloud-surface rounded-[28px] rounded-bl-lg border border-white/85 dark:border-slate-700/70 shadow-[0_10px_34px_rgba(2,132,199,0.07)] p-4 text-slate-900 dark:text-slate-100 space-y-2.5"
+                    style={{ fontFamily: 'var(--pa-font-body)' }}
+                  >
+                    {/* User Question Section (Theme Question Color Code) */}
                     {ex.questionTurn && (
-                      <div>
+                      <div
+                        className="rounded-2xl px-4 py-3 border-l-4"
+                        style={{
+                          backgroundColor: 'var(--pa-q-bg)',
+                          borderLeftColor: 'var(--pa-q-accent)',
+                        }}
+                      >
                         <div
                           className="text-[11px] font-semibold mb-1 tabular-nums"
-                          style={{ color: 'var(--pa-accent-text)' }}
+                          style={{ color: 'var(--pa-q-accent)' }}
                         >
                           You · {formatTime(ex.questionTurn.timestamp)}
                         </div>
@@ -263,98 +272,105 @@ export function WorkbenchPage({
                       </div>
                     )}
 
-                    {/* Divider + In-Bubble Reply / Waiting */}
-                    {(showWaiting || replyTurn) && (
-                      <div className="mt-3.5 pt-3.5 border-t border-slate-200/75 dark:border-slate-700/60">
-                        {showWaiting && (
-                          <div className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300 py-1">
-                            <Hourglass
-                              className="w-4 h-4 animate-spin shrink-0"
-                              style={{ color: 'var(--pa-accent)' }}
-                            />
-                            <span>Thinking...</span>
-                          </div>
-                        )}
+                    {/* In-Bubble Working / Thinking Indicator */}
+                    {showWaiting && (
+                      <div className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300 px-3 py-1.5">
+                        <Hourglass
+                          className="w-4 h-4 animate-spin shrink-0"
+                          style={{ color: 'var(--pa-a-accent)' }}
+                        />
+                        <span>Thinking...</span>
+                      </div>
+                    )}
 
-                        {replyTurn && replyTurn.role === 'error' && (
-                          <div className="rounded-2xl bg-red-50/80 dark:bg-red-950/35 border border-red-200/80 dark:border-red-900/60 px-4 py-3 text-red-800 dark:text-red-200">
-                            <div className="flex items-center gap-2 text-xs font-semibold mb-1 tabular-nums">
-                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                              <span>Error · {formatTime(replyTurn.timestamp)}</span>
-                            </div>
-                            <p className="text-sm leading-relaxed">{replyTurn.content}</p>
+                    {/* Error Notice inside the Same Bubble */}
+                    {replyTurn && replyTurn.role === 'error' && (
+                      <div className="rounded-2xl bg-red-50/80 dark:bg-red-950/35 border border-red-200/80 dark:border-red-900/60 px-4 py-3 text-red-800 dark:text-red-200">
+                        <div className="flex items-center gap-2 text-xs font-semibold mb-1 tabular-nums">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Error · {formatTime(replyTurn.timestamp)}</span>
+                        </div>
+                        <p className="text-sm leading-relaxed">{replyTurn.content}</p>
+                        <button
+                          type="button"
+                          onClick={onOpenSettings}
+                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
+                        >
+                          <SettingsIcon className="w-3.5 h-3.5" />
+                          <span>Configure in Settings</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Assistant Answer Section (Theme Answer Color Code) */}
+                    {replyTurn && replyTurn.role === 'assistant' && (
+                      <div
+                        className="rounded-2xl px-4 py-3.5 border-l-4"
+                        style={{
+                          backgroundColor: 'var(--pa-a-bg)',
+                          borderLeftColor: 'var(--pa-a-accent)',
+                        }}
+                      >
+                        <div
+                          className="text-[11px] font-semibold mb-1.5 tabular-nums"
+                          style={{ color: 'var(--pa-a-accent)' }}
+                        >
+                          {replyTurn.scope === 'private' ? 'Private' : 'Public'} ·{' '}
+                          {formatTime(replyTurn.timestamp)}
+                        </div>
+
+                        <MessageContent text={replyTurn.content} />
+
+                        <div className="mt-3 flex items-center gap-2 flex-wrap">
+                          {speech.speechSynthesisSupported && (
                             <button
                               type="button"
-                              onClick={onOpenSettings}
-                              className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
+                              onClick={() =>
+                                speech.speakText(replyTurn.id, replyTurn.content)
+                              }
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                                isSpeakingThisTurn
+                                  ? 'text-white'
+                                  : 'bg-white/80 dark:bg-slate-800/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
+                              }`}
+                              style={
+                                isSpeakingThisTurn
+                                  ? { backgroundColor: 'var(--pa-a-accent)' }
+                                  : undefined
+                              }
                             >
-                              <SettingsIcon className="w-3.5 h-3.5" />
-                              <span>Configure in Settings</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {replyTurn && replyTurn.role === 'assistant' && (
-                          <div>
-                            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tabular-nums">
-                              {replyTurn.scope === 'private' ? 'Private' : 'Public'} ·{' '}
-                              {formatTime(replyTurn.timestamp)}
-                            </div>
-
-                            <MessageContent text={replyTurn.content} />
-
-                            <div className="mt-3 flex items-center gap-2 flex-wrap">
-                              {speech.speechSynthesisSupported && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    speech.speakText(replyTurn.id, replyTurn.content)
-                                  }
-                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                                    isSpeakingThisTurn
-                                      ? 'text-white'
-                                      : 'bg-slate-100/85 dark:bg-slate-800/85 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700'
-                                  }`}
-                                  style={
-                                    isSpeakingThisTurn
-                                      ? { backgroundColor: 'var(--pa-accent)' }
-                                      : undefined
-                                  }
-                                >
-                                  {isSpeakingThisTurn ? (
-                                    <>
-                                      <Square className="w-3.5 h-3.5 fill-current" />
-                                      <span>Stop Speaker</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Volume2 className="w-3.5 h-3.5" />
-                                      <span>Play in Windows Speaker</span>
-                                    </>
-                                  )}
-                                </button>
+                              {isSpeakingThisTurn ? (
+                                <>
+                                  <Square className="w-3.5 h-3.5 fill-current" />
+                                  <span>Stop Speaker</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Volume2 className="w-3.5 h-3.5" />
+                                  <span>Play in Windows Speaker</span>
+                                </>
                               )}
+                            </button>
+                          )}
 
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(replyTurn.id, replyTurn.content)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-                              >
-                                {copiedId === replyTurn.id ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                    <span>Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3.5 h-3.5" />
-                                    <span>Copy</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(replyTurn.id, replyTurn.content)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/75 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+                          >
+                            {copiedId === replyTurn.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -478,6 +494,7 @@ export function WorkbenchPage({
                   ? 'Type or speak a private prompt... (Enter to send, Shift+Enter for new line)'
                   : `Type or speak a public prompt... (Enter to send, Shift+Enter for new line)`
               }
+              style={{ fontFamily: 'var(--pa-font-body)' }}
               className="flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed"
             />
 

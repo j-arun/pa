@@ -86,10 +86,18 @@ function normalizeServerTheme(raw?: string): WorkbenchSettings['theme'] {
   return 'system';
 }
 
+function normalizeServerFont(raw?: string): WorkbenchSettings['fontFamily'] {
+  if (raw === 'calibri' || raw === 'georgia' || raw === 'cascadia') {
+    return raw;
+  }
+  return 'segoe';
+}
+
 const initialProfile = detectWindowsAccountProfile();
 
 export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
-  theme: 'system',
+  theme: 'arctic-sky',
+  fontFamily: 'segoe',
   profile: {
     displayName: initialProfile.displayName,
     avatarDataUrl: initialProfile.avatarDataUrl,
@@ -160,9 +168,11 @@ export function mergeConfigWithDefaults(
 ): WorkbenchSettings {
   const parsed = raw || {};
   const theme = normalizeServerTheme(parsed.theme);
+  const fontFamily = normalizeServerFont(parsed.fontFamily);
 
   return {
     theme,
+    fontFamily,
     profile: {
       ...DEFAULT_WORKBENCH_CONFIG.profile,
       ...(parsed.profile || {}),

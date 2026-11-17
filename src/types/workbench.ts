@@ -95,6 +95,8 @@ export type ThemeMode =
   | 'light'
   | 'dark';
 
+export type FontOption = 'segoe' | 'calibri' | 'georgia' | 'cascadia';
+
 export interface UserProfileConfig {
   displayName: string;
   avatarDataUrl: string;
@@ -102,6 +104,7 @@ export interface UserProfileConfig {
 
 export interface WorkbenchSettings {
   theme: ThemeMode;
+  fontFamily: FontOption;
   profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
   publicLlm: PublicLlmConfig;

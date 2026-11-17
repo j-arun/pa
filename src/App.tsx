@@ -122,12 +122,13 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-pa-theme', effectiveTheme);
+    root.setAttribute('data-pa-font', settings.fontFamily || 'segoe');
     if (isDarkActive) {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
-  }, [effectiveTheme, isDarkActive]);
+  }, [effectiveTheme, isDarkActive, settings.fontFamily]);
 
   useEffect(() => {
     saveSettings(settings);

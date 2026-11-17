@@ -22,14 +22,47 @@ import type {
   AdapterHealthResult,
   AdapterWireSummary,
   AnyAdapterId,
+  FontOption,
   OllamaModelInfo,
   PublicAdapterId,
   ThemeMode,
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
-import { normalizeThemeMode } from '../utils/storage';
+import { normalizeFontOption, normalizeThemeMode } from '../utils/storage';
 import { WINUI3_SKELETON_SNIPPETS } from '../utils/winui3Skeleton';
+
+const FONT_OPTIONS: Array<{
+  id: FontOption;
+  label: string;
+  sample: string;
+  cssFamily: string;
+}> = [
+  {
+    id: 'segoe',
+    label: 'Segoe UI',
+    sample: 'Default Sans',
+    cssFamily: '"Segoe UI Variable Text", "DM Sans", system-ui, sans-serif',
+  },
+  {
+    id: 'calibri',
+    label: 'Calibri',
+    sample: 'Clean Sans',
+    cssFamily: 'Calibri, "Plus Jakarta Sans", system-ui, sans-serif',
+  },
+  {
+    id: 'georgia',
+    label: 'Georgia',
+    sample: 'Editorial Serif',
+    cssFamily: 'Georgia, "Times New Roman", serif',
+  },
+  {
+    id: 'cascadia',
+    label: 'Cascadia Mono',
+    sample: 'Technical Mono',
+    cssFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+  },
+];
 
 interface ConfigFileInfo {
   filePath: string;
@@ -403,6 +436,53 @@ export function SettingsPage({
                           <span className="block text-[10px] font-mono text-slate-500 dark:text-slate-400">
                             {option.code}
                           </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800">
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Conversation Font
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {FONT_OPTIONS.map((fontOpt) => {
+                    const currentFont = normalizeFontOption(draft.fontFamily);
+                    const isFontSelected = currentFont === fontOpt.id;
+                    return (
+                      <button
+                        key={fontOpt.id}
+                        type="button"
+                        onClick={() =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            fontFamily: fontOpt.id,
+                          }))
+                        }
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isFontSelected
+                            ? 'bg-white dark:bg-slate-900 shadow-xs ring-1'
+                            : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                        style={
+                          isFontSelected
+                            ? {
+                                borderColor: 'var(--pa-accent)',
+                                boxShadow: '0 0 0 1px var(--pa-accent)',
+                              }
+                            : undefined
+                        }
+                      >
+                        <span
+                          className="block text-xs font-semibold text-slate-900 dark:text-slate-100 truncate"
+                          style={{ fontFamily: fontOpt.cssFamily }}
+                        >
+                          {fontOpt.label}
+                        </span>
+                        <span className="block text-[10px] text-slate-500 dark:text-slate-400">
+                          {fontOpt.sample}
                         </span>
                       </button>
                     );

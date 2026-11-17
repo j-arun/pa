@@ -20,57 +20,67 @@ public partial class App : Application
     {
         InitializeComponent();
         UnhandledException += App_UnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+        TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        bool startInTray = Environment.GetCommandLineArgs()
-            .Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
-
-        bool createdNew = true;
         try
         {
-            _instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out createdNew);
-            _showWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowWindowEventName);
-        }
-        catch
-        {
-            createdNew = true;
-        }
+            bool startInTray = Environment.GetCommandLineArgs()
+                .Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
 
-        if (!createdNew)
-        {
-            if (!startInTray)
+            bool createdNew = true;
+            try
             {
-                try
-                {
-                    _showWindowEvent?.Set();
-                }
-                catch
-                {
-                    // Ignore wakeup signal errors
-                }
+                _instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out createdNew);
+                _showWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowWindowEventName);
+            }
+            catch
+            {
+                createdNew = true;
             }
 
-            Exit();
-            return;
+            if (!createdNew)
+            {
+                if (!startInTray)
+                {
+                    try
+                    {
+                        _showWindowEvent?.Set();
+                    }
+                    catch
+                    {
+                        // Ignore wakeup signal errors
+                    }
+                }
+
+                Exit();
+                return;
+            }
+
+            _ = Coordinator;
+
+            var mainWindow = new MainWindow();
+            _window = mainWindow;
+            StartShowWindowListener(mainWindow);
+
+            mainWindow.Activate();
+
+            if (startInTray)
+            {
+                mainWindow.DispatcherQueue.TryEnqueue(() => mainWindow.HideToTray());
+            }
+            else
+            {
+                mainWindow.RestoreFromTray();
+            }
         }
-
-        _ = Coordinator;
-
-        var mainWindow = new MainWindow();
-        _window = mainWindow;
-        StartShowWindowListener(mainWindow);
-
-        mainWindow.Activate();
-
-        if (startInTray)
+        catch (Exception ex)
         {
-            mainWindow.DispatcherQueue.TryEnqueue(() => mainWindow.HideToTray());
-        }
-        else
-        {
-            mainWindow.RestoreFromTray();
+            LogStartupException("OnLaunched", ex);
+            throw;
         }
     }
 
@@ -130,6 +140,21 @@ public partial class App : Application
 
     private static void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
+        LogStartupException("XamlUnhandled", e.Exception);
+    }
+
+    private static void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+    {
+        LogStartupException("DomainUnhandled", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
+    }
+
+    private static void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        LogStartupException("TaskUnobserved", e.Exception);
+    }
+
+    private static void LogStartupException(string source, Exception? ex)
+    {
         try
         {
             var dir = Path.Combine(
@@ -138,7 +163,7 @@ public partial class App : Application
             Directory.CreateDirectory(dir);
             File.AppendAllText(
                 Path.Combine(dir, "startup.log"),
-                $"[{DateTime.Now:O}] {e.Message}{Environment.NewLine}{e.Exception}{Environment.NewLine}");
+                $"[{DateTime.Now:O}] [{source}] {ex}{Environment.NewLine}");
         }
         catch
         {

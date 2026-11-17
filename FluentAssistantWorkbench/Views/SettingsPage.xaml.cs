@@ -49,6 +49,14 @@ public sealed partial class SettingsPage : Page
                     break;
                 }
             }
+            foreach (ComboBoxItem item in FontCombo.Items)
+            {
+                if (string.Equals(item.Tag?.ToString(), cfg.FontFamily.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    FontCombo.SelectedItem = item;
+                    break;
+                }
+            }
             DisplayNameBox.Text = cfg.UserProfile.DisplayName;
 
             OllamaUrlBox.Text = cfg.PrivateLlm.OllamaBaseUrl;
@@ -107,6 +115,11 @@ public sealed partial class SettingsPage : Page
             Enum.TryParse<AppThemeMode>(themeItem.Tag?.ToString(), out var parsedTheme))
         {
             cfg.Theme = parsedTheme;
+        }
+        if (FontCombo.SelectedItem is ComboBoxItem fontItem &&
+            Enum.TryParse<AppFontFamily>(fontItem.Tag?.ToString(), out var parsedFont))
+        {
+            cfg.FontFamily = parsedFont;
         }
         cfg.UserProfile.DisplayName = DisplayNameBox.Text.Trim();
 

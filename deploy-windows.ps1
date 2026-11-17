@@ -1,14 +1,17 @@
 param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\PersonalAssistant",
-    [switch]$EnableStartup = $true
+    [switch]$EnableStartup = $true,
+    [switch]$LaunchAfterDeploy = $true
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectPath = Join-Path $RepoRoot "FluentAssistantWorkbench\FluentAssistantWorkbench.csproj"
+$ProjectDir = Join-Path $RepoRoot "FluentAssistantWorkbench"
+$ProjectPath = Join-Path $ProjectDir "FluentAssistantWorkbench.csproj"
 
-# Stop running tray instance if active so executables/DLLs can be replaced cleanly
+# Stop any running background/tray instance so files in $InstallDir can be replaced cleanly
 Get-Process -Name "FluentAssistantWorkbench" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 350
 
 function Find-VisualStudioMsBuild {
     $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -42,6 +45,7 @@ function Find-VisualStudioMsBuild {
 }
 
 $MsBuildPath = Find-VisualStudioMsBuild
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $PublishDirArg = ($InstallDir.TrimEnd('\') + "/")
 
 if ($MsBuildPath) {
@@ -57,7 +61,23 @@ if ($MsBuildPath) {
         throw "MSBuild Restore failed with exit code $LASTEXITCODE"
     }
 
-    Write-Host "Publishing Personal Assistant (Release, self-contained win-x64)..." -ForegroundColor Cyan
+    # Build first (Visual Studio F5 layout: ensures all .pri, .xbf, WinUI3 native DLLs & Assets are generated cleanly)
+    Write-Host "Building Personal Assistant (Release | x64)..." -ForegroundColor Cyan
+    & $MsBuildPath $ProjectPath `
+        -t:Build `
+        -p:Configuration=Release `
+        -p:Platform=x64 `
+        -p:RuntimeIdentifier=win-x64 `
+        -p:SelfContained=true `
+        -p:WindowsAppSDKSelfContained=true `
+        -m `
+        -v:minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSBuild Build failed with exit code $LASTEXITCODE"
+    }
+
+    # Publish self-contained win-x64 into $InstallDir
+    Write-Host "Publishing Personal Assistant to $InstallDir..." -ForegroundColor Cyan
     & $MsBuildPath $ProjectPath `
         -t:Publish `
         -p:Configuration=Release `
@@ -70,6 +90,13 @@ if ($MsBuildPath) {
         -v:minimal
     if ($LASTEXITCODE -ne 0) {
         throw "MSBuild Publish failed with exit code $LASTEXITCODE"
+    }
+
+    # Ensure all WinUI 3 unpacked runtime artifacts (.pri, .xbf, WinAppSDK native files, Assets) from Release bin exist in $InstallDir
+    $ReleaseBinDir = Join-Path $ProjectDir "bin\x64\Release\net8.0-windows10.0.19041.0\win-x64"
+    if (Test-Path $ReleaseBinDir) {
+        Write-Host "Syncing WinUI 3 runtime & XBF/PRI resources..." -ForegroundColor DarkGray
+        robocopy $ReleaseBinDir $InstallDir /E /XO /XC /XN /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
     }
 }
 else {
@@ -87,9 +114,13 @@ else {
 
 $ExePath = Join-Path $InstallDir "FluentAssistantWorkbench.exe"
 $IconPath = Join-Path $InstallDir "Assets\PersonalAssistant.ico"
+$PriPath = Join-Path $InstallDir "FluentAssistantWorkbench.pri"
 
 if (-not (Test-Path $ExePath)) {
-    throw "Publish completed but executable was not found at $ExePath"
+    throw "Deploy completed but executable was not found at $ExePath"
+}
+if (-not (Test-Path $PriPath)) {
+    Write-Warning "FluentAssistantWorkbench.pri not found in $InstallDir — copying Assets explicitly."
 }
 
 $WshShell = New-Object -ComObject WScript.Shell
@@ -114,7 +145,7 @@ $DShortcut.Description = "Personal Assistant"
 $DShortcut.Save()
 Write-Host "Created Desktop shortcut: $DesktopShortcut" -ForegroundColor Green
 
-# 3. Optional Windows Startup entry (launches directly into the Windows System Tray)
+# 3. Windows Startup Tray Shortcut
 if ($EnableStartup) {
     $StartupShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\Personal Assistant.lnk"
     $SShortcut = $WshShell.CreateShortcut($StartupShortcut)
@@ -128,6 +159,18 @@ if ($EnableStartup) {
 }
 
 Write-Host ""
-Write-Host "Deployment complete!" -ForegroundColor Cyan
-Write-Host " - Open Start Menu, search 'Personal Assistant', right-click -> 'Pin to taskbar' to keep it on your Windows taskbar."
-Write-Host " - Look in the bottom-right Windows system tray (near the clock) to click and invoke Personal Assistant anytime."
+Write-Host "Deployment complete! No PC restart is required." -ForegroundColor Cyan
+
+if ($LaunchAfterDeploy) {
+    Write-Host "Launching Personal Assistant from $ExePath..." -ForegroundColor Cyan
+    Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir
+    Start-Sleep -Seconds 2
+    $running = Get-Process -Name "FluentAssistantWorkbench" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "Personal Assistant is running (PID: $($running[0].Id))." -ForegroundColor Green
+    }
+    else {
+        $logFile = Join-Path $env:LOCALAPPDATA "FluentAssistantWorkbench\startup.log"
+        Write-Warning "Process exited right after launch. Check $logFile if present."
+    }
+}

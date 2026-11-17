@@ -16,13 +16,18 @@
                 <StackPanel Spacing="12">
                     <TextBlock Text="Themes &amp; Windows Account Profile" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                    <Grid ColumnSpacing="12">
+                    <Grid ColumnSpacing="12" RowSpacing="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <ComboBox
                             x:Name="ThemeCombo"
+                            Grid.Row="0"
                             Grid.Column="0"
                             Header="Color Theme"
                             HorizontalAlignment="Stretch"
@@ -33,9 +38,21 @@
                             <ComboBoxItem Content="Emerald Mist (#059669 · Light)" Tag="EmeraldMist" />
                             <ComboBoxItem Content="Royal Amethyst (#A855F7 · Dark)" Tag="RoyalAmethyst" />
                         </ComboBox>
+                        <ComboBox
+                            x:Name="FontCombo"
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Header="Font Style"
+                            HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Segoe UI (Default)" Tag="SegoeUI" />
+                            <ComboBoxItem Content="Calibri (Clean Sans)" Tag="Calibri" />
+                            <ComboBoxItem Content="Georgia (Editorial Serif)" Tag="Georgia" />
+                            <ComboBoxItem Content="Cascadia Mono (Technical)" Tag="CascadiaMono" />
+                        </ComboBox>
                         <TextBox
                             x:Name="DisplayNameBox"
-                            Grid.Column="1"
+                            Grid.Row="1"
+                            Grid.ColumnSpan="2"
                             Header="Account Display Name"
                             PlaceholderText="Windows logged-in user" />
                     </Grid>

@@ -96,10 +96,16 @@ public sealed partial class MainWindow : Window
             {
                 AppWindow.SetIcon(iconPath);
             }
+
+            var pngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "PersonalAssistant.png");
+            if (File.Exists(pngPath))
+            {
+                TopBarAppIcon.Source = new BitmapImage(new Uri(pngPath));
+            }
         }
         catch
         {
-            // Ignore when host environment does not support AppWindow.SetIcon
+            // Ignore when host environment does not support icon loading
         }
     }
 
