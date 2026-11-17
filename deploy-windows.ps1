@@ -120,7 +120,7 @@ if (-not (Test-Path $ExePath)) {
     throw "Deploy completed but executable was not found at $ExePath"
 }
 if (-not (Test-Path $PriPath)) {
-    Write-Warning "FluentAssistantWorkbench.pri not found in $InstallDir — copying Assets explicitly."
+    Write-Warning "FluentAssistantWorkbench.pri not found in $InstallDir - copying Assets explicitly."
 }
 
 $WshShell = New-Object -ComObject WScript.Shell
@@ -131,7 +131,7 @@ $Shortcut = $WshShell.CreateShortcut($StartMenuShortcut)
 $Shortcut.TargetPath = $ExePath
 $Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.IconLocation = "$IconPath,0"
-$Shortcut.Description = "Personal Assistant (Private Ollama & Public LLM)"
+$Shortcut.Description = "Personal Assistant"
 $Shortcut.Save()
 Write-Host "Created Start Menu shortcut: $StartMenuShortcut" -ForegroundColor Green
 
