@@ -9,7 +9,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class OllamaAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public string AdapterId => "ollama";
     public string DisplayName => "Windows Ollama (Private)";
@@ -20,10 +20,13 @@ public sealed class OllamaAdapter : ILlmAdapter
         CancellationToken ct = default)
     {
         var normalized = NormalizeUrl(baseUrl);
-        using var response = await _http.GetAsync($"{normalized}/api/tags", ct);
+        using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        probeCts.CancelAfter(TimeSpan.FromSeconds(8));
+
+        using var response = await _http.GetAsync($"{normalized}/api/tags", probeCts.Token);
         response.EnsureSuccessStatusCode();
 
-        var dto = await response.Content.ReadFromJsonAsync<OllamaTagsResponse>(cancellationToken: ct);
+        var dto = await response.Content.ReadFromJsonAsync<OllamaTagsResponse>(cancellationToken: probeCts.Token);
         if (dto?.Models is null) return [];
 
         return dto.Models

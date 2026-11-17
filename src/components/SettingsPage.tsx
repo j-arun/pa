@@ -1,4 +1,5 @@
 import {
+  Bell,
   Check,
   ChevronDown,
   ChevronRight,
@@ -30,6 +31,11 @@ import type {
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
 import { normalizeFontOption, normalizeThemeMode } from '../utils/storage';
+import {
+  playReplyChime,
+  requestDesktopNotificationPermission,
+  showDesktopNotification,
+} from '../utils/notify';
 import { WINUI3_SKELETON_SNIPPETS } from '../utils/winui3Skeleton';
 
 const FONT_OPTIONS: Array<{
@@ -162,6 +168,7 @@ export function SettingsPage({
   const [inspectedAdapterId, setInspectedAdapterId] = useState<AnyAdapterId | null>(null);
   const [showWinUiSkeleton, setShowWinUiSkeleton] = useState(false);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
+  const [notifyFeedback, setNotifyFeedback] = useState<string | null>(null);
 
   const updateDraft = (updater: WorkbenchSettings | ((prev: WorkbenchSettings) => WorkbenchSettings)) => {
     setDraft((prev) => (typeof updater === 'function' ? updater(prev) : updater));
@@ -1150,6 +1157,82 @@ export function SettingsPage({
                 />
                 <span>Auto-play Private Ollama replies</span>
               </label>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-8">
+                  <label className="inline-flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={draft.notifications?.soundOnReply ?? true}
+                      onChange={(e) =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          notifications: {
+                            soundOnReply: e.target.checked,
+                            desktopNotificationOnReply:
+                              prev.notifications?.desktopNotificationOnReply ?? true,
+                          },
+                        }))
+                      }
+                      className="w-4 h-4 accent-[var(--pa-accent)] rounded"
+                    />
+                    <span>Play chime sound when LLM responds</span>
+                  </label>
+
+                  <label className="inline-flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={draft.notifications?.desktopNotificationOnReply ?? true}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        updateDraft((prev) => ({
+                          ...prev,
+                          notifications: {
+                            soundOnReply: prev.notifications?.soundOnReply ?? true,
+                            desktopNotificationOnReply: checked,
+                          },
+                        }));
+                        if (checked) {
+                          void requestDesktopNotificationPermission();
+                        }
+                      }}
+                      className="w-4 h-4 accent-[var(--pa-accent)] rounded"
+                    />
+                    <span>Show notification on reply</span>
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    playReplyChime(false);
+                    const perm = await requestDesktopNotificationPermission();
+                    const sent =
+                      perm === 'granted' &&
+                      showDesktopNotification(
+                        'Personal Assistant · Notification Test',
+                        'Reply chime and notifications are ready.',
+                      );
+                    setNotifyFeedback(
+                      sent
+                        ? 'Played reply chime and sent desktop notification.'
+                        : 'Played reply chime (in-app notifications are active).',
+                    );
+                    setTimeout(() => setNotifyFeedback(null), 3000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-medium transition-colors whitespace-nowrap shrink-0"
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>Test Chime &amp; Notify</span>
+                </button>
+              </div>
+              {notifyFeedback && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                  {notifyFeedback}
+                </p>
+              )}
             </div>
           </div>
         </section>

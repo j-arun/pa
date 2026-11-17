@@ -17,6 +17,7 @@ public sealed class WorkbenchCoordinator
     public bool IsMuted { get; set; }
 
     public event EventHandler? ConfigChanged;
+    public event EventHandler<LlmResponseNotificationEventArgs>? ResponseArrived;
 
     public WorkbenchCoordinator()
     {
@@ -189,12 +190,26 @@ public sealed class WorkbenchCoordinator
             exchange.SetReply(assistantTurn.Content, assistantTurn.Timestamp, isError: false);
             ConfigStore.SaveHistory(Turns);
 
+            if (Config.Notifications.SoundOnReply)
+            {
+                NotificationSoundService.PlayReplyChime(isError: false);
+            }
+
+            ResponseArrived?.Invoke(this, new LlmResponseNotificationEventArgs(
+                Scope: assistantTurn.Scope,
+                PreviewText: assistantTurn.Content,
+                IsError: false));
+
             var shouldAutoSpeak =
                 (assistantTurn.Scope == ConversationScope.Public && Config.Voice.AutoSpeakPublic) ||
                 (assistantTurn.Scope == ConversationScope.Private && Config.Voice.AutoSpeakPrivate);
 
             if (shouldAutoSpeak)
             {
+                if (Config.Notifications.SoundOnReply)
+                {
+                    await Task.Delay(220, ct);
+                }
                 await Speech.SpeakAsync(assistantTurn.Content, Config.Voice.SelectedVoiceId);
             }
 
@@ -213,7 +228,23 @@ public sealed class WorkbenchCoordinator
             Turns.Add(errTurn);
             exchange.SetReply(errTurn.Content, errTurn.Timestamp, isError: true);
             ConfigStore.SaveHistory(Turns);
+
+            if (Config.Notifications.SoundOnReply)
+            {
+                NotificationSoundService.PlayReplyChime(isError: true);
+            }
+
+            ResponseArrived?.Invoke(this, new LlmResponseNotificationEventArgs(
+                Scope: errTurn.Scope,
+                PreviewText: errTurn.Content,
+                IsError: true));
+
             return errTurn;
         }
     }
 }
+
+public sealed record LlmResponseNotificationEventArgs(
+    ConversationScope Scope,
+    string PreviewText,
+    bool IsError);

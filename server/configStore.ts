@@ -145,6 +145,10 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
     rate: 1.0,
     pitch: 1.0,
   },
+  notifications: {
+    soundOnReply: true,
+    desktopNotificationOnReply: true,
+  },
 };
 
 export function resolveConfigDir(): string {
@@ -207,6 +211,10 @@ export function mergeConfigWithDefaults(
     voice: {
       ...DEFAULT_WORKBENCH_CONFIG.voice,
       ...(parsed.voice || {}),
+    },
+    notifications: {
+      ...DEFAULT_WORKBENCH_CONFIG.notifications,
+      ...(parsed.notifications || {}),
     },
   };
 }

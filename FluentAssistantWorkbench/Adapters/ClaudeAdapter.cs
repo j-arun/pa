@@ -9,7 +9,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class ClaudeAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(90) };
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public string AdapterId => "claude";
     public string DisplayName => "Claude (Public)";
@@ -40,7 +40,9 @@ public sealed class ClaudeAdapter : ILlmAdapter
 
         try
         {
-            var reply = await SendInternalAsync(cfg, apiKey, [], "Reply with OK.", ct);
+            using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            probeCts.CancelAfter(TimeSpan.FromSeconds(15));
+            var reply = await SendInternalAsync(cfg, apiKey, [], "Reply with OK.", probeCts.Token);
             return new AdapterHealthStatus(
                 AdapterId,
                 true,

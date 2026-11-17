@@ -52,6 +52,10 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
     rate: 1.0,
     pitch: 1.0,
   },
+  notifications: {
+    soundOnReply: true,
+    desktopNotificationOnReply: true,
+  },
 };
 
 export function normalizeThemeMode(raw?: string): WorkbenchSettings['theme'] {
@@ -120,6 +124,10 @@ export function loadSettings(): WorkbenchSettings {
       voice: {
         ...DEFAULT_SETTINGS.voice,
         ...(parsed.voice || {}),
+      },
+      notifications: {
+        ...DEFAULT_SETTINGS.notifications,
+        ...(parsed.notifications || {}),
       },
     };
   } catch {

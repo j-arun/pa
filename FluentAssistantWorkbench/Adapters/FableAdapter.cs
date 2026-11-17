@@ -10,7 +10,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class FableAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(90) };
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public string AdapterId => "fable";
     public string DisplayName => "Fable (Public)";
@@ -41,7 +41,9 @@ public sealed class FableAdapter : ILlmAdapter
 
         try
         {
-            var reply = await SendInternalAsync(cfg, apiKey, [], "Reply with OK.", ct);
+            using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            probeCts.CancelAfter(TimeSpan.FromSeconds(15));
+            var reply = await SendInternalAsync(cfg, apiKey, [], "Reply with OK.", probeCts.Token);
             return new AdapterHealthStatus(
                 AdapterId,
                 true,

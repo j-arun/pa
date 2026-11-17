@@ -336,6 +336,12 @@ public sealed class VoiceConfig
     public string SelectedVoiceId { get; set; } = string.Empty;
 }
 
+public sealed class NotificationConfig
+{
+    public bool SoundOnReply { get; set; } = true;
+    public bool DesktopNotificationOnReply { get; set; } = true;
+}
+
 public sealed class WorkbenchConfig
 {
     public AppThemeMode Theme { get; set; } = AppThemeMode.ArcticSky;
@@ -345,4 +351,5 @@ public sealed class WorkbenchConfig
     public PrivateLlmConfig PrivateLlm { get; set; } = new();
     public PublicLlmConfig PublicLlm { get; set; } = new();
     public VoiceConfig Voice { get; set; } = new();
+    public NotificationConfig Notifications { get; set; } = new();
 }

@@ -21,6 +21,12 @@ public sealed class TrayIconService : IDisposable
     private const uint NIF_MESSAGE = 0x00000001;
     private const uint NIF_ICON = 0x00000002;
     private const uint NIF_TIP = 0x00000004;
+    private const uint NIF_INFO = 0x00000010;
+
+    private const uint NIIF_INFO = 0x00000001;
+    private const uint NIIF_ERROR = 0x00000003;
+    private const uint NIIF_NOSOUND = 0x00000010;
+    private const uint NIN_BALLOONUSERCLICK = 0x0405;
 
     private const uint IMAGE_ICON = 1;
     private const uint LR_LOADFROMFILE = 0x00000010;
@@ -81,6 +87,29 @@ public sealed class TrayIconService : IDisposable
         var data = CreateNotifyIconData(tooltip);
         data.uFlags = NIF_TIP;
         Shell_NotifyIconW(NIM_MODIFY, ref data);
+    }
+
+    public void ShowBalloonNotification(string title, string message, bool isError = false)
+    {
+        if (!_added || _disposed) return;
+        try
+        {
+            var cleanTitle = (title ?? "Personal Assistant").Replace("\r", " ").Replace("\n", " ").Trim();
+            var cleanBody = (message ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+            if (cleanTitle.Length > 63) cleanTitle = cleanTitle[..60] + "...";
+            if (cleanBody.Length > 255) cleanBody = cleanBody[..252] + "...";
+
+            var data = CreateNotifyIconData("Personal Assistant");
+            data.uFlags = NIF_INFO;
+            data.szInfoTitle = cleanTitle;
+            data.szInfo = cleanBody;
+            data.dwInfoFlags = (isError ? NIIF_ERROR : NIIF_INFO) | NIIF_NOSOUND;
+            Shell_NotifyIconW(NIM_MODIFY, ref data);
+        }
+        catch
+        {
+            // Ignore shell notification failures
+        }
     }
 
     public void ShowAndFocusWindow()
@@ -151,7 +180,7 @@ public sealed class TrayIconService : IDisposable
         else if (uMsg == WM_APP_TRAY)
         {
             uint mouseMsg = (uint)(lParam.ToInt64() & 0xFFFF);
-            if (mouseMsg is WM_LBUTTONUP or WM_LBUTTONDBLCLK)
+            if (mouseMsg is WM_LBUTTONUP or WM_LBUTTONDBLCLK or NIN_BALLOONUSERCLICK)
             {
                 _window.DispatcherQueue.TryEnqueue(() =>
                 {

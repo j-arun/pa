@@ -1,3 +1,5 @@
+import http from 'node:http';
+import https from 'node:https';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -206,14 +208,10 @@ export class OllamaAdapter implements ILlmAdapter {
       content: request.message,
     });
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90000);
-
     try {
-      const response = await fetch(`${baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { statusCode, bodyText } = await postJsonNoTimeout(
+        `${baseUrl}/api/chat`,
+        {
           model,
           stream: false,
           keep_alive: request.options.keepAlive || '10m',
@@ -221,14 +219,19 @@ export class OllamaAdapter implements ILlmAdapter {
             num_ctx: request.options.contextWindow || 8192,
           },
           messages,
-        }),
-        signal: controller.signal,
-      });
+        },
+      );
 
-      const payload = (await response.json().catch(() => ({}))) as OllamaChatApiResponse;
-      if (!response.ok || payload.error) {
+      let payload: OllamaChatApiResponse = {};
+      try {
+        payload = JSON.parse(bodyText) as OllamaChatApiResponse;
+      } catch {
+        payload = {};
+      }
+
+      if (statusCode < 200 || statusCode >= 300 || payload.error) {
         throw new Error(
-          payload.error || `Ollama returned HTTP ${response.status} while querying "${model}".`,
+          payload.error || `Ollama returned HTTP ${statusCode} while querying "${model}".`,
         );
       }
 
@@ -252,15 +255,51 @@ export class OllamaAdapter implements ILlmAdapter {
         tokenCount,
       };
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`Private Ollama request timed out after 90s at ${baseUrl}.`);
-      }
       if (err instanceof Error) {
         throw err;
       }
       throw new Error(`Failed to communicate with Ollama at ${baseUrl}.`);
-    } finally {
-      clearTimeout(timer);
     }
   }
+}
+
+function postJsonNoTimeout(
+  targetUrl: string,
+  body: unknown,
+): Promise<{ statusCode: number; bodyText: string }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(targetUrl);
+    const jsonPayload = Buffer.from(JSON.stringify(body), 'utf8');
+    const client = parsed.protocol === 'https:' ? https : http;
+
+    const req = client.request(
+      parsed,
+      {
+        method: 'POST',
+        timeout: 0,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': jsonPayload.byteLength,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer | string) => {
+          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk);
+        });
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode ?? 500,
+            bodyText: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+        res.on('error', reject);
+      },
+    );
+
+    req.setTimeout(0);
+    req.on('error', reject);
+    req.write(jsonPayload);
+    req.end();
+  });
 }

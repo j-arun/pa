@@ -238,6 +238,15 @@
                         <CheckBox x:Name="AutoSpeakPrivateCheck" Content="Auto-play Private Ollama replies" />
                     </StackPanel>
 
+                    <StackPanel Orientation="Horizontal" Spacing="20">
+                        <CheckBox x:Name="SoundOnReplyCheck" Content="Play chime sound when LLM responds" />
+                        <CheckBox x:Name="DesktopNotifyOnReplyCheck" Content="Show Windows notification on reply" />
+                        <Button
+                            Content="Test Chime &amp; Notify"
+                            Click="TestReplyNotification_Click"
+                            VerticalAlignment="Center" />
+                    </StackPanel>
+
                     <TextBlock
                         x:Name="StoragePathText"
                         TextWrapping="Wrap"

@@ -9,7 +9,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class GeminiAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(90) };
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public string AdapterId => "gemini";
     public string DisplayName => "Gemini Pro (Public)";
@@ -40,12 +40,14 @@ public sealed class GeminiAdapter : ILlmAdapter
 
         try
         {
+            using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            probeCts.CancelAfter(TimeSpan.FromSeconds(15));
             var reply = await SendInternalAsync(
                 cfg,
                 apiKey,
                 [],
                 "Reply with OK.",
-                ct);
+                probeCts.Token);
             return new AdapterHealthStatus(
                 AdapterId,
                 true,

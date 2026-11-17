@@ -21,7 +21,7 @@ async function startServer() {
   const port = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production';
 
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '10mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({
@@ -104,6 +104,8 @@ async function startServer() {
   });
 
   app.post('/api/chat', async (req, res) => {
+    req.setTimeout(0);
+    res.setTimeout(0);
     try {
       const { scope, adapterId, message, history, options } = req.body as {
         scope?: ConversationScope;
@@ -167,9 +169,11 @@ async function startServer() {
     }
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const httpServer = app.listen(port, '0.0.0.0', () => {
     console.log(`Fluent Personal Assistant Workbench listening on http://0.0.0.0:${port}`);
   });
+  httpServer.requestTimeout = 0;
+  httpServer.headersTimeout = 0;
 }
 
 startServer().catch((err) => {

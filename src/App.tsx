@@ -1,4 +1,5 @@
 import {
+  Bell,
   Cloud,
   Lock,
   Mic,
@@ -8,6 +9,7 @@ import {
   Square,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SettingsPage } from './components/SettingsPage';
@@ -29,6 +31,11 @@ import {
   saveScope,
   saveSettings,
 } from './utils/storage';
+import {
+  playReplyChime,
+  requestDesktopNotificationPermission,
+  showDesktopNotification,
+} from './utils/notify';
 
 const USER_AVATAR_SRC = '/src/assets/images/local_user_avatar_1794900004889.jpg';
 const THEME_CYCLE: ThemeMode[] = [
@@ -56,6 +63,12 @@ export default function App() {
     platform: 'unknown',
   });
   const configHydratedRef = useRef(false);
+  const replyToastTimerRef = useRef<number | null>(null);
+  const [replyToast, setReplyToast] = useState<{
+    title: string;
+    preview: string;
+    isError: boolean;
+  } | null>(null);
 
   const speech = useSpeechIO(settings.voice, isMuted);
 
@@ -247,6 +260,10 @@ export default function App() {
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
 
+    if (settings.notifications?.desktopNotificationOnReply !== false) {
+      void requestDesktopNotificationPermission();
+    }
+
     try {
       const options =
         scope === 'private'
@@ -314,11 +331,31 @@ export default function App() {
 
       setTurns((prev) => [...prev, assistantTurn]);
 
+      if (settings.notifications?.soundOnReply !== false) {
+        playReplyChime(false);
+      }
+      if (settings.notifications?.desktopNotificationOnReply !== false) {
+        const title = `Personal Assistant · ${
+          assistantTurn.scope === 'private' ? 'Private' : 'Public'
+        } reply ready`;
+        const cleanPreview = assistantTurn.content.replace(/\s+/g, ' ').trim();
+        const shortPreview =
+          cleanPreview.length > 110 ? `${cleanPreview.slice(0, 107)}...` : cleanPreview;
+        showDesktopNotification(title, cleanPreview);
+        setReplyToast({ title, preview: shortPreview, isError: false });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 4500);
+      }
+
       const shouldAutoSpeak =
         (assistantTurn.scope === 'public' && settings.voice.autoSpeakPublic) ||
         (assistantTurn.scope === 'private' && settings.voice.autoSpeakPrivate);
       if (shouldAutoSpeak) {
-        speech.speakText(assistantTurn.id, assistantTurn.content);
+        if (settings.notifications?.soundOnReply !== false) {
+          setTimeout(() => speech.speakText(assistantTurn.id, assistantTurn.content), 240);
+        } else {
+          speech.speakText(assistantTurn.id, assistantTurn.content);
+        }
       }
     } catch (err) {
       const errTurn: ConversationTurn = {
@@ -331,6 +368,17 @@ export default function App() {
         model: modelName,
       };
       setTurns((prev) => [...prev, errTurn]);
+
+      if (settings.notifications?.soundOnReply !== false) {
+        playReplyChime(true);
+      }
+      if (settings.notifications?.desktopNotificationOnReply !== false) {
+        const title = 'Personal Assistant · Response Error';
+        showDesktopNotification(title, errTurn.content);
+        setReplyToast({ title, preview: errTurn.content, isError: true });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+      }
     } finally {
       setIsSending(false);
     }
@@ -586,6 +634,40 @@ export default function App() {
           </span>
         </footer>
       </div>
+
+      {/* Reply Arrival Toast Notification */}
+      {replyToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-16 right-4 z-40 max-w-sm rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl px-4 py-3 flex items-start gap-3"
+        >
+          <div
+            className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-white"
+            style={{
+              backgroundColor: replyToast.isError ? '#dc2626' : 'var(--pa-accent)',
+            }}
+          >
+            <Bell className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+              {replyToast.title}
+            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 mt-0.5">
+              {replyToast.preview}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplyToast(null)}
+            aria-label="Dismiss notification"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Compact Settings Modal Window */}
       {isSettingsOpen && (

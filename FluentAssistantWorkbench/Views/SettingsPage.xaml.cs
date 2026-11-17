@@ -98,6 +98,8 @@ public sealed partial class SettingsPage : Page
 
             AutoSpeakPublicCheck.IsChecked = cfg.Voice.AutoSpeakPublic;
             AutoSpeakPrivateCheck.IsChecked = cfg.Voice.AutoSpeakPrivate;
+            SoundOnReplyCheck.IsChecked = cfg.Notifications.SoundOnReply;
+            DesktopNotifyOnReplyCheck.IsChecked = cfg.Notifications.DesktopNotificationOnReply;
 
             StoragePathText.Text = $"Local Config File: {App.Coordinator.ConfigStore.ConfigFilePath}";
         }
@@ -152,6 +154,8 @@ public sealed partial class SettingsPage : Page
 
         cfg.Voice.AutoSpeakPublic = AutoSpeakPublicCheck.IsChecked == true;
         cfg.Voice.AutoSpeakPrivate = AutoSpeakPrivateCheck.IsChecked == true;
+        cfg.Notifications.SoundOnReply = SoundOnReplyCheck.IsChecked == true;
+        cfg.Notifications.DesktopNotificationOnReply = DesktopNotifyOnReplyCheck.IsChecked == true;
     }
 
     private async void DiscoverOllama_Click(object sender, RoutedEventArgs e)
@@ -199,6 +203,13 @@ public sealed partial class SettingsPage : Page
         await App.Coordinator.Speech.SpeakAsync(
             "Windows native speaker playback is ready for Personal Assistant.",
             App.Coordinator.Config.Voice.SelectedVoiceId);
+    }
+
+    private void TestReplyNotification_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyUiToConfig();
+        MainWindow.CurrentWindow?.TestDesktopNotification();
+        SaveFeedbackText.Text = "Played reply chime and triggered Windows notification.";
     }
 
     private void ReloadSettings_Click(object sender, RoutedEventArgs e)

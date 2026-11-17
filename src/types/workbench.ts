@@ -102,6 +102,11 @@ export interface UserProfileConfig {
   avatarDataUrl: string;
 }
 
+export interface NotificationConfig {
+  soundOnReply: boolean;
+  desktopNotificationOnReply: boolean;
+}
+
 export interface WorkbenchSettings {
   theme: ThemeMode;
   fontFamily: FontOption;
@@ -109,4 +114,5 @@ export interface WorkbenchSettings {
   privateLlm: PrivateLlmConfig;
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;
+  notifications: NotificationConfig;
 }

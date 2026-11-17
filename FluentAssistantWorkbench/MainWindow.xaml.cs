@@ -35,11 +35,27 @@ public sealed partial class MainWindow : Window
         };
 
         App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
+        App.Coordinator.ResponseArrived += (_, args) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!App.Coordinator.Config.Notifications.DesktopNotificationOnReply) return;
+            var title = args.IsError
+                ? "Personal Assistant · Error"
+                : $"Personal Assistant · {args.Scope} reply ready";
+            _trayIcon?.ShowBalloonNotification(title, args.PreviewText, args.IsError);
+        });
         SyncMenuBarState();
         _ = App.Coordinator.InitializeProfileAsync();
 
         NavView.SelectedItem = NavView.MenuItems[0];
         ContentFrame.Navigate(typeof(WorkbenchPage));
+    }
+
+    public void TestDesktopNotification()
+    {
+        NotificationSoundService.PlayReplyChime(isError: false);
+        _trayIcon?.ShowBalloonNotification(
+            "Personal Assistant · Notification Test",
+            "Sound chime and Windows notifications are active for LLM responses.");
     }
 
     private void InitializeTrayIcon()
