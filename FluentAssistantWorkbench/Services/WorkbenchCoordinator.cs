@@ -234,14 +234,25 @@ public sealed class WorkbenchCoordinator
         Telemetry.TokensPerSecond = null;
         Telemetry.DurationMs = null;
 
+        var timeoutSec = Config.RequestTimeoutSeconds;
+        var timeoutLabel = timeoutSec > 0 ? $"{timeoutSec}s" : "Unlimited";
         var modelDisplay = string.IsNullOrWhiteSpace(model) ? adapter.AdapterId : model;
-        AddContextLog("info", $"Prompt sent · {promptChars:N0} chars · {history.Count} turns · {modelDisplay}");
+        AddContextLog("info", $"Prompt sent · {promptChars:N0} chars · {history.Count} turns · {modelDisplay} · timeout: {timeoutLabel}");
+
+        using var timeoutCts = timeoutSec > 0
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+        if (timeoutCts is not null)
+        {
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
+        }
+        var effectiveCt = timeoutCts?.Token ?? ct;
 
         try
         {
             var reply = await adapter.SendMessageAsync(
                 new LlmChatRequest(trimmedMessage, history, Config),
-                ct);
+                effectiveCt);
 
             var assistantTurn = new ConversationTurn
             {
@@ -297,6 +308,34 @@ public sealed class WorkbenchCoordinator
             }
 
             return assistantTurn;
+        }
+        catch (OperationCanceledException) when (timeoutCts is not null && timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            var errMsg = $"Configured query timeout of {timeoutSec}s elapsed. Set Request Timeout to 'No Timeout (Unlimited)' in Settings to run full-throttle queries.";
+            var errTurn = new ConversationTurn
+            {
+                Role = "error",
+                Content = errMsg,
+                Scope = Config.ActiveScope,
+                AdapterId = adapter.AdapterId,
+                Model = model
+            };
+            Turns.Add(errTurn);
+            exchange.SetReply(errTurn.Content, errTurn.Timestamp, isError: true);
+            ConfigStore.SaveHistory(Turns);
+
+            Telemetry.Phase = "Error";
+            Telemetry.IsThinking = false;
+            Telemetry.ThinkingStartedAt = null;
+            Telemetry.LastError = errMsg;
+            AddContextLog("error", $"Error: {errMsg}");
+
+            if (Config.Notifications.SoundOnReply)
+            {
+                NotificationSoundService.PlayReplyChime(isError: true);
+            }
+
+            return errTurn;
         }
         catch (Exception ex)
         {

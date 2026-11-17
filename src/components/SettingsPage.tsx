@@ -889,6 +889,70 @@ export function SettingsPage({
                   </select>
                 </div>
               </div>
+
+              <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800/70 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="request-timeout-preset"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Query Request Timeout (Private & Public LLMs)
+                  </label>
+                  <select
+                    id="request-timeout-preset"
+                    value={
+                      [0, 300, 600, 1800, 3600].includes(draft.requestTimeoutSeconds ?? 0)
+                        ? draft.requestTimeoutSeconds ?? 0
+                        : -1
+                    }
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val >= 0) {
+                        updateDraft((prev) => ({
+                          ...prev,
+                          requestTimeoutSeconds: val,
+                        }));
+                      }
+                    }}
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  >
+                    <option value={0}>No Timeout (Unlimited · Full Throttle)</option>
+                    <option value={300}>5 Minutes (300 seconds)</option>
+                    <option value={600}>10 Minutes (600 seconds)</option>
+                    <option value={1800}>30 Minutes (1800 seconds)</option>
+                    <option value={3600}>60 Minutes (3600 seconds)</option>
+                    {![0, 300, 600, 1800, 3600].includes(draft.requestTimeoutSeconds ?? 0) && (
+                      <option value={-1}>
+                        Custom ({draft.requestTimeoutSeconds} seconds)
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="request-timeout-seconds"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Custom Timeout Seconds (0 = No Timeout)
+                  </label>
+                  <input
+                    id="request-timeout-seconds"
+                    type="number"
+                    min={0}
+                    step={30}
+                    value={draft.requestTimeoutSeconds ?? 0}
+                    onChange={(e) => {
+                      const parsed = Math.max(0, Math.round(Number(e.target.value) || 0));
+                      updateDraft((prev) => ({
+                        ...prev,
+                        requestTimeoutSeconds: parsed,
+                      }));
+                    }}
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </section>

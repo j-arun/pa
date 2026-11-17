@@ -1,3 +1,4 @@
+import { postJsonConfigurable } from './httpClient.ts';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -171,19 +172,25 @@ export class ClaudeAdapter implements ILlmAdapter {
       body.system = request.options.systemInstruction.trim();
     }
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const timeoutSeconds = Math.max(0, Number(request.options.requestTimeoutSeconds) || 0);
+    const { statusCode, bodyText } = await postJsonConfigurable(
+      endpoint,
+      body,
+      {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(body),
-    });
+      timeoutSeconds,
+    );
 
-    const payload = (await response.json().catch(() => ({}))) as AnthropicMessageResponse;
-    if (!response.ok) {
-      throw new Error(payload.error?.message || `Claude returned HTTP ${response.status}.`);
+    let payload: AnthropicMessageResponse = {};
+    try {
+      payload = JSON.parse(bodyText) as AnthropicMessageResponse;
+    } catch {
+      payload = {};
+    }
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(payload.error?.message || `Claude returned HTTP ${statusCode}.`);
     }
 
     const text = (payload.content || [])

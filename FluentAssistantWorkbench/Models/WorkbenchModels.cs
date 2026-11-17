@@ -354,6 +354,7 @@ public sealed class WorkbenchConfig
     public PublicLlmConfig PublicLlm { get; set; } = new();
     public VoiceConfig Voice { get; set; } = new();
     public NotificationConfig Notifications { get; set; } = new();
+    public int RequestTimeoutSeconds { get; set; } = 0; // 0 = No timeout (Unlimited / Full Throttle)
 }
 
 public sealed class LlmContextLogEntry

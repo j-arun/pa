@@ -190,6 +190,8 @@ async function startServer() {
   const httpServer = app.listen(port, '0.0.0.0', () => {
     console.log(`Fluent Personal Assistant Workbench listening on http://0.0.0.0:${port}`);
   });
+  httpServer.timeout = 0;
+  httpServer.keepAliveTimeout = 0;
   httpServer.requestTimeout = 0;
   httpServer.headersTimeout = 0;
 }

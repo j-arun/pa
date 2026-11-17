@@ -150,6 +150,7 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  requestTimeoutSeconds: 0,
 };
 
 export function resolveConfigDir(): string {
@@ -217,6 +218,10 @@ export function mergeConfigWithDefaults(
       ...DEFAULT_WORKBENCH_CONFIG.notifications,
       ...(parsed.notifications || {}),
     },
+    requestTimeoutSeconds:
+      typeof parsed.requestTimeoutSeconds === 'number' && parsed.requestTimeoutSeconds >= 0
+        ? Math.round(parsed.requestTimeoutSeconds)
+        : 0,
   };
 }
 

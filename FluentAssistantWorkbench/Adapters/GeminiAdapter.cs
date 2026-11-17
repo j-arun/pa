@@ -9,7 +9,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class GeminiAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = LlmHttpClientFactory.CreateUnlimitedClient();
 
     public string AdapterId => "gemini";
     public string DisplayName => "Gemini Pro (Public)";

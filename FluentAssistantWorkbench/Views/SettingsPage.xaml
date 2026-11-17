@@ -147,6 +147,17 @@
                         </ComboBox>
                     </Grid>
 
+                    <ComboBox
+                        x:Name="RequestTimeoutCombo"
+                        Header="Query Request Timeout (Applies to Private &amp; Public LLMs)"
+                        HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="No Timeout (Unlimited · Full Throttle)" Tag="0" />
+                        <ComboBoxItem Content="5 Minutes (300 seconds)" Tag="300" />
+                        <ComboBoxItem Content="10 Minutes (600 seconds)" Tag="600" />
+                        <ComboBoxItem Content="30 Minutes (1800 seconds)" Tag="1800" />
+                        <ComboBoxItem Content="60 Minutes (3600 seconds)" Tag="3600" />
+                    </ComboBox>
+
                     <TextBox
                         x:Name="PrivateSystemBox"
                         Header="Private System Instruction"

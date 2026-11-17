@@ -18,6 +18,12 @@ public sealed partial class MainWindow : Window
     private bool _isExiting;
     private DispatcherQueueTimer? _telemetryTimer;
 
+    private double _leftRailStartWidth = 200;
+    private double _rightRailWidth = 280;
+    private double _rightRailStartWidth = 280;
+    private double _bottomBarHeight = 30;
+    private double _bottomBarStartHeight = 30;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -54,6 +60,7 @@ public sealed partial class MainWindow : Window
 
         SyncMenuBarState();
         SyncContextMonitor();
+        SyncLeftSplitterPosition();
         _ = App.Coordinator.InitializeProfileAsync();
 
         NavView.SelectedItem = NavView.MenuItems[0];
@@ -375,13 +382,79 @@ public sealed partial class MainWindow : Window
             ? $"{t.TokensPerSecond:0.0} tok/s"
             : "— tok/s";
         StatusBarTimeText.Text = elapsedText;
+
+        var promptLabel = t.PromptChars > 0 ? $"{t.PromptChars:N0} ch ({t.HistoryTurnsUsed}t)" : "—";
+        var statusDetail = string.IsNullOrWhiteSpace(t.LastError) ? "Healthy" : $"Error: {t.LastError}";
+        BottomExpandedTelemetryText.Text =
+            $"Prompt Size: {promptLabel}  ·  Input: {(t.InputTokens.HasValue ? $"{t.InputTokens:N0}" : "—")}  ·  Output: {(t.OutputTokens.HasValue ? $"{t.OutputTokens:N0}" : "—")}  ·  {statusDetail}";
+    }
+
+    private void SyncLeftSplitterPosition()
+    {
+        bool showLeftSplitter =
+            NavView.IsPaneOpen &&
+            NavView.DisplayMode == NavigationViewDisplayMode.Expanded;
+        LeftPaneSplitter.Visibility = showLeftSplitter ? Visibility.Visible : Visibility.Collapsed;
+        LeftPaneSplitter.Margin = new Thickness(Math.Max(0, NavView.OpenPaneLength - 3), 0, 0, 0);
+    }
+
+    private void NavView_PaneChanged(NavigationView sender, object args)
+    {
+        SyncLeftSplitterPosition();
+    }
+
+    private void NavView_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args)
+    {
+        SyncLeftSplitterPosition();
+    }
+
+    private void LeftPaneSplitter_DragStarted(object? sender, EventArgs e)
+    {
+        _leftRailStartWidth = NavView.OpenPaneLength;
+    }
+
+    private void LeftPaneSplitter_DragDelta(object? sender, double delta)
+    {
+        double next = Math.Clamp(_leftRailStartWidth + delta, 150, 380);
+        NavView.OpenPaneLength = next;
+        SyncLeftSplitterPosition();
+    }
+
+    private void RightPaneSplitter_DragStarted(object? sender, EventArgs e)
+    {
+        _rightRailStartWidth = _rightRailWidth;
+    }
+
+    private void RightPaneSplitter_DragDelta(object? sender, double delta)
+    {
+        _rightRailWidth = Math.Clamp(_rightRailStartWidth - delta, 220, 540);
+        if (ContextMonitorToggleButton.IsChecked == true)
+        {
+            RightRailColumn.Width = new GridLength(_rightRailWidth);
+        }
+    }
+
+    private void BottomPaneSplitter_DragStarted(object? sender, EventArgs e)
+    {
+        _bottomBarStartHeight = _bottomBarHeight;
+    }
+
+    private void BottomPaneSplitter_DragDelta(object? sender, double delta)
+    {
+        _bottomBarHeight = Math.Clamp(_bottomBarStartHeight - delta, 28, 220);
+        BottomStatusRow.Height = new GridLength(_bottomBarHeight);
+        BottomExpandedTelemetryText.Visibility = _bottomBarHeight >= 54
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void ContextMonitorToggleButton_Click(object sender, RoutedEventArgs e)
     {
         bool show = ContextMonitorToggleButton.IsChecked == true;
         RightContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        RightRailColumn.Width = show ? new GridLength(280) : new GridLength(0);
+        RightPaneSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        RightSplitterColumn.Width = show ? new GridLength(6) : new GridLength(0);
+        RightRailColumn.Width = show ? new GridLength(_rightRailWidth) : new GridLength(0);
     }
 
     public async Task SyncWindowsAccountProfileAsync()

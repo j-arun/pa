@@ -1,5 +1,4 @@
-import http from 'node:http';
-import https from 'node:https';
+import { postOllamaStreamConfigurable } from './httpClient.ts';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -210,11 +209,12 @@ export class OllamaAdapter implements ILlmAdapter {
     });
 
     try {
-      const { statusCode, bodyText } = await postJsonNoTimeout(
+      const timeoutSeconds = Math.max(0, Number(request.options.requestTimeoutSeconds) || 0);
+      const streamed = await postOllamaStreamConfigurable(
         `${baseUrl}/api/chat`,
         {
           model,
-          stream: false,
+          stream: true,
           keep_alive:
             request.options.keepAlive === '0'
               ? 0
@@ -224,39 +224,33 @@ export class OllamaAdapter implements ILlmAdapter {
           },
           messages,
         },
+        timeoutSeconds,
       );
 
-      let payload: OllamaChatApiResponse = {};
-      try {
-        payload = JSON.parse(bodyText) as OllamaChatApiResponse;
-      } catch {
-        payload = {};
-      }
-
-      if (statusCode < 200 || statusCode >= 300 || payload.error) {
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300 || streamed.error) {
         throw new Error(
-          payload.error || `Ollama returned HTTP ${statusCode} while querying "${model}".`,
+          streamed.error || `Ollama returned HTTP ${streamed.statusCode} while querying "${model}".`,
         );
       }
 
-      const replyText = payload.message?.content?.trim();
+      const replyText = streamed.text.trim();
       if (!replyText) {
         throw new Error(`Ollama model "${model}" returned an empty message payload.`);
       }
 
       const durationMs = Date.now() - started;
       const inputTokens =
-        typeof payload.prompt_eval_count === 'number' ? payload.prompt_eval_count : undefined;
+        typeof streamed.promptEvalCount === 'number' ? streamed.promptEvalCount : undefined;
       const outputTokens =
-        typeof payload.eval_count === 'number' ? payload.eval_count : undefined;
+        typeof streamed.evalCount === 'number' ? streamed.evalCount : undefined;
       const tokenCount =
         typeof inputTokens === 'number' || typeof outputTokens === 'number'
           ? (inputTokens || 0) + (outputTokens || 0)
           : undefined;
       let tokensPerSecond: number | undefined;
       if (typeof outputTokens === 'number' && outputTokens > 0) {
-        if (typeof payload.eval_duration === 'number' && payload.eval_duration > 0) {
-          tokensPerSecond = Number((outputTokens / (payload.eval_duration / 1e9)).toFixed(1));
+        if (typeof streamed.evalDuration === 'number' && streamed.evalDuration > 0) {
+          tokensPerSecond = Number((outputTokens / (streamed.evalDuration / 1e9)).toFixed(1));
         } else if (durationMs > 0) {
           tokensPerSecond = Number((outputTokens / (durationMs / 1000)).toFixed(1));
         }
@@ -266,7 +260,7 @@ export class OllamaAdapter implements ILlmAdapter {
         text: replyText,
         adapterId: this.id,
         scope: this.scope,
-        model: payload.model || model,
+        model: streamed.model || model,
         protocol: this.protocol,
         durationMs,
         tokenCount,
@@ -359,45 +353,4 @@ export class OllamaAdapter implements ILlmAdapter {
       message: `Unloaded ${unloadedModels.length} model(s) from Ollama RAM/VRAM: ${unloadedModels.join(', ')}.`,
     };
   }
-}
-
-function postJsonNoTimeout(
-  targetUrl: string,
-  body: unknown,
-): Promise<{ statusCode: number; bodyText: string }> {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(targetUrl);
-    const jsonPayload = Buffer.from(JSON.stringify(body), 'utf8');
-    const client = parsed.protocol === 'https:' ? https : http;
-
-    const req = client.request(
-      parsed,
-      {
-        method: 'POST',
-        timeout: 0,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': jsonPayload.byteLength,
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer | string) => {
-          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk);
-        });
-        res.on('end', () => {
-          resolve({
-            statusCode: res.statusCode ?? 500,
-            bodyText: Buffer.concat(chunks).toString('utf8'),
-          });
-        });
-        res.on('error', reject);
-      },
-    );
-
-    req.setTimeout(0);
-    req.on('error', reject);
-    req.write(jsonPayload);
-    req.end();
-  });
 }

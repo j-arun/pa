@@ -57,6 +57,7 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  requestTimeoutSeconds: 0,
 };
 
 export function normalizeThemeMode(raw?: string): WorkbenchSettings['theme'] {
@@ -130,6 +131,10 @@ export function loadSettings(): WorkbenchSettings {
         ...DEFAULT_SETTINGS.notifications,
         ...(parsed.notifications || {}),
       },
+      requestTimeoutSeconds:
+        typeof parsed.requestTimeoutSeconds === 'number' && parsed.requestTimeoutSeconds >= 0
+          ? Math.round(parsed.requestTimeoutSeconds)
+          : 0,
     };
   } catch {
     return DEFAULT_SETTINGS;

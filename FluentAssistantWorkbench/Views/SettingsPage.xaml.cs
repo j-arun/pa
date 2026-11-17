@@ -65,6 +65,7 @@ public sealed partial class SettingsPage : Page
             SelectComboByTag(OllamaContextCombo, cfg.PrivateLlm.ContextWindow.ToString(), "8192");
             SelectComboByTag(OllamaKeepAliveCombo, cfg.PrivateLlm.KeepAlive, "10m");
             SelectComboByTag(OllamaHistoryCombo, cfg.PrivateLlm.MaxHistoryTurns.ToString(), "16");
+            SelectComboByTag(RequestTimeoutCombo, cfg.RequestTimeoutSeconds.ToString(), "0");
 
             foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
             {
@@ -145,6 +146,11 @@ public sealed partial class SettingsPage : Page
             int.TryParse(histItem.Tag?.ToString(), out var parsedHist))
         {
             cfg.PrivateLlm.MaxHistoryTurns = parsedHist;
+        }
+        if (RequestTimeoutCombo.SelectedItem is ComboBoxItem timeoutItem &&
+            int.TryParse(timeoutItem.Tag?.ToString(), out var parsedTimeout))
+        {
+            cfg.RequestTimeoutSeconds = Math.Max(0, parsedTimeout);
         }
 
         if (ActivePublicAdapterCombo.SelectedItem is ComboBoxItem selectedAdapter &&

@@ -116,6 +116,7 @@ export interface WorkbenchSettings {
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;
   notifications: NotificationConfig;
+  requestTimeoutSeconds: number;
 }
 
 export interface LlmContextLogEntry {

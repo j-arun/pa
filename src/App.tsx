@@ -5,6 +5,7 @@ import {
   Mic,
   MicOff,
   Palette,
+  PanelLeft,
   PanelRight,
   Settings,
   Square,
@@ -73,7 +74,21 @@ export default function App() {
     preview: string;
     isError: boolean;
   } | null>(null);
+  const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(true);
+  const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
+    const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
+    return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
+  });
+  const [rightRailWidth, setRightRailWidth] = useState<number>(() => {
+    const raw = Number(window.localStorage.getItem('pa_right_rail_width'));
+    return Number.isFinite(raw) && raw >= 220 && raw <= 540 ? raw : 288;
+  });
+  const [bottomBarHeight, setBottomBarHeight] = useState<number>(() => {
+    const raw = Number(window.localStorage.getItem('pa_bottom_bar_height'));
+    return Number.isFinite(raw) && raw >= 28 && raw <= 220 ? raw : 30;
+  });
+  const [activeResizer, setActiveResizer] = useState<'left' | 'right' | 'bottom' | null>(null);
   const [telemetry, setTelemetry] = useState<LlmContextTelemetry>({
     phase: 'Idle',
     isThinking: false,
@@ -83,6 +98,52 @@ export default function App() {
   });
   const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('pa_left_rail_width', String(leftRailWidth));
+      window.localStorage.setItem('pa_right_rail_width', String(rightRailWidth));
+      window.localStorage.setItem('pa_bottom_bar_height', String(bottomBarHeight));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [leftRailWidth, rightRailWidth, bottomBarHeight]);
+
+  const startPaneResize = (
+    target: 'left' | 'right' | 'bottom',
+    startCoord: number,
+    initialSize: number,
+  ) => {
+    setActiveResizer(target);
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = target === 'bottom' ? 'row-resize' : 'col-resize';
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (target === 'left') {
+        const next = Math.min(380, Math.max(168, initialSize + (moveEvent.clientX - startCoord)));
+        setLeftRailWidth(Math.round(next));
+      } else if (target === 'right') {
+        const next = Math.min(540, Math.max(220, initialSize - (moveEvent.clientX - startCoord)));
+        setRightRailWidth(Math.round(next));
+      } else {
+        const next = Math.min(220, Math.max(28, initialSize - (moveEvent.clientY - startCoord)));
+        setBottomBarHeight(Math.round(next));
+      }
+    };
+
+    const onPointerUp = () => {
+      setActiveResizer(null);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
 
   const pushContextLog = useCallback(
     (level: 'info' | 'success' | 'error', message: string) => {
@@ -312,9 +373,12 @@ export default function App() {
       durationMs: undefined,
       lastError: '',
     }));
+    const timeoutSec = Math.max(0, Number(settings.requestTimeoutSeconds) || 0);
+    const timeoutLabel = timeoutSec > 0 ? `${timeoutSec}s` : 'Unlimited';
+
     pushContextLog(
       'info',
-      `Prompt sent (${text.trim().length} ch, ${historyPayload.length} hist) -> ${scope}:${adapterId}/${modelName}`,
+      `Prompt sent (${text.trim().length} ch, ${historyPayload.length} hist) -> ${scope}:${adapterId}/${modelName} · timeout: ${timeoutLabel}`,
     );
 
     if (settings.notifications?.desktopNotificationOnReply !== false) {
@@ -330,6 +394,7 @@ export default function App() {
               ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl,
               contextWindow: settings.privateLlm.contextWindow,
               keepAlive: settings.privateLlm.keepAlive,
+              requestTimeoutSeconds: timeoutSec,
             }
           : {
               model: settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model,
@@ -344,6 +409,7 @@ export default function App() {
                   .endpointUrl,
               maxTokens:
                 settings.publicLlm.adapters[settings.publicLlm.activeAdapter].maxTokens,
+              requestTimeoutSeconds: timeoutSec,
             };
 
       const response = await fetch('/api/chat', {
@@ -504,84 +570,127 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex mica-canvas text-slate-900 dark:text-slate-100 select-none sm:select-auto">
-      {/* Left WinUI 3 NavigationView Rail */}
-      <aside className="hidden md:flex w-56 shrink-0 flex-col justify-between border-r border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3">
-        <div className="space-y-6">
-          <div className="px-3 pt-2 pb-1 flex items-center gap-2.5">
-            <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
-            <div className="min-w-0">
-              <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-                Personal Assistant
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                WinUI 3 Fluent Edition
-              </div>
-            </div>
-          </div>
-
-          <nav className="space-y-1" aria-label="Primary pages">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(false)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70"
-            >
-              <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-              <span>Personal Assistant</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Account Profile Footer (Pulled from Windows / OS account profile) */}
-        <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-1 py-1.5">
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            title="View account profile in Settings"
-            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left"
+      {/* Left WinUI 3 NavigationView Rail (Adjustable & Resizable) */}
+      {isLeftRailOpen && (
+        <>
+          <aside
+            style={{ width: leftRailWidth }}
+            className="hidden md:flex shrink-0 flex-col justify-between border-r border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 overflow-hidden"
           >
-            <div className="shrink-0">
-              {settings.profile.avatarDataUrl ? (
-                <img
-                  src={settings.profile.avatarDataUrl}
-                  alt={settings.profile.displayName || 'Account avatar'}
-                  referrerPolicy="no-referrer"
-                  className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                />
-              ) : !avatarError ? (
-                <img
-                  src={USER_AVATAR_SRC}
-                  alt={settings.profile.displayName || 'Account avatar'}
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarError(true)}
-                  className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                />
-              ) : (
-                <div
-                  className="w-9 h-9 rounded-full text-white flex items-center justify-center text-xs font-semibold"
-                  style={{ backgroundColor: 'var(--pa-accent)' }}
-                >
-                  {(settings.profile.displayName || 'U').slice(0, 2).toUpperCase()}
+            <div className="space-y-6">
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2.5">
+                <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
+                    Personal Assistant
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    WinUI 3 Fluent Edition
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-                {settings.profile.displayName || 'Windows User'}
               </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                Windows Account
-              </div>
+
+              <nav className="space-y-1" aria-label="Primary pages">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70"
+                >
+                  <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span className="truncate">Personal Assistant</span>
+                </button>
+              </nav>
             </div>
-          </button>
-        </div>
-      </aside>
+
+            {/* Account Profile Footer (Pulled from Windows / OS account profile) */}
+            <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-1 py-1.5">
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                title="View account profile in Settings"
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left"
+              >
+                <div className="shrink-0">
+                  {settings.profile.avatarDataUrl ? (
+                    <img
+                      src={settings.profile.avatarDataUrl}
+                      alt={settings.profile.displayName || 'Account avatar'}
+                      referrerPolicy="no-referrer"
+                      className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                    />
+                  ) : !avatarError ? (
+                    <img
+                      src={USER_AVATAR_SRC}
+                      alt={settings.profile.displayName || 'Account avatar'}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                      className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                    />
+                  ) : (
+                    <div
+                      className="w-9 h-9 rounded-full text-white flex items-center justify-center text-xs font-semibold"
+                      style={{ backgroundColor: 'var(--pa-accent)' }}
+                    >
+                      {(settings.profile.displayName || 'U').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
+                    {settings.profile.displayName || 'Windows User'}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    Windows Account
+                  </div>
+                </div>
+              </button>
+            </div>
+          </aside>
+
+          {/* Left Rail Drag Splitter */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize left navigation rail"
+            title="Drag to resize left rail"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startPaneResize('left', e.clientX, leftRailWidth);
+            }}
+            className="hidden md:flex w-1.5 shrink-0 cursor-col-resize items-center justify-center group hover:bg-sky-500/15 transition-colors"
+          >
+            <span
+              className={`w-0.5 h-9 rounded-full transition-colors ${
+                activeResizer === 'left'
+                  ? 'bg-sky-500'
+                  : 'bg-slate-300/70 dark:bg-slate-700/70 group-hover:bg-sky-500/80'
+              }`}
+            />
+          </div>
+        </>
+      )}
 
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Fluent Top Menu Bar */}
         <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between gap-4">
-          {/* Zone 1: App Icon + Title */}
+          {/* Zone 1: Left Rail Toggle + App Icon + Title */}
           <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsLeftRailOpen((prev) => !prev)}
+              aria-label={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+              title={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+              aria-pressed={isLeftRailOpen}
+              className={`hidden md:inline-flex p-1.5 rounded-lg border transition-colors shrink-0 ${
+                isLeftRailOpen
+                  ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              style={isLeftRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
             <img src="/favicon.svg" alt="Personal Assistant" className="w-6 h-6 shrink-0 md:hidden" />
             <span className="font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
               Personal Assistant
@@ -750,68 +859,138 @@ export default function App() {
           />
 
           {isContextRailOpen && (
-            <ContextMonitorRail
-              telemetry={telemetry}
-              logs={contextLogs}
-              nowMs={nowMs}
-            />
+            <>
+              {/* Right Rail Drag Splitter */}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize right LLM context monitor"
+                title="Drag to resize right LLM context monitor"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  startPaneResize('right', e.clientX, rightRailWidth);
+                }}
+                className="hidden lg:flex w-1.5 shrink-0 cursor-col-resize items-center justify-center group hover:bg-sky-500/15 transition-colors"
+              >
+                <span
+                  className={`w-0.5 h-9 rounded-full transition-colors ${
+                    activeResizer === 'right'
+                      ? 'bg-sky-500'
+                      : 'bg-slate-300/70 dark:bg-slate-700/70 group-hover:bg-sky-500/80'
+                  }`}
+                />
+              </div>
+
+              <ContextMonitorRail
+                telemetry={telemetry}
+                logs={contextLogs}
+                nowMs={nowMs}
+                width={rightRailWidth}
+              />
+            </>
           )}
         </div>
 
-        {/* Bottom Panel Status Bar */}
-        <footer className="h-7 shrink-0 px-4 sm:px-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
-            <span
-              className="w-2 h-2 rounded-full shrink-0"
-              style={{
-                backgroundColor:
-                  scope === 'private' ? '#10B981' : 'var(--pa-accent)',
-              }}
-              aria-hidden="true"
-            />
-            <span className="truncate font-medium">{connectedEngineText}</span>
+        {/* Bottom Panel Drag Splitter */}
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize bottom status panel"
+          title="Drag up or down to resize bottom panel"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            startPaneResize('bottom', e.clientY, bottomBarHeight);
+          }}
+          className="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 group hover:bg-sky-500/15 transition-colors"
+        >
+          <span
+            className={`h-0.5 w-11 rounded-full transition-colors ${
+              activeResizer === 'bottom'
+                ? 'bg-sky-500'
+                : 'bg-slate-300/75 dark:bg-slate-700/75 group-hover:bg-sky-500/80'
+            }`}
+          />
+        </div>
+
+        {/* Bottom Panel Status Bar (Adjustable Height) */}
+        <footer
+          style={{ height: bottomBarHeight }}
+          className="shrink-0 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex flex-col justify-center gap-1.5 text-xs overflow-hidden"
+        >
+          <div className="flex items-center justify-between gap-4 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{
+                  backgroundColor:
+                    scope === 'private' ? '#10B981' : 'var(--pa-accent)',
+                }}
+                aria-hidden="true"
+              />
+              <span className="truncate font-medium">{connectedEngineText}</span>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+              <span
+                className={
+                  telemetry.phase === 'Thinking'
+                    ? 'text-sky-600 dark:text-sky-400 font-semibold'
+                    : telemetry.phase === 'Error'
+                      ? 'text-red-600 dark:text-red-400 font-semibold'
+                      : telemetry.phase === 'Ready'
+                        ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                        : 'text-slate-500 dark:text-slate-400'
+                }
+              >
+                {telemetry.isThinking && telemetry.startedAtMs
+                  ? `Thinking ${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                  : telemetry.phase}
+              </span>
+              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
+              <span className="hidden sm:inline">
+                Tokens: {telemetry.totalTokens !== undefined ? telemetry.totalTokens.toLocaleString() : '—'}
+              </span>
+              <span className="hidden md:inline text-slate-300 dark:text-slate-700">|</span>
+              <span className="hidden md:inline">
+                {telemetry.tokensPerSecond !== undefined
+                  ? `${telemetry.tokensPerSecond.toFixed(1)} tok/s`
+                  : '— tok/s'}
+              </span>
+              <span className="hidden lg:inline text-slate-300 dark:text-slate-700">|</span>
+              <span className="hidden lg:inline">
+                Time:{' '}
+                {telemetry.isThinking && telemetry.startedAtMs
+                  ? `${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                  : telemetry.durationMs !== undefined
+                    ? `${(telemetry.durationMs / 1000).toFixed(2)}s`
+                    : '—'}
+              </span>
+              <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
+              <span className="hidden xl:inline text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
+                {configFileInfo.filePath}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-            <span
-              className={
-                telemetry.phase === 'Thinking'
-                  ? 'text-sky-600 dark:text-sky-400 font-semibold'
-                  : telemetry.phase === 'Error'
-                    ? 'text-red-600 dark:text-red-400 font-semibold'
-                    : telemetry.phase === 'Ready'
-                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                      : 'text-slate-500 dark:text-slate-400'
-              }
-            >
-              {telemetry.isThinking && telemetry.startedAtMs
-                ? `Thinking ${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                : telemetry.phase}
-            </span>
-            <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
-            <span className="hidden sm:inline">
-              Tokens: {telemetry.totalTokens !== undefined ? telemetry.totalTokens.toLocaleString() : '—'}
-            </span>
-            <span className="hidden md:inline text-slate-300 dark:text-slate-700">|</span>
-            <span className="hidden md:inline">
-              {telemetry.tokensPerSecond !== undefined
-                ? `${telemetry.tokensPerSecond.toFixed(1)} tok/s`
-                : '— tok/s'}
-            </span>
-            <span className="hidden lg:inline text-slate-300 dark:text-slate-700">|</span>
-            <span className="hidden lg:inline">
-              Time:{' '}
-              {telemetry.isThinking && telemetry.startedAtMs
-                ? `${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                : telemetry.durationMs !== undefined
-                  ? `${(telemetry.durationMs / 1000).toFixed(2)}s`
+          {bottomBarHeight >= 54 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/70 dark:border-slate-800/70 select-text">
+              <span>
+                Prompt Size:{' '}
+                {telemetry.promptChars > 0
+                  ? `${telemetry.promptChars.toLocaleString()} ch (${telemetry.historyTurnsUsed}t)`
                   : '—'}
-            </span>
-            <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
-            <span className="hidden xl:inline text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
-              {configFileInfo.filePath}
-            </span>
-          </div>
+              </span>
+              <span>
+                Input: {telemetry.inputTokens !== undefined ? telemetry.inputTokens.toLocaleString() : '—'}
+              </span>
+              <span>
+                Output: {telemetry.outputTokens !== undefined ? telemetry.outputTokens.toLocaleString() : '—'}
+              </span>
+              <span className={telemetry.lastError ? 'text-red-600 dark:text-red-400 truncate' : 'truncate'}>
+                Status: {telemetry.lastError || 'Healthy · No active errors'}
+              </span>
+            </div>
+          )}
         </footer>
       </div>
 

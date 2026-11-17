@@ -1,3 +1,4 @@
+import { postJsonConfigurable } from './httpClient.ts';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -162,22 +163,28 @@ export class FableAdapter implements ILlmAdapter {
     }
     messages.push({ role: 'user', content: request.message });
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    const timeoutSeconds = Math.max(0, Number(request.options.requestTimeoutSeconds) || 0);
+    const { statusCode, bodyText } = await postJsonConfigurable(
+      endpoint,
+      {
         model,
         max_tokens: request.options.maxTokens || 2048,
         messages,
-      }),
-    });
+      },
+      {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      timeoutSeconds,
+    );
 
-    const payload = (await response.json().catch(() => ({}))) as FableChatCompletionResponse;
-    if (!response.ok) {
-      throw new Error(payload.error?.message || `Fable returned HTTP ${response.status}.`);
+    let payload: FableChatCompletionResponse = {};
+    try {
+      payload = JSON.parse(bodyText) as FableChatCompletionResponse;
+    } catch {
+      payload = {};
+    }
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(payload.error?.message || `Fable returned HTTP ${statusCode}.`);
     }
 
     const text = payload.choices?.[0]?.message?.content?.trim();

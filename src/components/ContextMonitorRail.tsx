@@ -5,6 +5,7 @@ interface ContextMonitorRailProps {
   telemetry: LlmContextTelemetry;
   logs: LlmContextLogEntry[];
   nowMs: number;
+  width?: number;
 }
 
 function formatDuration(ms?: number): string {
@@ -22,6 +23,7 @@ export function ContextMonitorRail({
   telemetry,
   logs,
   nowMs,
+  width = 288,
 }: ContextMonitorRailProps) {
   const liveElapsedMs =
     telemetry.isThinking && telemetry.startedAtMs
@@ -49,7 +51,8 @@ export function ContextMonitorRail({
   return (
     <aside
       aria-label="LLM Context Monitor (Read-only)"
-      className="hidden lg:flex w-72 shrink-0 flex-col border-l border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 gap-2.5 select-text overflow-hidden"
+      style={{ width }}
+      className="hidden lg:flex shrink-0 flex-col border-l border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 gap-2.5 select-text overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-1 pt-0.5">

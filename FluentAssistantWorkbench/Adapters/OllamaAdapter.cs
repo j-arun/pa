@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssistantWorkbench.Contracts;
@@ -9,7 +10,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class OllamaAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = LlmHttpClientFactory.CreateUnlimitedClient();
 
     public string AdapterId => "ollama";
     public string DisplayName => "Windows Ollama (Private)";
@@ -103,36 +104,82 @@ public sealed class OllamaAdapter : ILlmAdapter
         var payload = new
         {
             model,
-            stream = false,
+            stream = true,
             keep_alive = keepAliveValue,
             options = new { num_ctx = cfg.ContextWindow > 0 ? cfg.ContextWindow : 8192 },
             messages
         };
 
-        using var response = await _http.PostAsJsonAsync($"{normalized}/api/chat", payload, ct);
-        var bodyText = await response.Content.ReadAsStringAsync(ct);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{normalized}/api/chat")
+        {
+            Content = JsonContent.Create(payload)
+        };
 
+        using var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
+            var errBody = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException(
-                $"Ollama returned {(int)response.StatusCode}: {bodyText}");
+                $"Ollama returned {(int)response.StatusCode}: {errBody}");
         }
 
-        var parsed = JsonSerializer.Deserialize<OllamaChatResponse>(bodyText);
-        var reply = parsed?.Message?.Content?.Trim();
+        var replyBuilder = new StringBuilder();
+        string? resolvedModel = null;
+        int? inputTokens = null;
+        int? outputTokens = null;
+        long? evalDurationNs = null;
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream);
+
+        while (true)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (line is null) break;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            OllamaChatResponse? chunk;
+            try
+            {
+                chunk = JsonSerializer.Deserialize<OllamaChatResponse>(line);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (chunk is null) continue;
+            if (!string.IsNullOrWhiteSpace(chunk.Error))
+            {
+                throw new InvalidOperationException($"Ollama error: {chunk.Error}");
+            }
+
+            if (!string.IsNullOrEmpty(chunk.Message?.Content))
+            {
+                replyBuilder.Append(chunk.Message.Content);
+            }
+
+            if (!string.IsNullOrWhiteSpace(chunk.Model))
+            {
+                resolvedModel = chunk.Model;
+            }
+            if (chunk.PromptEvalCount.HasValue) inputTokens = chunk.PromptEvalCount;
+            if (chunk.EvalCount.HasValue) outputTokens = chunk.EvalCount;
+            if (chunk.EvalDuration.HasValue) evalDurationNs = chunk.EvalDuration;
+        }
+
+        var reply = replyBuilder.ToString().Trim();
         if (string.IsNullOrWhiteSpace(reply))
         {
             throw new InvalidOperationException($"Ollama model '{model}' returned an empty response.");
         }
 
-        int? inputTokens = parsed?.PromptEvalCount;
-        int? outputTokens = parsed?.EvalCount;
         double? tokPerSec = null;
         if (outputTokens is > 0)
         {
-            if (parsed?.EvalDuration is > 0)
+            if (evalDurationNs is > 0)
             {
-                tokPerSec = Math.Round(outputTokens.Value / (parsed.EvalDuration.Value / 1_000_000_000.0), 1);
+                tokPerSec = Math.Round(outputTokens.Value / (evalDurationNs.Value / 1_000_000_000.0), 1);
             }
             else if (sw.ElapsedMilliseconds > 0)
             {
@@ -144,7 +191,7 @@ public sealed class OllamaAdapter : ILlmAdapter
             reply,
             AdapterId,
             Scope,
-            parsed?.Model ?? model,
+            resolvedModel ?? model,
             sw.ElapsedMilliseconds,
             inputTokens,
             outputTokens,
@@ -194,6 +241,12 @@ public sealed class OllamaAdapter : ILlmAdapter
 
         [JsonPropertyName("message")]
         public OllamaChatMessage? Message { get; set; }
+
+        [JsonPropertyName("done")]
+        public bool Done { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
 
         [JsonPropertyName("prompt_eval_count")]
         public int? PromptEvalCount { get; set; }

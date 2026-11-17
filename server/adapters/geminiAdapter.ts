@@ -24,16 +24,18 @@ function resolveThinkingLevel(preset?: GeminiThinkingPreset): ThinkingLevel {
   }
 }
 
-function getGeminiClient(): GoogleGenAI {
+function getGeminiClient(timeoutSeconds = 0): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
       'GEMINI_API_KEY is not configured in the server environment. Set it in Settings > Secrets.',
     );
   }
+  const timeoutMs = timeoutSeconds > 0 ? Math.round(timeoutSeconds * 1000) : 86_400_000;
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
+      timeout: timeoutMs,
       headers: {
         'User-Agent': 'aistudio-build',
       },
@@ -138,7 +140,8 @@ export class GeminiAdapter implements ILlmAdapter {
 
   async sendMessage(request: AdapterChatRequest): Promise<AdapterChatResponse> {
     const started = Date.now();
-    const ai = getGeminiClient();
+    const timeoutSeconds = Math.max(0, Number(request.options.requestTimeoutSeconds) || 0);
+    const ai = getGeminiClient(timeoutSeconds);
 
     const requestedModel = request.options.model?.trim();
     const model =

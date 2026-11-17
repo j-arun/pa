@@ -3,13 +3,15 @@
     x:Class="FluentAssistantWorkbench.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:FluentAssistantWorkbench.Controls"
     Title="Personal Assistant">
 
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="54" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="28" />
+            <RowDefinition Height="6" />
+            <RowDefinition x:Name="BottomStatusRow" Height="30" />
         </Grid.RowDefinitions>
 
         <!-- Fluent Top Menu Bar -->
@@ -133,10 +135,11 @@
             </StackPanel>
         </Grid>
 
-        <!-- Main Workspace: Left Nav + Chat + Read-Only Right Context Monitor -->
+        <!-- Main Workspace: Left Nav + Chat + Adjustable Splitters + Read-Only Right Context Monitor -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="RightSplitterColumn" Width="6" />
                 <ColumnDefinition x:Name="RightRailColumn" Width="280" />
             </Grid.ColumnDefinitions>
 
@@ -148,6 +151,9 @@
                 IsSettingsVisible="False"
                 OpenPaneLength="200"
                 PaneDisplayMode="Left"
+                PaneOpened="NavView_PaneChanged"
+                PaneClosed="NavView_PaneChanged"
+                DisplayModeChanged="NavView_DisplayModeChanged"
                 SelectionChanged="NavView_SelectionChanged">
                 <NavigationView.MenuItems>
                     <NavigationViewItem Content="Personal Assistant" Tag="workbench">
@@ -192,10 +198,32 @@
                 <Frame x:Name="ContentFrame" />
             </NavigationView>
 
+            <!-- Left Rail Drag Resizer -->
+            <controls:PaneSplitter
+                x:Name="LeftPaneSplitter"
+                Grid.Column="0"
+                Width="6"
+                HorizontalAlignment="Left"
+                Margin="197,0,0,0"
+                ResizeDirection="Vertical"
+                DragStarted="LeftPaneSplitter_DragStarted"
+                DragDelta="LeftPaneSplitter_DragDelta"
+                ToolTipService.ToolTip="Drag to resize left rail" />
+
+            <!-- Right Rail Drag Resizer -->
+            <controls:PaneSplitter
+                x:Name="RightPaneSplitter"
+                Grid.Column="1"
+                Width="6"
+                ResizeDirection="Vertical"
+                DragStarted="RightPaneSplitter_DragStarted"
+                DragDelta="RightPaneSplitter_DragDelta"
+                ToolTipService.ToolTip="Drag to resize right LLM context monitor" />
+
             <!-- Read-Only Right Side Context Monitor Rail -->
             <Border
                 x:Name="RightContextRail"
-                Grid.Column="1"
+                Grid.Column="2"
                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1,0,0,0"
@@ -392,64 +420,95 @@
             </Border>
         </Grid>
 
-        <!-- Bottom Panel Status Bar (Engine + Live LLM Stats) -->
-        <Grid
+        <!-- Bottom Panel Drag Resizer -->
+        <controls:PaneSplitter
+            x:Name="BottomPaneSplitter"
             Grid.Row="2"
-            Padding="14,0"
+            Height="6"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="0,1,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            BorderThickness="0,1,0,0"
+            ResizeDirection="Horizontal"
+            DragStarted="BottomPaneSplitter_DragStarted"
+            DragDelta="BottomPaneSplitter_DragDelta"
+            ToolTipService.ToolTip="Drag up or down to resize bottom panel" />
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Ellipse x:Name="EngineStatusDot" Width="8" Height="8" Fill="#10B981" />
-                <TextBlock
-                    x:Name="StatusBarEngineText"
-                    Text="Connected: Private · Windows Ollama"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    VerticalAlignment="Center" />
-            </StackPanel>
+        <!-- Bottom Panel Status Bar (Engine + Live LLM Stats) -->
+        <Grid
+            Grid.Row="3"
+            Padding="14,4"
+            Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <TextBlock
-                    x:Name="StatusBarLlmStateText"
-                    Text="Idle"
-                    FontSize="11"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    VerticalAlignment="Center" />
-                <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
-                <TextBlock
-                    x:Name="StatusBarTokensText"
-                    Text="Tokens: —"
-                    FontSize="11"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    VerticalAlignment="Center" />
-                <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
-                <TextBlock
-                    x:Name="StatusBarSpeedText"
-                    Text="— tok/s"
-                    FontSize="11"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    VerticalAlignment="Center" />
-                <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
-                <TextBlock
-                    x:Name="StatusBarTimeText"
-                    Text="—"
-                    FontSize="11"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    VerticalAlignment="Center" />
-            </StackPanel>
+            <Grid Grid.Row="0" MinHeight="22">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse x:Name="EngineStatusDot" Width="8" Height="8" Fill="#10B981" />
+                    <TextBlock
+                        x:Name="StatusBarEngineText"
+                        Text="Connected: Private · Windows Ollama"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock
+                        x:Name="StatusBarLlmStateText"
+                        Text="Idle"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="StatusBarTokensText"
+                        Text="Tokens: —"
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="StatusBarSpeedText"
+                        Text="— tok/s"
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBlock Text="·" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="StatusBarTimeText"
+                        Text="—"
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <!-- Expanded Bottom Telemetry Row (visible when bottom panel is resized taller) -->
+            <TextBlock
+                x:Name="BottomExpandedTelemetryText"
+                Grid.Row="1"
+                Margin="0,4,0,0"
+                Visibility="Collapsed"
+                FontFamily="Cascadia Code, Consolas"
+                FontSize="11"
+                TextWrapping="Wrap"
+                IsTextSelectionEnabled="True"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Prompt Size: — · Input: — · Output: — · Status: Healthy" />
         </Grid>
 
         <!-- Compact Settings Modal Dialog -->
         <Grid
             x:Name="SettingsModalOverlay"
-            Grid.RowSpan="3"
+            Grid.RowSpan="4"
             Visibility="Collapsed"
             Background="#7A000000"
             Padding="24">

@@ -21,6 +21,7 @@ export interface AdapterRuntimeOptions {
   contextWindow?: number;
   keepAlive?: string;
   maxTokens?: number;
+  requestTimeoutSeconds?: number;
 }
 
 export interface AdapterChatRequest {

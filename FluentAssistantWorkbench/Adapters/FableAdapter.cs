@@ -10,7 +10,7 @@ namespace FluentAssistantWorkbench.Adapters;
 
 public sealed class FableAdapter : ILlmAdapter
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = LlmHttpClientFactory.CreateUnlimitedClient();
 
     public string AdapterId => "fable";
     public string DisplayName => "Fable (Public)";
