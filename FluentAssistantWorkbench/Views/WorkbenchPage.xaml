@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="FluentAssistantWorkbench.Views.WorkbenchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Cloud Atmospheric Backdrop -->
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0.4,1">
+                <GradientStop Color="#1438BDF8" Offset="0.0" />
+                <GradientStop Color="#0AE0F2FE" Offset="0.55" />
+                <GradientStop Color="#00FFFFFF" Offset="1.0" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Active Route Sub-Bar -->
+        <Grid
+            Grid.Row="0"
+            Padding="24,10"
+            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="RouteSummaryText"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyTextBlockStyle}" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Configure in Settings" Click="OpenSettings_Click" />
+                <Button Content="New Session" Click="NewSession_Click" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Continual Conversational Cloud Ladder -->
+        <ScrollViewer
+            x:Name="LadderScrollViewer"
+            Grid.Row="1"
+            Padding="24,20"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel MaxWidth="860" HorizontalAlignment="Stretch" Spacing="16">
+
+                <!-- Empty State Cloud Welcome -->
+                <Border
+                    x:Name="EmptyCloudCard"
+                    Padding="32"
+                    CornerRadius="20"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center"
+                    MaxWidth="620"
+                    Margin="0,36,0,0">
+                    <StackPanel Spacing="12" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE753;" FontSize="36" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <TextBlock
+                            Text="Personal Assistant Cloud Workbench"
+                            Style="{StaticResource TitleTextBlockStyle}"
+                            HorizontalAlignment="Center"
+                            TextAlignment="Center" />
+                        <TextBlock
+                            x:Name="EmptySubtitleText"
+                            Text="Type or speak using your Windows microphone. Queries route to your Private Windows Ollama model or your selected Public LLM adapter."
+                            TextWrapping="Wrap"
+                            TextAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Conversation Ladder -->
+                <ItemsControl x:Name="ConversationItemsControl">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,12">
+                                <!-- User Query Bubble (Right) -->
+                                <Border
+                                    Visibility="{Binding UserVisibility}"
+                                    HorizontalAlignment="Right"
+                                    MaxWidth="620"
+                                    Padding="16,12"
+                                    CornerRadius="16"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock
+                                            Text="{Binding HeaderLabel}"
+                                            FontSize="11"
+                                            Foreground="#DCEEFB" />
+                                        <TextBlock
+                                            Text="{Binding Content}"
+                                            TextWrapping="Wrap"
+                                            IsTextSelectionEnabled="True"
+                                            Foreground="White" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Assistant Cloud Response (Left) -->
+                                <Border
+                                    Visibility="{Binding AssistantVisibility}"
+                                    HorizontalAlignment="Left"
+                                    MaxWidth="680"
+                                    Padding="18,14"
+                                    CornerRadius="16"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock
+                                            Text="{Binding HeaderLabel}"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock
+                                            Text="{Binding Content}"
+                                            TextWrapping="Wrap"
+                                            IsTextSelectionEnabled="True" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                            <Button
+                                                Click="SpeakTurnButton_Click"
+                                                Tag="{Binding Content}"
+                                                Padding="10,5">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE767;" FontSize="13" />
+                                                    <TextBlock Text="Play in Windows Speaker" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Error Notice (Left) -->
+                                <Border
+                                    Visibility="{Binding ErrorVisibility}"
+                                    HorizontalAlignment="Left"
+                                    MaxWidth="680"
+                                    Padding="16,12"
+                                    CornerRadius="16"
+                                    Background="#1ADC2626"
+                                    BorderBrush="#66DC2626"
+                                    BorderThickness="1">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock
+                                            Text="{Binding HeaderLabel}"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Foreground="#DC2626" />
+                                        <TextBlock
+                                            Text="{Binding Content}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Floating Cloud Composer Dock -->
+        <Border
+            Grid.Row="2"
+            Margin="24,8,24,20"
+            Padding="10"
+            MaxWidth="860"
+            CornerRadius="16"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1">
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button
+                    x:Name="MicButton"
+                    Grid.Column="0"
+                    Click="MicButton_Click"
+                    ToolTipService.ToolTip="Speak via Windows Microphone"
+                    Height="40"
+                    Width="44"
+                    CornerRadius="10">
+                    <FontIcon x:Name="MicButtonIcon" Glyph="&#xE720;" FontSize="16" />
+                </Button>
+
+                <TextBox
+                    x:Name="PromptTextBox"
+                    Grid.Column="1"
+                    AcceptsReturn="False"
+                    KeyDown="PromptTextBox_KeyDown"
+                    PlaceholderText="Type or speak your prompt..."
+                    VerticalAlignment="Center" />
+
+                <Button
+                    x:Name="SendButton"
+                    Grid.Column="2"
+                    Click="SendButton_Click"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Height="40"
+                    Padding="16,0"
+                    CornerRadius="10">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Send" />
+                        <FontIcon Glyph="&#xE724;" FontSize="14" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

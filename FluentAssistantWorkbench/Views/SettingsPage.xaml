@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="FluentAssistantWorkbench.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer Padding="28,24" VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="860" Spacing="24">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Settings &amp; LLM Adapters" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Configure local Windows Ollama models, separate Public LLM adapters (Gemini Pro, Claude, Fable), Windows native speech, and %LOCALAPPDATA% storage."
+                    TextWrapping="Wrap"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <!-- Section 1: Private LLM (Windows Ollama) -->
+            <Border
+                Padding="20"
+                CornerRadius="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="14">
+                    <Grid>
+                        <TextBlock Text="Private LLM (Windows Ollama)" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <Button
+                            Content="Discover Local Models"
+                            Click="DiscoverOllama_Click"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            x:Name="OllamaUrlBox"
+                            Grid.Column="0"
+                            Header="Ollama Daemon URL"
+                            PlaceholderText="http://127.0.0.1:11434" />
+                        <TextBox
+                            x:Name="OllamaModelBox"
+                            Grid.Column="1"
+                            Header="Selected Private Model"
+                            PlaceholderText="e.g. llama3.2" />
+                    </Grid>
+
+                    <TextBlock
+                        x:Name="OllamaStatusText"
+                        Text="Click Discover Local Models to list models deployed in Windows Ollama."
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+
+                    <ListView
+                        x:Name="OllamaModelsList"
+                        MaxHeight="180"
+                        SelectionChanged="OllamaModelsList_SelectionChanged">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding SummaryLine}" Padding="4,6" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBox
+                        x:Name="PrivateSystemBox"
+                        Header="Private System Instruction"
+                        AcceptsReturn="True"
+                        TextWrapping="Wrap"
+                        MinHeight="64" />
+                </StackPanel>
+            </Border>
+
+            <!-- Section 2: Public LLM Adapters -->
+            <Border
+                Padding="20"
+                CornerRadius="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="16">
+                    <TextBlock Text="Public LLM Adapters" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <ComboBox
+                        x:Name="ActivePublicAdapterCombo"
+                        Header="Active Public Adapter"
+                        Width="260">
+                        <ComboBoxItem Content="Gemini Pro" Tag="gemini" />
+                        <ComboBoxItem Content="Claude (Anthropic)" Tag="claude" />
+                        <ComboBoxItem Content="Fable" Tag="fable" />
+                    </ComboBox>
+
+                    <!-- Gemini Pro Adapter -->
+                    <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="Gemini Pro Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Button Content="Test Gemini" Tag="gemini" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="GeminiModelBox" Grid.Column="0" Header="Model" />
+                                <PasswordBox x:Name="GeminiKeyBox" Grid.Column="1" Header="API Key (or GEMINI_API_KEY env)" />
+                            </Grid>
+                            <TextBox x:Name="GeminiSystemBox" Header="System Instruction" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Claude Adapter -->
+                    <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="Claude Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Button Content="Test Claude" Tag="claude" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="ClaudeModelBox" Grid.Column="0" Header="Model" />
+                                <PasswordBox x:Name="ClaudeKeyBox" Grid.Column="1" Header="API Key (or ANTHROPIC_API_KEY env)" />
+                            </Grid>
+                            <TextBox x:Name="ClaudeEndpointBox" Header="Endpoint URL" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Fable Adapter -->
+                    <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="Fable Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Button Content="Test Fable" Tag="fable" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="FableModelBox" Grid.Column="0" Header="Model" />
+                                <PasswordBox x:Name="FableKeyBox" Grid.Column="1" Header="API Key (or FABLE_API_KEY env)" />
+                            </Grid>
+                            <TextBox x:Name="FableEndpointBox" Header="Endpoint URL" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock
+                        x:Name="AdapterHealthText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- Section 3: Windows Native Voice & Local Storage -->
+            <Border
+                Padding="20"
+                CornerRadius="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="Windows Native Voice &amp; Local Laptop Storage" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ComboBox
+                            x:Name="VoicesCombo"
+                            Header="Windows Installed Speaker Voice"
+                            Width="340"
+                            DisplayMemberPath="DisplayName" />
+                        <Button
+                            Content="Test Windows Speaker"
+                            Click="TestSpeaker_Click"
+                            VerticalAlignment="Bottom" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="20">
+                        <CheckBox x:Name="AutoSpeakPublicCheck" Content="Auto-play Public LLM replies" />
+                        <CheckBox x:Name="AutoSpeakPrivateCheck" Content="Auto-play Private Ollama replies" />
+                    </StackPanel>
+
+                    <TextBlock
+                        x:Name="StoragePathText"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Save Configuration" Click="SaveSettings_Click" Style="{StaticResource AccentButtonStyle}" />
+                        <Button Content="Reload from Disk" Click="ReloadSettings_Click" />
+                        <Button Content="Clear History" Click="ClearHistory_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="SaveFeedbackText" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

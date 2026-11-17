@@ -1,0 +1,176 @@
+using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using FluentAssistantWorkbench.Contracts;
+using FluentAssistantWorkbench.Models;
+
+namespace FluentAssistantWorkbench.Adapters;
+
+public sealed class OllamaAdapter : ILlmAdapter
+{
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
+
+    public string AdapterId => "ollama";
+    public string DisplayName => "Windows Ollama (Private)";
+    public ConversationScope Scope => ConversationScope.Private;
+
+    public async Task<IReadOnlyList<OllamaModelInfo>> DiscoverModelsAsync(
+        string baseUrl,
+        CancellationToken ct = default)
+    {
+        var normalized = NormalizeUrl(baseUrl);
+        using var response = await _http.GetAsync($"{normalized}/api/tags", ct);
+        response.EnsureSuccessStatusCode();
+
+        var dto = await response.Content.ReadFromJsonAsync<OllamaTagsResponse>(cancellationToken: ct);
+        if (dto?.Models is null) return [];
+
+        return dto.Models
+            .Where(m => !string.IsNullOrWhiteSpace(m.Name))
+            .Select(m => new OllamaModelInfo
+            {
+                Name = m.Name!,
+                SizeBytes = m.Size,
+                Family = m.Details?.Family ?? string.Empty,
+                ParameterSize = m.Details?.ParameterSize ?? string.Empty,
+                QuantizationLevel = m.Details?.QuantizationLevel ?? string.Empty
+            })
+            .ToList();
+    }
+
+    public async Task<AdapterHealthStatus> CheckHealthAsync(
+        WorkbenchConfig config,
+        CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var models = await DiscoverModelsAsync(config.PrivateLlm.OllamaBaseUrl, ct);
+            return new AdapterHealthStatus(
+                AdapterId,
+                true,
+                $"Connected to Windows Ollama ({models.Count} model(s) deployed).",
+                sw.ElapsedMilliseconds);
+        }
+        catch (Exception ex)
+        {
+            return new AdapterHealthStatus(
+                AdapterId,
+                false,
+                $"Unable to reach Ollama: {ex.Message}",
+                sw.ElapsedMilliseconds);
+        }
+    }
+
+    public async Task<LlmChatResponse> SendMessageAsync(
+        LlmChatRequest request,
+        CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var cfg = request.Config.PrivateLlm;
+        var model = cfg.SelectedModel?.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            throw new InvalidOperationException(
+                "No Private Ollama model is selected. Open Settings -> Private LLM to discover and choose a Windows Ollama model.");
+        }
+
+        var normalized = NormalizeUrl(cfg.OllamaBaseUrl);
+        var messages = new List<object>();
+
+        if (!string.IsNullOrWhiteSpace(cfg.SystemInstruction))
+        {
+            messages.Add(new { role = "system", content = cfg.SystemInstruction.Trim() });
+        }
+
+        foreach (var (role, content) in request.History)
+        {
+            messages.Add(new { role, content });
+        }
+
+        messages.Add(new { role = "user", content = request.Message });
+
+        var payload = new
+        {
+            model,
+            stream = false,
+            options = new { num_ctx = cfg.ContextWindow > 0 ? cfg.ContextWindow : 8192 },
+            messages
+        };
+
+        using var response = await _http.PostAsJsonAsync($"{normalized}/api/chat", payload, ct);
+        var bodyText = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"Ollama returned {(int)response.StatusCode}: {bodyText}");
+        }
+
+        var parsed = JsonSerializer.Deserialize<OllamaChatResponse>(bodyText);
+        var reply = parsed?.Message?.Content?.Trim();
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            throw new InvalidOperationException($"Ollama model '{model}' returned an empty response.");
+        }
+
+        return new LlmChatResponse(
+            reply,
+            AdapterId,
+            Scope,
+            parsed?.Model ?? model,
+            sw.ElapsedMilliseconds);
+    }
+
+    private static string NormalizeUrl(string raw)
+    {
+        var candidate = string.IsNullOrWhiteSpace(raw) ? "http://127.0.0.1:11434" : raw.Trim();
+        return candidate.TrimEnd('/');
+    }
+
+    private sealed class OllamaTagsResponse
+    {
+        [JsonPropertyName("models")]
+        public List<OllamaTagItem>? Models { get; set; }
+    }
+
+    private sealed class OllamaTagItem
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("size")]
+        public long Size { get; set; }
+
+        [JsonPropertyName("details")]
+        public OllamaTagDetails? Details { get; set; }
+    }
+
+    private sealed class OllamaTagDetails
+    {
+        [JsonPropertyName("family")]
+        public string? Family { get; set; }
+
+        [JsonPropertyName("parameter_size")]
+        public string? ParameterSize { get; set; }
+
+        [JsonPropertyName("quantization_level")]
+        public string? QuantizationLevel { get; set; }
+    }
+
+    private sealed class OllamaChatResponse
+    {
+        [JsonPropertyName("model")]
+        public string? Model { get; set; }
+
+        [JsonPropertyName("message")]
+        public OllamaChatMessage? Message { get; set; }
+    }
+
+    private sealed class OllamaChatMessage
+    {
+        [JsonPropertyName("content")]
+        public string? Content { get; set; }
+    }
+}
