@@ -6,15 +6,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
+using Windows.UI;
 
 namespace FluentAssistantWorkbench;
 
 public sealed partial class MainWindow : Window
 {
     public static MainWindow? CurrentWindow { get; private set; }
-    private string _activeTag = "workbench";
+    private TrayIconService? _trayIcon;
+    private bool _isExiting;
 
     public MainWindow()
     {
@@ -22,6 +22,10 @@ public sealed partial class MainWindow : Window
         CurrentWindow = this;
         SystemBackdrop = new MicaBackdrop();
         SetWindowIcon();
+        InitializeTrayIcon();
+
+        AppWindow.Closing += MainWindow_Closing;
+        Closed += (_, _) => _trayIcon?.Dispose();
 
         App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
         SyncMenuBarState();
@@ -29,6 +33,41 @@ public sealed partial class MainWindow : Window
 
         NavView.SelectedItem = NavView.MenuItems[0];
         ContentFrame.Navigate(typeof(WorkbenchPage));
+    }
+
+    private void InitializeTrayIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "PersonalAssistant.ico");
+        _trayIcon = new TrayIconService(
+            this,
+            iconPath,
+            "Personal Assistant",
+            onOpen: () => NavigateToWorkbench(),
+            onNewSession: () =>
+            {
+                App.Coordinator.ClearHistory();
+                NavigateToWorkbench();
+            },
+            onExit: () =>
+            {
+                _isExiting = true;
+                _trayIcon?.Dispose();
+                Close();
+            });
+    }
+
+    public void HideToTray()
+    {
+        _trayIcon?.HideWindowToTray();
+    }
+
+    private void MainWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (!_isExiting)
+        {
+            args.Cancel = true;
+            _trayIcon?.HideWindowToTray();
+        }
     }
 
     private void SetWindowIcon()
@@ -49,45 +88,79 @@ public sealed partial class MainWindow : Window
 
     public void NavigateToSettings()
     {
-        _activeTag = "settings";
-        NavView.SelectedItem = NavView.MenuItems[1];
-        ContentFrame.Navigate(typeof(SettingsPage));
+        SettingsModalFeedbackText.Text = string.Empty;
+        if (SettingsModalFrame.Content is SettingsPage existing)
+        {
+            existing.ReloadFromCoordinator();
+        }
+        else
+        {
+            SettingsModalFrame.Navigate(typeof(SettingsPage));
+        }
+        SettingsModalOverlay.Visibility = Visibility.Visible;
+        SyncToolbarSelection();
+    }
+
+    public void CloseSettingsModal()
+    {
+        SettingsModalOverlay.Visibility = Visibility.Collapsed;
         SyncToolbarSelection();
     }
 
     public void NavigateToWorkbench()
     {
-        _activeTag = "workbench";
+        CloseSettingsModal();
         NavView.SelectedItem = NavView.MenuItems[0];
-        ContentFrame.Navigate(typeof(WorkbenchPage));
-        SyncToolbarSelection();
+        if (ContentFrame.Content is not WorkbenchPage)
+        {
+            ContentFrame.Navigate(typeof(WorkbenchPage));
+        }
     }
 
     private void SyncToolbarSelection()
     {
-        bool onSettings = _activeTag == "settings";
+        bool onSettings = SettingsModalOverlay.Visibility == Visibility.Visible;
+        var accentColor = GetThemeAccentColor(App.Coordinator.Config.Theme);
         SettingsToolbarButton.Background = onSettings
-            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+            ? new SolidColorBrush(accentColor)
             : new SolidColorBrush(Colors.Transparent);
         SettingsToolbarButton.Foreground = onSettings
             ? new SolidColorBrush(Colors.White)
             : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
     }
 
+    private static Color GetThemeAccentColor(AppThemeMode mode) => mode switch
+    {
+        AppThemeMode.EmeraldMist => ColorHelper.FromArgb(255, 5, 150, 105),
+        AppThemeMode.RoyalAmethyst => ColorHelper.FromArgb(255, 168, 85, 247),
+        AppThemeMode.MidnightSlate or AppThemeMode.Dark => ColorHelper.FromArgb(255, 14, 165, 233),
+        _ => ColorHelper.FromArgb(255, 2, 132, 199)
+    };
+
+    private static Brush GetThemeCanvasBrush(AppThemeMode mode) => mode switch
+    {
+        AppThemeMode.EmeraldMist => new SolidColorBrush(ColorHelper.FromArgb(255, 240, 253, 244)),
+        AppThemeMode.RoyalAmethyst => new SolidColorBrush(ColorHelper.FromArgb(255, 20, 12, 34)),
+        AppThemeMode.MidnightSlate or AppThemeMode.Dark => new SolidColorBrush(ColorHelper.FromArgb(255, 15, 23, 42)),
+        AppThemeMode.ArcticSky or AppThemeMode.Light => new SolidColorBrush(ColorHelper.FromArgb(255, 240, 247, 255)),
+        _ => new SolidColorBrush(Colors.Transparent)
+    };
+
     private void SyncMenuBarState()
     {
         var cfg = App.Coordinator.Config;
         bool isPrivate = cfg.ActiveScope == ConversationScope.Private;
+        var accentBrush = new SolidColorBrush(GetThemeAccentColor(cfg.Theme));
 
         PrivateScopeButton.Background = isPrivate
-            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+            ? accentBrush
             : new SolidColorBrush(Colors.Transparent);
         PrivateScopeButton.Foreground = isPrivate
             ? new SolidColorBrush(Colors.White)
             : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
 
         PublicScopeButton.Background = !isPrivate
-            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
+            ? accentBrush
             : new SolidColorBrush(Colors.Transparent);
         PublicScopeButton.Foreground = !isPrivate
             ? new SolidColorBrush(Colors.White)
@@ -127,15 +200,18 @@ public sealed partial class MainWindow : Window
                 _ => "Gemini"
             };
             StatusBarEngineText.Text = $"Connected: Public · {adapterLabel} ({model})";
-            EngineStatusDot.Fill = new SolidColorBrush(ColorHelper.FromArgb(255, 14, 165, 233));
+            EngineStatusDot.Fill = accentBrush;
         }
+
+        _trayIcon?.UpdateTooltip($"Personal Assistant · {StatusBarEngineText.Text}");
 
         RootGrid.RequestedTheme = cfg.Theme switch
         {
-            AppThemeMode.Light => ElementTheme.Light,
-            AppThemeMode.Dark => ElementTheme.Dark,
+            AppThemeMode.ArcticSky or AppThemeMode.EmeraldMist or AppThemeMode.Light => ElementTheme.Light,
+            AppThemeMode.MidnightSlate or AppThemeMode.RoyalAmethyst or AppThemeMode.Dark => ElementTheme.Dark,
             _ => ElementTheme.Default
         };
+        RootGrid.Background = GetThemeCanvasBrush(cfg.Theme);
 
         var displayName = string.IsNullOrWhiteSpace(cfg.UserProfile.DisplayName)
             ? Environment.UserName
@@ -155,29 +231,23 @@ public sealed partial class MainWindow : Window
         SyncToolbarSelection();
     }
 
-    public async Task PickAndUploadAvatarAsync()
+    public async Task SyncWindowsAccountProfileAsync()
     {
-        var picker = new FileOpenPicker();
-        picker.FileTypeFilter.Add(".png");
-        picker.FileTypeFilter.Add(".jpg");
-        picker.FileTypeFilter.Add(".jpeg");
-        picker.FileTypeFilter.Add(".bmp");
-        picker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
-
-        var hwnd = WindowNative.GetWindowHandle(this);
-        InitializeWithWindow.Initialize(picker, hwnd);
-
-        var file = await picker.PickSingleFileAsync();
-        if (file is null) return;
-
-        var savedPath = WindowsUserProfileService.SaveCustomAvatarCopy(file.Path);
-        App.Coordinator.Config.UserProfile.AvatarPath = savedPath;
+        var (name, avatar) = await WindowsUserProfileService.DetectLoggedInUserAsync();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            App.Coordinator.Config.UserProfile.DisplayName = name;
+        }
+        if (!string.IsNullOrWhiteSpace(avatar))
+        {
+            App.Coordinator.Config.UserProfile.AvatarPath = avatar;
+        }
         App.Coordinator.SaveConfig();
     }
 
-    private async void ProfileUpload_Click(object sender, RoutedEventArgs e)
+    private async void ProfileSync_Click(object sender, RoutedEventArgs e)
     {
-        await PickAndUploadAvatarAsync();
+        await SyncWindowsAccountProfileAsync();
     }
 
     private void PrivateScopeButton_Click(object sender, RoutedEventArgs e)
@@ -218,9 +288,9 @@ public sealed partial class MainWindow : Window
 
     private void SettingsToolbarButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_activeTag == "settings")
+        if (SettingsModalOverlay.Visibility == Visibility.Visible)
         {
-            NavigateToWorkbench();
+            CloseSettingsModal();
         }
         else
         {
@@ -228,24 +298,40 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ApplySettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsModalFrame.Content is SettingsPage page)
+        {
+            page.ApplyAndSave();
+            SettingsModalFeedbackText.Text = $"Applied at {DateTime.Now:t}";
+        }
+    }
+
+    private void SaveAndCloseSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsModalFrame.Content is SettingsPage page)
+        {
+            page.ApplyAndSave();
+        }
+        CloseSettingsModal();
+    }
+
+    private void CloseSettings_Click(object sender, RoutedEventArgs e)
+    {
+        CloseSettingsModal();
+    }
+
     private void NavView_SelectionChanged(
         NavigationView sender,
         NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItem is NavigationViewItem item)
+        if (args.SelectedItem is NavigationViewItem)
         {
-            var tag = item.Tag?.ToString();
-            if (tag == "settings")
+            CloseSettingsModal();
+            if (ContentFrame.Content is not WorkbenchPage)
             {
-                _activeTag = "settings";
-                ContentFrame.Navigate(typeof(SettingsPage));
-            }
-            else
-            {
-                _activeTag = "workbench";
                 ContentFrame.Navigate(typeof(WorkbenchPage));
             }
-            SyncToolbarSelection();
         }
     }
 }

@@ -4,25 +4,17 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer Padding="28,24" VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="860" Spacing="24">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Personal Assistant Settings" Style="{StaticResource TitleTextBlockStyle}" />
-                <TextBlock
-                    Text="Configure theme, your Windows profile, local Windows Ollama models, Public LLM adapters, and %LOCALAPPDATA% storage for Personal Assistant."
-                    TextWrapping="Wrap"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-
-            <!-- Section 0: Appearance & User Profile -->
+    <ScrollViewer Padding="20,16" VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="640" Spacing="16">
+            <!-- Section 0: Appearance & Windows Account Profile -->
             <Border
-                Padding="20"
+                Padding="16"
                 CornerRadius="12"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1">
-                <StackPanel Spacing="14">
-                    <TextBlock Text="Appearance &amp; Windows User Profile" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Themes &amp; Windows Account Profile" Style="{StaticResource SubtitleTextBlockStyle}" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -32,23 +24,29 @@
                         <ComboBox
                             x:Name="ThemeCombo"
                             Grid.Column="0"
-                            Header="Application Theme"
+                            Header="Color Theme"
                             HorizontalAlignment="Stretch"
                             SelectionChanged="ThemeCombo_SelectionChanged">
-                            <ComboBoxItem Content="Use Windows System Theme" Tag="System" />
-                            <ComboBoxItem Content="Light" Tag="Light" />
-                            <ComboBoxItem Content="Dark" Tag="Dark" />
+                            <ComboBoxItem Content="Windows System Default" Tag="System" />
+                            <ComboBoxItem Content="Arctic Sky (#0284C7 · Light)" Tag="ArcticSky" />
+                            <ComboBoxItem Content="Midnight Slate (#38BDF8 · Dark)" Tag="MidnightSlate" />
+                            <ComboBoxItem Content="Emerald Mist (#059669 · Light)" Tag="EmeraldMist" />
+                            <ComboBoxItem Content="Royal Amethyst (#A855F7 · Dark)" Tag="RoyalAmethyst" />
                         </ComboBox>
                         <TextBox
                             x:Name="DisplayNameBox"
                             Grid.Column="1"
-                            Header="Display Name"
+                            Header="Account Display Name"
                             PlaceholderText="Windows logged-in user" />
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="Upload Photo..." Click="UploadPhoto_Click" />
-                        <Button Content="Use Windows Account Picture" Click="DetectWindowsProfile_Click" />
+                        <Button Content="Sync Windows Account Picture" Click="DetectWindowsProfile_Click" />
+                        <TextBlock
+                            Text="Uses your signed-in Windows account profile picture automatically."
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -229,7 +227,6 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="Save Configuration" Click="SaveSettings_Click" Style="{StaticResource AccentButtonStyle}" />
                         <Button Content="Reload from Disk" Click="ReloadSettings_Click" />
                         <Button Content="Clear History" Click="ClearHistory_Click" />
                     </StackPanel>

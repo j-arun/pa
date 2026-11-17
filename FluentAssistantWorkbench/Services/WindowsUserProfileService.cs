@@ -58,24 +58,35 @@ public static class WindowsUserProfileService
     {
         try
         {
-            var accountPicsDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Microsoft", "Windows", "AccountPictures");
-            if (Directory.Exists(accountPicsDir))
+            var candidateDirs = new[]
             {
-                var latest = new DirectoryInfo(accountPicsDir)
-                    .GetFiles("*.*")
-                    .Where(f => f.Extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-                             || f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(f => f.LastWriteTimeUtc)
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Microsoft", "Windows", "AccountPictures"),
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Microsoft", "User Account Pictures"),
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonDocuments),
+                    "..", "AccountPictures")
+            };
+
+            foreach (var dir in candidateDirs)
+            {
+                var fullDir = Path.GetFullPath(dir);
+                if (!Directory.Exists(fullDir)) continue;
+
+                var latest = new DirectoryInfo(fullDir)
+                    .GetFiles("*.*", SearchOption.AllDirectories)
+                    .Where(f => (f.Extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                              || f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
+                              && !f.Name.Equals("guest.png", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(f => f.Length)
+                    .ThenByDescending(f => f.LastWriteTimeUtc)
                     .FirstOrDefault();
+
                 if (latest is not null) return latest.FullName;
             }
-
-            var defaultPic = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "Microsoft", "User Account Pictures", "user.png");
-            if (File.Exists(defaultPic)) return defaultPic;
         }
         catch
         {

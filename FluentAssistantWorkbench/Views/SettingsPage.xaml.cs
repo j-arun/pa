@@ -15,16 +15,35 @@ public sealed partial class SettingsPage : Page
         LoadFromCoordinator();
     }
 
+    public void ReloadFromCoordinator()
+    {
+        LoadFromCoordinator();
+        SaveFeedbackText.Text = string.Empty;
+    }
+
+    public void ApplyAndSave()
+    {
+        ApplyUiToConfig();
+        App.Coordinator.SaveConfig();
+        SaveFeedbackText.Text = $"Saved to {App.Coordinator.ConfigStore.ConfigFilePath} at {DateTime.Now:t}";
+    }
+
     private void LoadFromCoordinator()
     {
         _isLoading = true;
         try
         {
             var cfg = App.Coordinator.Config;
+            var normalizedThemeTag = cfg.Theme switch
+            {
+                AppThemeMode.Light => nameof(AppThemeMode.ArcticSky),
+                AppThemeMode.Dark => nameof(AppThemeMode.MidnightSlate),
+                _ => cfg.Theme.ToString()
+            };
 
             foreach (ComboBoxItem item in ThemeCombo.Items)
             {
-                if (string.Equals(item.Tag?.ToString(), cfg.Theme.ToString(), StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(item.Tag?.ToString(), normalizedThemeTag, StringComparison.OrdinalIgnoreCase))
                 {
                     ThemeCombo.SelectedItem = item;
                     break;
@@ -36,41 +55,41 @@ public sealed partial class SettingsPage : Page
             OllamaModelBox.Text = cfg.PrivateLlm.SelectedModel;
             PrivateSystemBox.Text = cfg.PrivateLlm.SystemInstruction;
 
-        foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
-        {
-            if (string.Equals(item.Tag?.ToString(), cfg.PublicLlm.ActiveAdapter, StringComparison.OrdinalIgnoreCase))
+            foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
             {
-                ActivePublicAdapterCombo.SelectedItem = item;
-                break;
+                if (string.Equals(item.Tag?.ToString(), cfg.PublicLlm.ActiveAdapter, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActivePublicAdapterCombo.SelectedItem = item;
+                    break;
+                }
             }
-        }
 
-        GeminiModelBox.Text = cfg.PublicLlm.Gemini.Model;
-        GeminiKeyBox.Password = cfg.PublicLlm.Gemini.ApiKey;
-        GeminiSystemBox.Text = cfg.PublicLlm.Gemini.SystemInstruction;
+            GeminiModelBox.Text = cfg.PublicLlm.Gemini.Model;
+            GeminiKeyBox.Password = cfg.PublicLlm.Gemini.ApiKey;
+            GeminiSystemBox.Text = cfg.PublicLlm.Gemini.SystemInstruction;
 
-        ClaudeModelBox.Text = cfg.PublicLlm.Claude.Model;
-        ClaudeKeyBox.Password = cfg.PublicLlm.Claude.ApiKey;
-        ClaudeEndpointBox.Text = cfg.PublicLlm.Claude.EndpointUrl;
+            ClaudeModelBox.Text = cfg.PublicLlm.Claude.Model;
+            ClaudeKeyBox.Password = cfg.PublicLlm.Claude.ApiKey;
+            ClaudeEndpointBox.Text = cfg.PublicLlm.Claude.EndpointUrl;
 
-        FableModelBox.Text = cfg.PublicLlm.Fable.Model;
-        FableKeyBox.Password = cfg.PublicLlm.Fable.ApiKey;
-        FableEndpointBox.Text = cfg.PublicLlm.Fable.EndpointUrl;
+            FableModelBox.Text = cfg.PublicLlm.Fable.Model;
+            FableKeyBox.Password = cfg.PublicLlm.Fable.ApiKey;
+            FableEndpointBox.Text = cfg.PublicLlm.Fable.EndpointUrl;
 
-        var voices = App.Coordinator.Speech.InstalledVoices;
-        VoicesCombo.ItemsSource = voices;
-        var matchedVoice = voices.FirstOrDefault(v => v.Id == cfg.Voice.SelectedVoiceId);
-        if (matchedVoice is not null)
-        {
-            VoicesCombo.SelectedItem = matchedVoice;
-        }
-        else if (voices.Count > 0)
-        {
-            VoicesCombo.SelectedIndex = 0;
-        }
+            var voices = App.Coordinator.Speech.InstalledVoices;
+            VoicesCombo.ItemsSource = voices;
+            var matchedVoice = voices.FirstOrDefault(v => v.Id == cfg.Voice.SelectedVoiceId);
+            if (matchedVoice is not null)
+            {
+                VoicesCombo.SelectedItem = matchedVoice;
+            }
+            else if (voices.Count > 0)
+            {
+                VoicesCombo.SelectedIndex = 0;
+            }
 
-        AutoSpeakPublicCheck.IsChecked = cfg.Voice.AutoSpeakPublic;
-        AutoSpeakPrivateCheck.IsChecked = cfg.Voice.AutoSpeakPrivate;
+            AutoSpeakPublicCheck.IsChecked = cfg.Voice.AutoSpeakPublic;
+            AutoSpeakPrivateCheck.IsChecked = cfg.Voice.AutoSpeakPrivate;
 
             StoragePathText.Text = $"Local Config File: {App.Coordinator.ConfigStore.ConfigFilePath}";
         }
@@ -134,8 +153,6 @@ public sealed partial class SettingsPage : Page
             if (models.Count > 0 && string.IsNullOrWhiteSpace(OllamaModelBox.Text))
             {
                 OllamaModelBox.Text = models[0].Name;
-                ApplyUiToConfig();
-                App.Coordinator.SaveConfig();
             }
         }
         catch (Exception ex)
@@ -150,8 +167,6 @@ public sealed partial class SettingsPage : Page
         if (OllamaModelsList.SelectedItem is OllamaModelInfo model)
         {
             OllamaModelBox.Text = model.Name;
-            ApplyUiToConfig();
-            App.Coordinator.SaveConfig();
         }
     }
 
@@ -173,13 +188,6 @@ public sealed partial class SettingsPage : Page
             App.Coordinator.Config.Voice.SelectedVoiceId);
     }
 
-    private void SaveSettings_Click(object sender, RoutedEventArgs e)
-    {
-        ApplyUiToConfig();
-        App.Coordinator.SaveConfig();
-        SaveFeedbackText.Text = $"Saved to {App.Coordinator.ConfigStore.ConfigFilePath} at {DateTime.Now:t}";
-    }
-
     private void ReloadSettings_Click(object sender, RoutedEventArgs e)
     {
         App.Coordinator.ReloadConfig();
@@ -196,17 +204,7 @@ public sealed partial class SettingsPage : Page
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isLoading) return;
-        ApplyUiToConfig();
-        App.Coordinator.SaveConfig();
-    }
-
-    private async void UploadPhoto_Click(object sender, RoutedEventArgs e)
-    {
-        if (MainWindow.CurrentWindow is not null)
-        {
-            await MainWindow.CurrentWindow.PickAndUploadAvatarAsync();
-            SaveFeedbackText.Text = "Updated user profile photo.";
-        }
+        SaveFeedbackText.Text = "Click Apply or Save & Close to apply theme changes.";
     }
 
     private async void DetectWindowsProfile_Click(object sender, RoutedEventArgs e)
@@ -222,6 +220,6 @@ public sealed partial class SettingsPage : Page
             App.Coordinator.Config.UserProfile.AvatarPath = avatar;
         }
         App.Coordinator.SaveConfig();
-        SaveFeedbackText.Text = "Synced profile from Windows logged-in user.";
+        SaveFeedbackText.Text = "Synced profile from Windows account.";
     }
 }

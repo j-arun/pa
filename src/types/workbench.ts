@@ -86,7 +86,14 @@ export interface VoiceConfig {
   pitch: number;
 }
 
-export type ThemeMode = 'system' | 'light' | 'dark';
+export type ThemeMode =
+  | 'system'
+  | 'arctic-sky'
+  | 'midnight-slate'
+  | 'emerald-mist'
+  | 'royal-amethyst'
+  | 'light'
+  | 'dark';
 
 export interface UserProfileConfig {
   displayName: string;

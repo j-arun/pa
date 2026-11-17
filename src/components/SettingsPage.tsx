@@ -2,7 +2,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Code2,
   Copy,
   Download,
   FolderOpen,
@@ -14,9 +13,9 @@ import {
   Save,
   Server,
   Trash2,
-  Upload,
   User,
   Volume2,
+  X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type {
@@ -29,7 +28,7 @@ import type {
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
-import { resizeAvatarToDataUrl } from '../utils/storage';
+import { normalizeThemeMode } from '../utils/storage';
 import { WINUI3_SKELETON_SNIPPETS } from '../utils/winui3Skeleton';
 
 interface ConfigFileInfo {
@@ -41,7 +40,8 @@ interface ConfigFileInfo {
 
 interface SettingsPageProps {
   settings: WorkbenchSettings;
-  onUpdateSettings: (next: WorkbenchSettings) => void;
+  onApplySettings: (next: WorkbenchSettings) => void;
+  onClose: () => void;
   speech: UseSpeechIOResult;
   messageCount: number;
   configFileInfo: ConfigFileInfo;
@@ -51,9 +51,54 @@ interface SettingsPageProps {
   onResetSettings: () => void;
 }
 
+const THEME_OPTIONS: Array<{
+  id: ThemeMode;
+  label: string;
+  code: string;
+  swatchBg: string;
+  swatchAccent: string;
+}> = [
+  {
+    id: 'system',
+    label: 'System',
+    code: 'OS Auto',
+    swatchBg: '#e2e8f0',
+    swatchAccent: '#0284c7',
+  },
+  {
+    id: 'arctic-sky',
+    label: 'Arctic Sky',
+    code: '#0284C7',
+    swatchBg: '#f0f7ff',
+    swatchAccent: '#0284c7',
+  },
+  {
+    id: 'midnight-slate',
+    label: 'Midnight Slate',
+    code: '#38BDF8',
+    swatchBg: '#0f172a',
+    swatchAccent: '#38bdf8',
+  },
+  {
+    id: 'emerald-mist',
+    label: 'Emerald Mist',
+    code: '#059669',
+    swatchBg: '#ecfdf5',
+    swatchAccent: '#059669',
+  },
+  {
+    id: 'royal-amethyst',
+    label: 'Royal Amethyst',
+    code: '#A855F7',
+    swatchBg: '#170e26',
+    swatchAccent: '#a855f7',
+  },
+];
+
 export function SettingsPage({
   settings,
-  onUpdateSettings,
+  onApplySettings,
+  onClose,
   speech,
   messageCount,
   configFileInfo,
@@ -63,7 +108,10 @@ export function SettingsPage({
   onResetSettings,
 }: SettingsPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [draft, setDraft] = useState<WorkbenchSettings>(settings);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [applyFeedback, setApplyFeedback] = useState<string | null>(null);
+  const [profileSyncNote, setProfileSyncNote] = useState<string | null>(null);
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<OllamaModelInfo[]>([]);
   const [ollamaLoading, setOllamaLoading] = useState(false);
@@ -82,9 +130,30 @@ export function SettingsPage({
   const [showWinUiSkeleton, setShowWinUiSkeleton] = useState(false);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
 
+  const updateDraft = (updater: WorkbenchSettings | ((prev: WorkbenchSettings) => WorkbenchSettings)) => {
+    setDraft((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+    setHasUnsavedChanges(true);
+    setApplyFeedback(null);
+  };
+
   useEffect(() => {
-    setManualModelInput(settings.privateLlm.selectedModel);
-  }, [settings.privateLlm.selectedModel]);
+    setDraft(settings);
+    setHasUnsavedChanges(false);
+  }, [settings]);
+
+  useEffect(() => {
+    setManualModelInput(draft.privateLlm.selectedModel);
+  }, [draft.privateLlm.selectedModel]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   useEffect(() => {
     void fetch('/api/adapters')
@@ -107,7 +176,7 @@ export function SettingsPage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          baseUrl: settings.privateLlm.ollamaBaseUrl,
+          baseUrl: draft.privateLlm.ollamaBaseUrl,
         }),
       });
       const payload = (await response.json()) as {
@@ -125,14 +194,14 @@ export function SettingsPage({
         `Connected to Ollama (${list.length} deployed model${list.length === 1 ? '' : 's'} found).`,
       );
 
-      if (list.length > 0 && !settings.privateLlm.selectedModel) {
-        onUpdateSettings({
-          ...settings,
+      if (list.length > 0 && !draft.privateLlm.selectedModel) {
+        updateDraft((prev) => ({
+          ...prev,
           privateLlm: {
-            ...settings.privateLlm,
+            ...prev.privateLlm,
             selectedModel: list[0].name,
           },
-        });
+        }));
       }
     } catch (err) {
       setOllamaModels([]);
@@ -151,10 +220,10 @@ export function SettingsPage({
     try {
       const options =
         adapterId === 'ollama'
-          ? { ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl }
+          ? { ollamaBaseUrl: draft.privateLlm.ollamaBaseUrl }
           : {
-              model: settings.publicLlm.adapters[adapterId].model,
-              endpointUrl: settings.publicLlm.adapters[adapterId].endpointUrl,
+              model: draft.publicLlm.adapters[adapterId].model,
+              endpointUrl: draft.publicLlm.adapters[adapterId].endpointUrl,
             };
 
       const res = await fetch('/api/adapters/health', {
@@ -173,26 +242,51 @@ export function SettingsPage({
     }
   };
 
-  const activePublicId = settings.publicLlm.activeAdapter;
+  const syncWindowsAccountProfile = async () => {
+    try {
+      const res = await fetch('/api/profile/windows');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        displayName?: string;
+        avatarDataUrl?: string;
+      };
+      updateDraft((prev) => ({
+        ...prev,
+        profile: {
+          displayName: data.displayName || prev.profile.displayName,
+          avatarDataUrl: data.avatarDataUrl || prev.profile.avatarDataUrl,
+        },
+      }));
+      setProfileSyncNote(
+        data.avatarDataUrl
+          ? 'Synced display name and account profile picture.'
+          : 'Synced account display name from Windows.',
+      );
+    } catch {
+      setProfileSyncNote('Account picture sync runs automatically when hosted on Windows.');
+    }
+  };
+
+  const activePublicId = draft.publicLlm.activeAdapter;
   const publicAdapterSummaries = adapterSummaries.filter((a) => a.scope === 'public');
 
   const updatePublicAdapter = (
     id: PublicAdapterId,
     patch: Partial<WorkbenchSettings['publicLlm']['adapters'][PublicAdapterId]>,
   ) => {
-    onUpdateSettings({
-      ...settings,
+    updateDraft((prev) => ({
+      ...prev,
       publicLlm: {
-        ...settings.publicLlm,
+        ...prev.publicLlm,
         adapters: {
-          ...settings.publicLlm.adapters,
+          ...prev.publicLlm.adapters,
           [id]: {
-            ...settings.publicLlm.adapters[id],
+            ...prev.publicLlm.adapters[id],
             ...patch,
           },
         },
       },
-    });
+    }));
   };
 
   const handleCopySnippet = (filename: string, code: string) => {
@@ -201,140 +295,168 @@ export function SettingsPage({
     setTimeout(() => setCopiedFile((prev) => (prev === filename ? null : prev)), 1500);
   };
 
-  return (
-    <div className="flex-1 overflow-y-auto fluent-scroll px-6 sm:px-10 py-8">
-      <div className="max-w-4xl mx-auto space-y-10 pb-12">
-        {/* Page Header */}
-        <header className="border-b border-slate-200 dark:border-slate-800 pb-5">
-          <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Personal Assistant Settings
-          </h1>
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
-            Choose your theme and profile photo, configure Windows Ollama Private LLM, manage Public LLM adapters, and tune native voice playback for Personal Assistant.
-          </p>
-        </header>
+  const handleApply = () => {
+    onApplySettings(draft);
+    setHasUnsavedChanges(false);
+    setApplyFeedback(`Applied at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+  };
 
-        {/* Section 0: Appearance & User Profile */}
-        <section className="space-y-4">
+  const handleSaveAndClose = () => {
+    onApplySettings(draft);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
+  const normalizedDraftTheme = normalizeThemeMode(draft.theme);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+        {/* Compact Modal Header */}
+        <header className="shrink-0 px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 bg-slate-50/80 dark:bg-slate-950/60">
           <div>
-            <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Palette className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-              <span>Appearance & User Profile</span>
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-              Pick a Windows Fluent theme and customize your display name and profile photo.
+            <h1
+              id="settings-modal-title"
+              className="font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
+            >
+              Personal Assistant Settings
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Themes, Windows account profile, Ollama, Public adapters &amp; local storage
             </p>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close settings"
+            title="Close"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </header>
 
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {/* Scrollable Modal Body */}
+        <div className="flex-1 overflow-y-auto fluent-scroll p-5 space-y-7">
+          {/* Section 0: Color-Coded Themes & Account Profile */}
+          <section className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Application Theme
-              </label>
-              <div className="inline-flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => {
-                  const isSelected = settings.theme === mode;
-                  const label =
-                    mode === 'system' ? 'System' : mode === 'light' ? 'Light' : 'Dark';
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() =>
-                        onUpdateSettings({
-                          ...settings,
-                          theme: mode,
-                        })
-                      }
-                      className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Palette className="w-4 h-4" style={{ color: 'var(--pa-accent)' }} />
+                <span>Color Themes &amp; Account Profile</span>
+              </h2>
             </div>
 
-            <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 p-4 space-y-4">
               <div>
-                <label
-                  htmlFor="profile-display-name"
-                  className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                >
-                  Display Name
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Select Theme
                 </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    id="profile-display-name"
-                    type="text"
-                    value={settings.profile.displayName}
-                    onChange={(e) =>
-                      onUpdateSettings({
-                        ...settings,
-                        profile: {
-                          ...settings.profile,
-                          displayName: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="Windows user name"
-                    className="w-full pl-9 pr-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {THEME_OPTIONS.map((option) => {
+                    const isSelected = normalizedDraftTheme === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            theme: option.id,
+                          }))
+                        }
+                        className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'bg-white dark:bg-slate-900 shadow-xs ring-1'
+                            : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                        style={
+                          isSelected
+                            ? {
+                                borderColor: option.swatchAccent,
+                                boxShadow: `0 0 0 1px ${option.swatchAccent}`,
+                              }
+                            : undefined
+                        }
+                      >
+                        <span
+                          className="w-6 h-6 rounded-lg border border-slate-300/60 dark:border-slate-600/60 flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: option.swatchBg }}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: option.swatchAccent }}
+                          />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
+                            {option.label}
+                          </span>
+                          <span className="block text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                            {option.code}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => profilePhotoInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Upload Profile Photo</span>
-                </button>
-                {settings.profile.avatarDataUrl && (
+              <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                <div>
+                  <label
+                    htmlFor="profile-display-name"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Account Display Name
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      id="profile-display-name"
+                      type="text"
+                      value={draft.profile.displayName}
+                      onChange={(e) =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          profile: {
+                            ...prev.profile,
+                            displayName: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Windows account user"
+                      className="w-full pl-9 pr-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    onClick={() =>
-                      onUpdateSettings({
-                        ...settings,
-                        profile: { ...settings.profile, avatarDataUrl: '' },
-                      })
-                    }
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    onClick={() => void syncWindowsAccountProfile()}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
                   >
-                    Remove Photo
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sync Account Picture</span>
                   </button>
-                )}
-                <input
-                  ref={profilePhotoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const dataUrl = await resizeAvatarToDataUrl(file);
-                      onUpdateSettings({
-                        ...settings,
-                        profile: { ...settings.profile, avatarDataUrl: dataUrl },
-                      });
-                    } catch {
-                      // Ignore invalid image
-                    }
-                    e.target.value = '';
-                  }}
-                />
+                  {profileSyncNote && (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {profileSyncNote}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
         {/* Section 1: Private LLM (Windows Ollama) */}
         <section className="space-y-4">
@@ -371,15 +493,15 @@ export function SettingsPage({
                 <input
                   id="ollama-url"
                   type="url"
-                  value={settings.privateLlm.ollamaBaseUrl}
+                  value={draft.privateLlm.ollamaBaseUrl}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
+                    updateDraft((prev) => ({
+                      ...prev,
                       privateLlm: {
-                        ...settings.privateLlm,
+                        ...prev.privateLlm,
                         ollamaBaseUrl: e.target.value,
                       },
-                    })
+                    }))
                   }
                   placeholder="http://127.0.0.1:11434"
                   className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
@@ -401,13 +523,13 @@ export function SettingsPage({
                     onChange={(e) => {
                       const val = e.target.value;
                       setManualModelInput(val);
-                      onUpdateSettings({
-                        ...settings,
+                      updateDraft((prev) => ({
+                        ...prev,
                         privateLlm: {
-                          ...settings.privateLlm,
+                          ...prev.privateLlm,
                           selectedModel: val,
                         },
-                      });
+                      }));
                     }}
                     placeholder="e.g. llama3.2, qwen2.5:7b"
                     className="flex-1 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
@@ -452,7 +574,7 @@ export function SettingsPage({
                     </thead>
                     <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                       {ollamaModels.map((model) => {
-                        const isSelected = settings.privateLlm.selectedModel === model.name;
+                        const isSelected = draft.privateLlm.selectedModel === model.name;
                         return (
                           <tr
                             key={model.name}
@@ -474,13 +596,13 @@ export function SettingsPage({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  onUpdateSettings({
-                                    ...settings,
+                                  updateDraft((prev) => ({
+                                    ...prev,
                                     privateLlm: {
-                                      ...settings.privateLlm,
+                                      ...prev.privateLlm,
                                       selectedModel: model.name,
                                     },
-                                  })
+                                  }))
                                 }
                                 className={`px-3 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
                                   isSelected
@@ -517,15 +639,15 @@ export function SettingsPage({
                 <textarea
                   id="private-system-prompt"
                   rows={2}
-                  value={settings.privateLlm.systemInstruction}
+                  value={draft.privateLlm.systemInstruction}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
+                    updateDraft((prev) => ({
+                      ...prev,
                       privateLlm: {
-                        ...settings.privateLlm,
+                        ...prev.privateLlm,
                         systemInstruction: e.target.value,
                       },
-                    })
+                    }))
                   }
                   className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
                 />
@@ -540,15 +662,15 @@ export function SettingsPage({
                 </label>
                 <select
                   id="ollama-ctx"
-                  value={settings.privateLlm.contextWindow}
+                  value={draft.privateLlm.contextWindow}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
+                    updateDraft((prev) => ({
+                      ...prev,
                       privateLlm: {
-                        ...settings.privateLlm,
+                        ...prev.privateLlm,
                         contextWindow: Number(e.target.value),
                       },
-                    })
+                    }))
                   }
                   className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
                 >
@@ -584,13 +706,13 @@ export function SettingsPage({
                     key={id}
                     type="button"
                     onClick={() =>
-                      onUpdateSettings({
-                        ...settings,
+                      updateDraft((prev) => ({
+                        ...prev,
                         publicLlm: {
-                          ...settings.publicLlm,
+                          ...prev.publicLlm,
                           activeAdapter: id,
                         },
-                      })
+                      }))
                     }
                     className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
                       isActive
@@ -608,7 +730,7 @@ export function SettingsPage({
           <div className="space-y-4">
             {(['gemini', 'claude', 'fable'] as PublicAdapterId[]).map((adapterId) => {
               const summary = publicAdapterSummaries.find((s) => s.id === adapterId);
-              const cfg = settings.publicLlm.adapters[adapterId];
+              const cfg = draft.publicLlm.adapters[adapterId];
               const isActive = activePublicId === adapterId;
               const health = healthByAdapter[adapterId];
               const isInspecting = inspectedAdapterId === adapterId;
@@ -654,13 +776,13 @@ export function SettingsPage({
                         <button
                           type="button"
                           onClick={() =>
-                            onUpdateSettings({
-                              ...settings,
+                            updateDraft((prev) => ({
+                              ...prev,
                               publicLlm: {
-                                ...settings.publicLlm,
+                                ...prev.publicLlm,
                                 activeAdapter: adapterId,
                               },
-                            })
+                            }))
                           }
                           className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
                         >
@@ -832,12 +954,12 @@ export function SettingsPage({
                 </label>
                 <select
                   id="voice-select"
-                  value={settings.voice.selectedVoiceURI}
+                  value={draft.voice.selectedVoiceURI}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
-                      voice: { ...settings.voice, selectedVoiceURI: e.target.value },
-                    })
+                    updateDraft((prev) => ({
+                      ...prev,
+                      voice: { ...prev.voice, selectedVoiceURI: e.target.value },
+                    }))
                   }
                   className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
                 >
@@ -873,7 +995,7 @@ export function SettingsPage({
                     Speech Rate
                   </span>
                   <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                    {settings.voice.rate.toFixed(2)}x
+                    {draft.voice.rate.toFixed(2)}x
                   </span>
                 </div>
                 <input
@@ -881,14 +1003,14 @@ export function SettingsPage({
                   min="0.6"
                   max="1.6"
                   step="0.05"
-                  value={settings.voice.rate}
+                  value={draft.voice.rate}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
-                      voice: { ...settings.voice, rate: Number(e.target.value) },
-                    })
+                    updateDraft((prev) => ({
+                      ...prev,
+                      voice: { ...prev.voice, rate: Number(e.target.value) },
+                    }))
                   }
-                  className="w-full accent-sky-600"
+                  className="w-full accent-[var(--pa-accent)]"
                 />
               </div>
 
@@ -898,7 +1020,7 @@ export function SettingsPage({
                     Speech Pitch
                   </span>
                   <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                    {settings.voice.pitch.toFixed(2)}
+                    {draft.voice.pitch.toFixed(2)}
                   </span>
                 </div>
                 <input
@@ -906,14 +1028,14 @@ export function SettingsPage({
                   min="0.7"
                   max="1.3"
                   step="0.05"
-                  value={settings.voice.pitch}
+                  value={draft.voice.pitch}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
-                      voice: { ...settings.voice, pitch: Number(e.target.value) },
-                    })
+                    updateDraft((prev) => ({
+                      ...prev,
+                      voice: { ...prev.voice, pitch: Number(e.target.value) },
+                    }))
                   }
-                  className="w-full accent-sky-600"
+                  className="w-full accent-[var(--pa-accent)]"
                 />
               </div>
             </div>
@@ -922,14 +1044,14 @@ export function SettingsPage({
               <label className="inline-flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={settings.voice.autoSpeakPublic}
+                  checked={draft.voice.autoSpeakPublic}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
-                      voice: { ...settings.voice, autoSpeakPublic: e.target.checked },
-                    })
+                    updateDraft((prev) => ({
+                      ...prev,
+                      voice: { ...prev.voice, autoSpeakPublic: e.target.checked },
+                    }))
                   }
-                  className="w-4 h-4 accent-sky-600 rounded"
+                  className="w-4 h-4 accent-[var(--pa-accent)] rounded"
                 />
                 <span>Auto-play Public LLM replies</span>
               </label>
@@ -937,14 +1059,14 @@ export function SettingsPage({
               <label className="inline-flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={settings.voice.autoSpeakPrivate}
+                  checked={draft.voice.autoSpeakPrivate}
                   onChange={(e) =>
-                    onUpdateSettings({
-                      ...settings,
-                      voice: { ...settings.voice, autoSpeakPrivate: e.target.checked },
-                    })
+                    updateDraft((prev) => ({
+                      ...prev,
+                      voice: { ...prev.voice, autoSpeakPrivate: e.target.checked },
+                    }))
                   }
-                  className="w-4 h-4 accent-sky-600 rounded"
+                  className="w-4 h-4 accent-[var(--pa-accent)] rounded"
                 />
                 <span>Auto-play Private Ollama replies</span>
               </label>
@@ -1011,7 +1133,7 @@ export function SettingsPage({
                   <button
                     type="button"
                     onClick={async () => {
-                      const jsonText = JSON.stringify(settings, null, 2);
+                      const jsonText = JSON.stringify(draft, null, 2);
                       const win = window as unknown as {
                         showSaveFilePicker?: (opts: unknown) => Promise<{
                           createWritable: () => Promise<{
@@ -1038,7 +1160,6 @@ export function SettingsPage({
                           setTimeout(() => setConfigFeedback(null), 3000);
                           return;
                         } catch {
-                          // User cancelled picker or fallback
                           return;
                         }
                       }
@@ -1076,36 +1197,36 @@ export function SettingsPage({
                       reader.onload = () => {
                         try {
                           const parsed = JSON.parse(String(reader.result || '{}')) as Partial<WorkbenchSettings>;
-                          onUpdateSettings({
-                            ...settings,
+                          updateDraft((prev) => ({
+                            ...prev,
                             ...parsed,
                             privateLlm: {
-                              ...settings.privateLlm,
+                              ...prev.privateLlm,
                               ...(parsed.privateLlm || {}),
                             },
                             publicLlm: {
                               activeAdapter:
-                                parsed.publicLlm?.activeAdapter || settings.publicLlm.activeAdapter,
+                                parsed.publicLlm?.activeAdapter || prev.publicLlm.activeAdapter,
                               adapters: {
                                 gemini: {
-                                  ...settings.publicLlm.adapters.gemini,
+                                  ...prev.publicLlm.adapters.gemini,
                                   ...(parsed.publicLlm?.adapters?.gemini || {}),
                                 },
                                 claude: {
-                                  ...settings.publicLlm.adapters.claude,
+                                  ...prev.publicLlm.adapters.claude,
                                   ...(parsed.publicLlm?.adapters?.claude || {}),
                                 },
                                 fable: {
-                                  ...settings.publicLlm.adapters.fable,
+                                  ...prev.publicLlm.adapters.fable,
                                   ...(parsed.publicLlm?.adapters?.fable || {}),
                                 },
                               },
                             },
                             voice: {
-                              ...settings.voice,
+                              ...prev.voice,
                               ...(parsed.voice || {}),
                             },
-                          });
+                          }));
                           setConfigFeedback(`Loaded configuration from ${file.name}.`);
                           setTimeout(() => setConfigFeedback(null), 3000);
                         } catch {
@@ -1209,6 +1330,46 @@ export function SettingsPage({
             </div>
           </div>
         </section>
+      </div>
+
+        {/* Sticky Modal Footer: Close, Apply, Save & Close */}
+        <footer className="shrink-0 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/80 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {applyFeedback ? (
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                {applyFeedback}
+              </span>
+            ) : hasUnsavedChanges ? (
+              <span>Pending changes — click Apply or Save &amp; Close</span>
+            ) : (
+              <span>All settings saved</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveAndClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] transition-colors"
+            >
+              Save &amp; Close
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   );

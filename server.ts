@@ -7,7 +7,11 @@ import { createServer as createViteServer } from 'vite';
 import type { AnyAdapterId, ConversationScope, WorkbenchSettings } from './src/types/workbench.ts';
 import { adapterRegistry } from './server/adapters/registry.ts';
 import type { AdapterRuntimeOptions, ChatHistoryItem } from './server/adapters/types.ts';
-import { readLocalConfigFile, writeLocalConfigFile } from './server/configStore.ts';
+import {
+  detectWindowsAccountProfile,
+  readLocalConfigFile,
+  writeLocalConfigFile,
+} from './server/configStore.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +49,16 @@ async function startServer() {
     } catch (err) {
       return res.status(500).json({
         error: err instanceof Error ? err.message : 'Unable to write workbench.config.json.',
+      });
+    }
+  });
+
+  app.get('/api/profile/windows', (_req, res) => {
+    try {
+      return res.json(detectWindowsAccountProfile());
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unable to detect OS account profile.',
       });
     }
   });

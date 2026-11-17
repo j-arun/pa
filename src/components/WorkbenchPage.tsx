@@ -70,21 +70,6 @@ export function WorkbenchPage({
   const ladderEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const activeAdapterLabel =
-    scope === 'private'
-      ? `Windows Ollama${
-          settings.privateLlm.selectedModel
-            ? ` · ${settings.privateLlm.selectedModel}`
-            : ' · No model selected'
-        }`
-      : `${
-          settings.publicLlm.activeAdapter === 'gemini'
-            ? 'Gemini'
-            : settings.publicLlm.activeAdapter === 'claude'
-              ? 'Claude'
-              : 'Fable'
-        } · ${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model}`;
-
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
 
@@ -143,38 +128,6 @@ export function WorkbenchPage({
           />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-b from-sky-50/75 via-white/75 to-slate-100/90 dark:from-slate-950/80 dark:via-slate-900/85 dark:to-slate-950/95" />
-      </div>
-
-      {/* Workspace Routing Toolbar */}
-      <div className="relative z-10 flex items-center justify-between gap-4 px-6 py-3 border-b border-slate-200/75 dark:border-slate-800/80 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md">
-        <div className="flex items-center gap-2.5 min-w-0 text-sm">
-          {scope === 'private' ? (
-            <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          ) : (
-            <Cloud className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-          )}
-          <span className="font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
-            {scope === 'private' ? 'Private Conversation' : 'Public Conversation'}
-          </span>
-          <span className="text-slate-400 dark:text-slate-500" aria-hidden="true">
-            ·
-          </span>
-          <span className="text-slate-600 dark:text-slate-300 truncate">
-            {activeAdapterLabel}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {privateNeedsModel && (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 dark:border-amber-700/80 bg-amber-50/90 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors whitespace-nowrap shrink-0"
-            >
-              Select Ollama Model
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Continual Conversational Cloud Ladder */}
@@ -257,7 +210,10 @@ export function WorkbenchPage({
                     transition={{ duration: 0.18 }}
                     className="flex justify-end"
                   >
-                    <div className="max-w-[82%] sm:max-w-[72%] rounded-2xl rounded-br-md px-5 py-3.5 bg-sky-600 dark:bg-sky-600 text-white shadow-sm">
+                    <div
+                      className="max-w-[82%] sm:max-w-[72%] rounded-2xl rounded-br-md px-5 py-3.5 text-white shadow-sm"
+                      style={{ backgroundColor: 'var(--pa-accent)' }}
+                    >
                       <div className="flex items-center justify-end gap-2 text-[11px] text-sky-100/90 mb-1.5 tabular-nums">
                         <span>You</span>
                         <span aria-hidden="true">·</span>
@@ -421,6 +377,19 @@ export function WorkbenchPage({
       {/* Bottom Floating Cloud Input Dock */}
       <div className="relative z-10 px-4 sm:px-8 pb-5 pt-2">
         <div className="max-w-4xl mx-auto">
+          {privateNeedsModel && (
+            <div className="mb-2.5 flex items-center justify-between gap-3 px-4 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+              <span>No Windows Ollama model selected yet.</span>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="font-medium underline whitespace-nowrap shrink-0"
+              >
+                Select Ollama Model
+              </button>
+            </div>
+          )}
+
           {speech.micError && (
             <div className="mb-2.5 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
               <span>{speech.micError}</span>
@@ -441,8 +410,9 @@ export function WorkbenchPage({
                   {[0.35, 0.65, 1, 0.75, 0.45].map((weight, i) => (
                     <span
                       key={i}
-                      className="w-1 rounded-full bg-sky-600 dark:bg-sky-400 transition-transform duration-75"
+                      className="w-1 rounded-full transition-transform duration-75"
                       style={{
+                        backgroundColor: 'var(--pa-accent)',
                         height: `${Math.max(4, Math.round((0.25 + speech.micLevel * 0.75) * 16 * weight))}px`,
                       }}
                     />
@@ -526,7 +496,7 @@ export function WorkbenchPage({
             <button
               type="submit"
               disabled={!draft.trim() || isSending}
-              className="h-11 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+              className="h-11 px-4 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
             >
               {isSending ? (
                 <>

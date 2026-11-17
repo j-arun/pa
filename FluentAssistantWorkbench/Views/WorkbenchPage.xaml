@@ -15,28 +15,14 @@
         </Grid.Background>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Active Route Sub-Bar -->
-        <Grid
-            Grid.Row="0"
-            Padding="24,10"
-            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="0,0,0,1">
-            <TextBlock
-                x:Name="RouteSummaryText"
-                VerticalAlignment="Center"
-                Style="{StaticResource BodyTextBlockStyle}" />
-        </Grid>
-
         <!-- Continual Conversational Cloud Ladder -->
         <ScrollViewer
             x:Name="LadderScrollViewer"
-            Grid.Row="1"
+            Grid.Row="0"
             Padding="24,20"
             VerticalScrollBarVisibility="Auto">
             <StackPanel MaxWidth="860" HorizontalAlignment="Stretch" Spacing="16">
@@ -183,7 +169,7 @@
 
         <!-- Floating Cloud Composer Dock -->
         <Border
-            Grid.Row="2"
+            Grid.Row="1"
             Margin="24,8,24,20"
             Padding="10"
             MaxWidth="860"

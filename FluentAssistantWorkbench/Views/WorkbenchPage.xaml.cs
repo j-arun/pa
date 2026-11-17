@@ -15,33 +15,8 @@ public sealed partial class WorkbenchPage : Page
     {
         InitializeComponent();
         ConversationItemsControl.ItemsSource = App.Coordinator.Turns;
-        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(RefreshHeader);
         App.Coordinator.Turns.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(OnTurnsChanged);
-        RefreshHeader();
         OnTurnsChanged();
-    }
-
-    private void RefreshHeader()
-    {
-        var cfg = App.Coordinator.Config;
-        if (cfg.ActiveScope == ConversationScope.Private)
-        {
-            var model = string.IsNullOrWhiteSpace(cfg.PrivateLlm.SelectedModel)
-                ? "No Ollama model selected"
-                : cfg.PrivateLlm.SelectedModel;
-            RouteSummaryText.Text = $"Private Conversation · Windows Ollama · {model}";
-        }
-        else
-        {
-            var adapter = cfg.PublicLlm.ActiveAdapter;
-            var model = adapter switch
-            {
-                "claude" => cfg.PublicLlm.Claude.Model,
-                "fable" => cfg.PublicLlm.Fable.Model,
-                _ => cfg.PublicLlm.Gemini.Model
-            };
-            RouteSummaryText.Text = $"Public Conversation · {adapter} · {model}";
-        }
     }
 
     private void OnTurnsChanged()

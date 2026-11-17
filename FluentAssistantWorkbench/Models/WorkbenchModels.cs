@@ -125,6 +125,10 @@ public sealed class PublicLlmConfig
 public enum AppThemeMode
 {
     System,
+    ArcticSky,
+    MidnightSlate,
+    EmeraldMist,
+    RoyalAmethyst,
     Light,
     Dark
 }

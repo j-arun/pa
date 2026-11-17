@@ -53,16 +53,28 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
   },
 };
 
+export function normalizeThemeMode(raw?: string): WorkbenchSettings['theme'] {
+  if (raw === 'light') return 'arctic-sky';
+  if (raw === 'dark') return 'midnight-slate';
+  if (
+    raw === 'arctic-sky' ||
+    raw === 'midnight-slate' ||
+    raw === 'emerald-mist' ||
+    raw === 'royal-amethyst' ||
+    raw === 'system'
+  ) {
+    return raw;
+  }
+  return 'system';
+}
+
 export function loadSettings(): WorkbenchSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<WorkbenchSettings>;
 
-    const theme =
-      parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system'
-        ? parsed.theme
-        : 'system';
+    const theme = normalizeThemeMode(parsed.theme);
 
     return {
       theme,

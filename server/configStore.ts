@@ -12,11 +12,87 @@ function detectOsUserName(): string {
   }
 }
 
+export function detectWindowsAccountProfile(): {
+  displayName: string;
+  avatarDataUrl: string;
+  source: string;
+} {
+  const displayName = detectOsUserName();
+  let avatarDataUrl = '';
+  let source = 'os-username';
+
+  if (process.platform === 'win32') {
+    const candidateDirs = [
+      process.env.APPDATA
+        ? path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'AccountPictures')
+        : '',
+      process.env.PROGRAMDATA
+        ? path.join(process.env.PROGRAMDATA, 'Microsoft', 'User Account Pictures')
+        : '',
+      'C:\\Users\\Public\\AccountPictures',
+    ].filter(Boolean);
+
+    for (const dir of candidateDirs) {
+      try {
+        if (!fs.existsSync(dir)) continue;
+        const found: string[] = [];
+        const walk = (current: string) => {
+          for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+            const full = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              walk(full);
+            } else if (
+              /\.(png|jpe?g)$/i.test(entry.name) &&
+              entry.name.toLowerCase() !== 'guest.png'
+            ) {
+              found.push(full);
+            }
+          }
+        };
+        walk(dir);
+
+        if (found.length > 0) {
+          found.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
+          const best = found[0];
+          const bytes = fs.readFileSync(best);
+          if (bytes.length > 0 && bytes.length <= 512 * 1024) {
+            const mime = /\.png$/i.test(best) ? 'image/png' : 'image/jpeg';
+            avatarDataUrl = `data:${mime};base64,${bytes.toString('base64')}`;
+            source = best;
+            break;
+          }
+        }
+      } catch {
+        // Ignore directory permission errors
+      }
+    }
+  }
+
+  return { displayName, avatarDataUrl, source };
+}
+
+function normalizeServerTheme(raw?: string): WorkbenchSettings['theme'] {
+  if (raw === 'light') return 'arctic-sky';
+  if (raw === 'dark') return 'midnight-slate';
+  if (
+    raw === 'arctic-sky' ||
+    raw === 'midnight-slate' ||
+    raw === 'emerald-mist' ||
+    raw === 'royal-amethyst' ||
+    raw === 'system'
+  ) {
+    return raw;
+  }
+  return 'system';
+}
+
+const initialProfile = detectWindowsAccountProfile();
+
 export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
   theme: 'system',
   profile: {
-    displayName: detectOsUserName(),
-    avatarDataUrl: '',
+    displayName: initialProfile.displayName,
+    avatarDataUrl: initialProfile.avatarDataUrl,
   },
   privateLlm: {
     activeAdapter: 'ollama',
@@ -83,10 +159,7 @@ export function mergeConfigWithDefaults(
   raw: Partial<WorkbenchSettings> | null | undefined,
 ): WorkbenchSettings {
   const parsed = raw || {};
-  const theme =
-    parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system'
-      ? parsed.theme
-      : 'system';
+  const theme = normalizeServerTheme(parsed.theme);
 
   return {
     theme,
@@ -94,6 +167,7 @@ export function mergeConfigWithDefaults(
       ...DEFAULT_WORKBENCH_CONFIG.profile,
       ...(parsed.profile || {}),
       displayName: parsed.profile?.displayName?.trim() || DEFAULT_WORKBENCH_CONFIG.profile.displayName,
+      avatarDataUrl: parsed.profile?.avatarDataUrl || DEFAULT_WORKBENCH_CONFIG.profile.avatarDataUrl,
     },
     privateLlm: {
       ...DEFAULT_WORKBENCH_CONFIG.privateLlm,

@@ -120,13 +120,13 @@
             </StackPanel>
         </Grid>
 
-        <!-- Two-Page WinUI 3 NavigationView -->
+        <!-- WinUI 3 NavigationView -->
         <NavigationView
             x:Name="NavView"
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
-            OpenPaneLength="220"
+            OpenPaneLength="210"
             PaneDisplayMode="Left"
             SelectionChanged="NavView_SelectionChanged">
             <NavigationView.MenuItems>
@@ -135,16 +135,11 @@
                         <FontIcon Glyph="&#xE77B;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Settings" Tag="settings">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE713;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.PaneFooter>
                 <Button
-                    Click="ProfileUpload_Click"
+                    Click="ProfileSync_Click"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left"
                     Background="Transparent"
@@ -152,7 +147,7 @@
                     Padding="10,8"
                     Margin="6,0,6,8"
                     CornerRadius="8"
-                    ToolTipService.ToolTip="Click to upload your photo">
+                    ToolTipService.ToolTip="Synced from your Windows account profile">
                     <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <PersonPicture
                             x:Name="UserAvatarPicture"
@@ -164,9 +159,9 @@
                                 Text="Windows User"
                                 Style="{StaticResource BodyStrongTextBlockStyle}"
                                 TextTrimming="CharacterEllipsis"
-                                MaxWidth="138" />
+                                MaxWidth="132" />
                             <TextBlock
-                                Text="Upload photo"
+                                Text="Windows Account"
                                 FontSize="11"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
@@ -205,6 +200,82 @@
                 FontSize="11"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Compact Settings Modal Dialog -->
+        <Grid
+            x:Name="SettingsModalOverlay"
+            Grid.RowSpan="3"
+            Visibility="Collapsed"
+            Background="#7A000000"
+            Padding="24">
+            <Border
+                MaxWidth="680"
+                MaxHeight="660"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                CornerRadius="16"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Compact Modal Header -->
+                    <Grid
+                        Grid.Row="0"
+                        Padding="20,14"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,0,0,1">
+                        <TextBlock
+                            Text="Personal Assistant Settings"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            VerticalAlignment="Center" />
+                        <Button
+                            Click="CloseSettings_Click"
+                            HorizontalAlignment="Right"
+                            ToolTipService.ToolTip="Close"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            CornerRadius="8">
+                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Scrollable Settings Content -->
+                    <Frame x:Name="SettingsModalFrame" Grid.Row="1" />
+
+                    <!-- Sticky Apply / Save & Close Footer -->
+                    <Grid
+                        Grid.Row="2"
+                        Padding="20,12"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="0,1,0,0">
+                        <TextBlock
+                            x:Name="SettingsModalFeedbackText"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <StackPanel
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                            <Button Content="Close" Click="CloseSettings_Click" />
+                            <Button Content="Apply" Click="ApplySettings_Click" />
+                            <Button
+                                Content="Save &amp; Close"
+                                Click="SaveAndCloseSettings_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>

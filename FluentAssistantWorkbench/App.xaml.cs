@@ -15,7 +15,13 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
-        _window.Activate();
+        var mainWindow = new MainWindow();
+        _window = mainWindow;
+        mainWindow.Activate();
+
+        if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase)))
+        {
+            mainWindow.HideToTray();
+        }
     }
 }
