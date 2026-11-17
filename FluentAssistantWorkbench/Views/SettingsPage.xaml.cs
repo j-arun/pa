@@ -169,7 +169,7 @@ public sealed partial class SettingsPage : Page
     {
         ApplyUiToConfig();
         await App.Coordinator.Speech.SpeakAsync(
-            "Windows native speaker playback is ready for your personal assistant workbench.",
+            "Windows native speaker playback is ready for Personal Assistant.",
             App.Coordinator.Config.Voice.SelectedVoiceId);
     }
 

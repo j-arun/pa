@@ -68,7 +68,7 @@ public sealed partial class MainWindow : Window
         bool onSettings = _activeTag == "settings";
         SettingsToolbarButton.Background = onSettings
             ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-            : (Brush)Application.Current.Resources["SubtleFillColorTransparentBrush"];
+            : new SolidColorBrush(Colors.Transparent);
         SettingsToolbarButton.Foreground = onSettings
             ? new SolidColorBrush(Colors.White)
             : (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];

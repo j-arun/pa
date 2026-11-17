@@ -24,7 +24,7 @@ public static class WindowsUserProfileService
                     displayName = s.Trim();
                 }
 
-                var pictureStreamRef = await activeUser.GetPictureAsync(UserPictureSize.Size108x108);
+                var pictureStreamRef = await activeUser.GetPictureAsync(UserPictureSize.Size208x208);
                 if (pictureStreamRef is not null)
                 {
                     var localDir = Path.Combine(
