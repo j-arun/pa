@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Fluent Personal Assistant Workbench">
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="54" />
             <RowDefinition Height="*" />
@@ -119,6 +119,38 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
+
+            <NavigationView.PaneFooter>
+                <Button
+                    Click="ProfileUpload_Click"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="10,8"
+                    Margin="6,0,6,8"
+                    CornerRadius="8"
+                    ToolTipService.ToolTip="Click to upload your photo">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <PersonPicture
+                            x:Name="UserAvatarPicture"
+                            Width="34"
+                            Height="34" />
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock
+                                x:Name="UserDisplayNameText"
+                                Text="Windows User"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                TextTrimming="CharacterEllipsis"
+                                MaxWidth="138" />
+                            <TextBlock
+                                Text="Upload photo"
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Button>
+            </NavigationView.PaneFooter>
 
             <Frame x:Name="ContentFrame" />
         </NavigationView>

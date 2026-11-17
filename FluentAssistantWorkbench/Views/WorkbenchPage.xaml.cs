@@ -58,6 +58,21 @@ public sealed partial class WorkbenchPage : Page
         if (string.IsNullOrWhiteSpace(text) || _isSending) return;
         _isSending = true;
         SendButton.IsEnabled = false;
+        SendSpinner.Visibility = Visibility.Visible;
+        SendSpinner.IsActive = true;
+        SendIcon.Visibility = Visibility.Collapsed;
+        SendLabel.Text = "Working...";
+
+        var cfg = App.Coordinator.Config;
+        ProcessingStatusText.Text = cfg.ActiveScope == ConversationScope.Private
+            ? $"Processing in Private Windows Ollama ({(string.IsNullOrWhiteSpace(cfg.PrivateLlm.SelectedModel) ? "no model selected" : cfg.PrivateLlm.SelectedModel)})..."
+            : $"Processing via Public Adapter ({cfg.PublicLlm.ActiveAdapter})...";
+
+        ProcessingCloudCard.Visibility = Visibility.Visible;
+        ProcessingRing.IsActive = true;
+        LadderScrollViewer.UpdateLayout();
+        LadderScrollViewer.ChangeView(null, LadderScrollViewer.ScrollableHeight, null);
+
         try
         {
             await App.Coordinator.SendMessageAsync(text, inputMode);
@@ -65,6 +80,12 @@ public sealed partial class WorkbenchPage : Page
         finally
         {
             _isSending = false;
+            ProcessingRing.IsActive = false;
+            ProcessingCloudCard.Visibility = Visibility.Collapsed;
+            SendSpinner.IsActive = false;
+            SendSpinner.Visibility = Visibility.Collapsed;
+            SendIcon.Visibility = Visibility.Visible;
+            SendLabel.Text = "Send";
             SendButton.IsEnabled = true;
         }
     }

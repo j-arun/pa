@@ -8,11 +8,14 @@ import {
   FolderOpen,
   HardDrive,
   Lock,
+  Palette,
   Play,
   RefreshCw,
   Save,
   Server,
   Trash2,
+  Upload,
+  User,
   Volume2,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -22,9 +25,11 @@ import type {
   AnyAdapterId,
   OllamaModelInfo,
   PublicAdapterId,
+  ThemeMode,
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
+import { resizeAvatarToDataUrl } from '../utils/storage';
 import { WINUI3_SKELETON_SNIPPETS } from '../utils/winui3Skeleton';
 
 interface ConfigFileInfo {
@@ -58,6 +63,7 @@ export function SettingsPage({
   onResetSettings,
 }: SettingsPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<OllamaModelInfo[]>([]);
   const [ollamaLoading, setOllamaLoading] = useState(false);
@@ -204,9 +210,131 @@ export function SettingsPage({
             Settings & LLM Adapters
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
-            Configure your Windows local Ollama Private LLM, manage separate Public LLM adapters, and tune native voice playback.
+            Choose your theme and profile photo, configure Windows Ollama Private LLM, manage Public LLM adapters, and tune native voice playback.
           </p>
         </header>
+
+        {/* Section 0: Appearance & User Profile */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              <span>Appearance & User Profile</span>
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+              Pick a Windows Fluent theme and customize your display name and profile photo.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Application Theme
+              </label>
+              <div className="inline-flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => {
+                  const isSelected = settings.theme === mode;
+                  const label =
+                    mode === 'system' ? 'System' : mode === 'light' ? 'Light' : 'Dark';
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({
+                          ...settings,
+                          theme: mode,
+                        })
+                      }
+                      className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label
+                  htmlFor="profile-display-name"
+                  className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                >
+                  Display Name
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    id="profile-display-name"
+                    type="text"
+                    value={settings.profile.displayName}
+                    onChange={(e) =>
+                      onUpdateSettings({
+                        ...settings,
+                        profile: {
+                          ...settings.profile,
+                          displayName: e.target.value,
+                        },
+                      })
+                    }
+                    placeholder="Windows user name"
+                    className="w-full pl-9 pr-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => profilePhotoInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Profile Photo</span>
+                </button>
+                {settings.profile.avatarDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateSettings({
+                        ...settings,
+                        profile: { ...settings.profile, avatarDataUrl: '' },
+                      })
+                    }
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Remove Photo
+                  </button>
+                )}
+                <input
+                  ref={profilePhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const dataUrl = await resizeAvatarToDataUrl(file);
+                      onUpdateSettings({
+                        ...settings,
+                        profile: { ...settings.profile, avatarDataUrl: dataUrl },
+                      });
+                    } catch {
+                      // Ignore invalid image
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Section 1: Private LLM (Windows Ollama) */}
         <section className="space-y-4">

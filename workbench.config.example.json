@@ -1,5 +1,9 @@
 {
-  "theme": "light",
+  "theme": "system",
+  "profile": {
+    "displayName": "Windows User",
+    "avatarDataUrl": ""
+  },
   "privateLlm": {
     "activeAdapter": "ollama",
     "ollamaBaseUrl": "http://127.0.0.1:11434",

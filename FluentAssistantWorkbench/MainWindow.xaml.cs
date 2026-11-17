@@ -1,21 +1,29 @@
 using FluentAssistantWorkbench.Models;
+using FluentAssistantWorkbench.Services;
 using FluentAssistantWorkbench.Views;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace FluentAssistantWorkbench;
 
 public sealed partial class MainWindow : Window
 {
+    public static MainWindow? CurrentWindow { get; private set; }
+
     public MainWindow()
     {
         InitializeComponent();
+        CurrentWindow = this;
         SystemBackdrop = new MicaBackdrop();
 
-        App.Coordinator.ConfigChanged += (_, _) => SyncMenuBarState();
+        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
         SyncMenuBarState();
+        _ = App.Coordinator.InitializeProfileAsync();
 
         NavView.SelectedItem = NavView.MenuItems[0];
         ContentFrame.Navigate(typeof(WorkbenchPage));
@@ -54,6 +62,53 @@ public sealed partial class MainWindow : Window
         bool autoSpeak = isPrivate ? cfg.Voice.AutoSpeakPrivate : cfg.Voice.AutoSpeakPublic;
         AutoSpeakToggleButton.IsChecked = autoSpeak;
         AutoSpeakLabel.Text = autoSpeak ? "Auto-Speak" : "Speak Off";
+
+        RootGrid.RequestedTheme = cfg.Theme switch
+        {
+            AppThemeMode.Light => ElementTheme.Light,
+            AppThemeMode.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+
+        var displayName = string.IsNullOrWhiteSpace(cfg.UserProfile.DisplayName)
+            ? Environment.UserName
+            : cfg.UserProfile.DisplayName;
+        UserDisplayNameText.Text = displayName;
+        UserAvatarPicture.DisplayName = displayName;
+
+        if (!string.IsNullOrWhiteSpace(cfg.UserProfile.AvatarPath) && File.Exists(cfg.UserProfile.AvatarPath))
+        {
+            UserAvatarPicture.ProfilePicture = new BitmapImage(new Uri(cfg.UserProfile.AvatarPath));
+        }
+        else
+        {
+            UserAvatarPicture.ProfilePicture = null;
+        }
+    }
+
+    public async Task PickAndUploadAvatarAsync()
+    {
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".png");
+        picker.FileTypeFilter.Add(".jpg");
+        picker.FileTypeFilter.Add(".jpeg");
+        picker.FileTypeFilter.Add(".bmp");
+        picker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        InitializeWithWindow.Initialize(picker, hwnd);
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        var savedPath = WindowsUserProfileService.SaveCustomAvatarCopy(file.Path);
+        App.Coordinator.Config.UserProfile.AvatarPath = savedPath;
+        App.Coordinator.SaveConfig();
+    }
+
+    private async void ProfileUpload_Click(object sender, RoutedEventArgs e)
+    {
+        await PickAndUploadAvatarAsync();
     }
 
     private void PrivateScopeButton_Click(object sender, RoutedEventArgs e)

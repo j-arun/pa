@@ -4,6 +4,7 @@ import {
   Check,
   Cloud,
   Copy,
+  Hourglass,
   Lock,
   Mic,
   MicOff,
@@ -412,8 +413,15 @@ export function WorkbenchPage({
 
           {isSending && (
             <div className="flex justify-start">
-              <div className="cloud-surface rounded-2xl rounded-bl-md border border-white/90 dark:border-slate-700/75 px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-                Routing query to {scope === 'private' ? 'Windows Ollama' : settings.publicLlm.activeAdapter}...
+              <div className="cloud-surface rounded-2xl rounded-bl-md border border-white/90 dark:border-slate-700/75 px-5 py-4 text-sm text-slate-600 dark:text-slate-300 inline-flex items-center gap-2.5">
+                <Hourglass className="w-4 h-4 text-sky-600 dark:text-sky-400 animate-spin shrink-0" />
+                <span>
+                  Processing in{' '}
+                  {scope === 'private'
+                    ? `Private Windows Ollama${settings.privateLlm.selectedModel ? ` (${settings.privateLlm.selectedModel})` : ''}`
+                    : `Public Adapter (${settings.publicLlm.activeAdapter})`}
+                  ...
+                </span>
               </div>
             </div>
           )}
@@ -521,8 +529,17 @@ export function WorkbenchPage({
               disabled={!draft.trim() || isSending}
               className="h-11 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
             >
-              <span>Send</span>
-              <ArrowUp className="w-4 h-4" />
+              {isSending ? (
+                <>
+                  <Hourglass className="w-4 h-4 animate-spin" />
+                  <span>Working</span>
+                </>
+              ) : (
+                <>
+                  <span>Send</span>
+                  <ArrowUp className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
         </div>

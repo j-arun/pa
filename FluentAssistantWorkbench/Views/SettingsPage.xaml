@@ -9,10 +9,49 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="Settings &amp; LLM Adapters" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock
-                    Text="Configure local Windows Ollama models, separate Public LLM adapters (Gemini Pro, Claude, Fable), Windows native speech, and %LOCALAPPDATA% storage."
+                    Text="Configure theme, your Windows profile, local Windows Ollama models, Public LLM adapters, and %LOCALAPPDATA% storage."
                     TextWrapping="Wrap"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
+
+            <!-- Section 0: Appearance & User Profile -->
+            <Border
+                Padding="20"
+                CornerRadius="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="Appearance &amp; Windows User Profile" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                            x:Name="ThemeCombo"
+                            Grid.Column="0"
+                            Header="Application Theme"
+                            HorizontalAlignment="Stretch"
+                            SelectionChanged="ThemeCombo_SelectionChanged">
+                            <ComboBoxItem Content="Use Windows System Theme" Tag="System" />
+                            <ComboBoxItem Content="Light" Tag="Light" />
+                            <ComboBoxItem Content="Dark" Tag="Dark" />
+                        </ComboBox>
+                        <TextBox
+                            x:Name="DisplayNameBox"
+                            Grid.Column="1"
+                            Header="Display Name"
+                            PlaceholderText="Windows logged-in user" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Upload Photo..." Click="UploadPhoto_Click" />
+                        <Button Content="Use Windows Account Picture" Click="DetectWindowsProfile_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <!-- Section 1: Private LLM (Windows Ollama) -->
             <Border

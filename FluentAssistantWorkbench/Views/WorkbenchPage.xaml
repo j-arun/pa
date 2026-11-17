@@ -163,6 +163,32 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Processing Indicator Card (Hourglass + ProgressRing) -->
+                <Border
+                    x:Name="ProcessingCloudCard"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Left"
+                    MaxWidth="520"
+                    Padding="16,12"
+                    CornerRadius="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing
+                            x:Name="ProcessingRing"
+                            IsActive="False"
+                            Width="18"
+                            Height="18" />
+                        <FontIcon Glyph="&#xE823;" FontSize="15" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <TextBlock
+                            x:Name="ProcessingStatusText"
+                            Text="Processing in Private Ollama..."
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
@@ -211,8 +237,15 @@
                     Padding="16,0"
                     CornerRadius="10">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="Send" />
-                        <FontIcon Glyph="&#xE724;" FontSize="14" />
+                        <ProgressRing
+                            x:Name="SendSpinner"
+                            Visibility="Collapsed"
+                            IsActive="False"
+                            Width="14"
+                            Height="14"
+                            Foreground="White" />
+                        <TextBlock x:Name="SendLabel" Text="Send" />
+                        <FontIcon x:Name="SendIcon" Glyph="&#xE724;" FontSize="14" />
                     </StackPanel>
                 </Button>
             </Grid>

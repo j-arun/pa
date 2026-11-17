@@ -1,4 +1,5 @@
 import {
+  Camera,
   Cloud,
   Lock,
   Mic,
@@ -26,6 +27,7 @@ import {
   loadConversation,
   loadScope,
   loadSettings,
+  resizeAvatarToDataUrl,
   saveConversation,
   saveScope,
   saveSettings,
@@ -53,8 +55,25 @@ export default function App() {
     platform: 'unknown',
   });
   const configHydratedRef = useRef(false);
+  const avatarUploadRef = useRef<HTMLInputElement | null>(null);
 
   const speech = useSpeechIO(settings.voice, isMuted);
+
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
+    media.addEventListener?.('change', onChange);
+    return () => media.removeEventListener?.('change', onChange);
+  }, []);
+
+  const isDarkActive =
+    settings.theme === 'dark' || (settings.theme === 'system' && systemPrefersDark);
 
   const reloadConfigFromFile = useCallback(async () => {
     try {
@@ -91,12 +110,12 @@ export default function App() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (settings.theme === 'dark') {
+    if (isDarkActive) {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
-  }, [settings.theme]);
+  }, [isDarkActive]);
 
   useEffect(() => {
     saveSettings(settings);
@@ -341,29 +360,68 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Local Windows Profile Footer */}
-        <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-2 py-2 flex items-center gap-3">
-          {!avatarError ? (
-            <img
-              src={USER_AVATAR_SRC}
-              alt="Local Windows user"
-              referrerPolicy="no-referrer"
-              onError={() => setAvatarError(true)}
-              className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-xs font-semibold text-slate-700 dark:text-slate-200 shrink-0">
-              LW
+        {/* Local Windows Profile Footer (Click to upload photo) */}
+        <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-1 py-1.5">
+          <button
+            type="button"
+            onClick={() => avatarUploadRef.current?.click()}
+            title="Click to upload your profile photo"
+            className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left group"
+          >
+            <div className="relative shrink-0">
+              {settings.profile.avatarDataUrl ? (
+                <img
+                  src={settings.profile.avatarDataUrl}
+                  alt={settings.profile.displayName || 'User avatar'}
+                  referrerPolicy="no-referrer"
+                  className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                />
+              ) : !avatarError ? (
+                <img
+                  src={USER_AVATAR_SRC}
+                  alt={settings.profile.displayName || 'User avatar'}
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarError(true)}
+                  className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-sky-600 text-white flex items-center justify-center text-xs font-semibold">
+                  {(settings.profile.displayName || 'U').slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 opacity-85 group-hover:opacity-100">
+                <Camera className="w-2.5 h-2.5" />
+              </span>
             </div>
-          )}
-          <div className="min-w-0">
-            <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-              Local Workstation
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
+                {settings.profile.displayName || 'Local User'}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Upload photo
+              </div>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-              Local data store
-            </div>
-          </div>
+          </button>
+          <input
+            ref={avatarUploadRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const dataUrl = await resizeAvatarToDataUrl(file);
+                setSettings((prev) => ({
+                  ...prev,
+                  profile: { ...prev.profile, avatarDataUrl: dataUrl },
+                }));
+              } catch {
+                // Ignore invalid image
+              }
+              e.target.value = '';
+            }}
+          />
         </div>
       </aside>
 
@@ -485,13 +543,13 @@ export default function App() {
               onClick={() =>
                 setSettings((prev) => ({
                   ...prev,
-                  theme: prev.theme === 'dark' ? 'light' : 'dark',
+                  theme: isDarkActive ? 'light' : 'dark',
                 }))
               }
               aria-label="Toggle light or dark theme"
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
             >
-              {settings.theme === 'dark' ? (
+              {isDarkActive ? (
                 <Sun className="w-4 h-4" />
               ) : (
                 <Moon className="w-4 h-4" />

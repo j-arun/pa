@@ -5,7 +5,11 @@ const CONVERSATION_KEY = 'fluent_paw_conversation_v1';
 const SCOPE_KEY = 'fluent_paw_scope_v1';
 
 export const DEFAULT_SETTINGS: WorkbenchSettings = {
-  theme: 'light',
+  theme: 'system',
+  profile: {
+    displayName: 'Local User',
+    avatarDataUrl: '',
+  },
   privateLlm: {
     activeAdapter: 'ollama',
     ollamaBaseUrl: 'http://127.0.0.1:11434',
@@ -55,8 +59,17 @@ export function loadSettings(): WorkbenchSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<WorkbenchSettings>;
 
+    const theme =
+      parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system'
+        ? parsed.theme
+        : 'system';
+
     return {
-      theme: parsed.theme === 'dark' ? 'dark' : 'light',
+      theme,
+      profile: {
+        ...DEFAULT_SETTINGS.profile,
+        ...(parsed.profile || {}),
+      },
       privateLlm: {
         ...DEFAULT_SETTINGS.privateLlm,
         ...(parsed.privateLlm || {}),
@@ -90,6 +103,35 @@ export function loadSettings(): WorkbenchSettings {
   } catch {
     return DEFAULT_SETTINGS;
   }
+}
+
+export async function resizeAvatarToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Invalid image format.'));
+      img.onload = () => {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(String(reader.result || ''));
+          return;
+        }
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export function saveSettings(settings: WorkbenchSettings): void {

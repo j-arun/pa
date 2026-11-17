@@ -86,8 +86,16 @@ export interface VoiceConfig {
   pitch: number;
 }
 
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+export interface UserProfileConfig {
+  displayName: string;
+  avatarDataUrl: string;
+}
+
 export interface WorkbenchSettings {
-  theme: 'light' | 'dark';
+  theme: ThemeMode;
+  profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;

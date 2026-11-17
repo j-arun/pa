@@ -3,8 +3,21 @@ import os from 'os';
 import path from 'path';
 import type { WorkbenchSettings } from '../src/types/workbench.ts';
 
+function detectOsUserName(): string {
+  try {
+    const name = os.userInfo().username;
+    return name || process.env.USERNAME || process.env.USER || 'Local User';
+  } catch {
+    return process.env.USERNAME || process.env.USER || 'Local User';
+  }
+}
+
 export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
-  theme: 'light',
+  theme: 'system',
+  profile: {
+    displayName: detectOsUserName(),
+    avatarDataUrl: '',
+  },
   privateLlm: {
     activeAdapter: 'ollama',
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
@@ -70,8 +83,18 @@ export function mergeConfigWithDefaults(
   raw: Partial<WorkbenchSettings> | null | undefined,
 ): WorkbenchSettings {
   const parsed = raw || {};
+  const theme =
+    parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system'
+      ? parsed.theme
+      : 'system';
+
   return {
-    theme: parsed.theme === 'dark' ? 'dark' : 'light',
+    theme,
+    profile: {
+      ...DEFAULT_WORKBENCH_CONFIG.profile,
+      ...(parsed.profile || {}),
+      displayName: parsed.profile?.displayName?.trim() || DEFAULT_WORKBENCH_CONFIG.profile.displayName,
+    },
     privateLlm: {
       ...DEFAULT_WORKBENCH_CONFIG.privateLlm,
       ...(parsed.privateLlm || {}),

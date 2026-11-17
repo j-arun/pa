@@ -1,4 +1,5 @@
 using FluentAssistantWorkbench.Models;
+using FluentAssistantWorkbench.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -6,6 +7,8 @@ namespace FluentAssistantWorkbench.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    private bool _isLoading;
+
     public SettingsPage()
     {
         InitializeComponent();
@@ -14,11 +17,24 @@ public sealed partial class SettingsPage : Page
 
     private void LoadFromCoordinator()
     {
-        var cfg = App.Coordinator.Config;
+        _isLoading = true;
+        try
+        {
+            var cfg = App.Coordinator.Config;
 
-        OllamaUrlBox.Text = cfg.PrivateLlm.OllamaBaseUrl;
-        OllamaModelBox.Text = cfg.PrivateLlm.SelectedModel;
-        PrivateSystemBox.Text = cfg.PrivateLlm.SystemInstruction;
+            foreach (ComboBoxItem item in ThemeCombo.Items)
+            {
+                if (string.Equals(item.Tag?.ToString(), cfg.Theme.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
+                    ThemeCombo.SelectedItem = item;
+                    break;
+                }
+            }
+            DisplayNameBox.Text = cfg.UserProfile.DisplayName;
+
+            OllamaUrlBox.Text = cfg.PrivateLlm.OllamaBaseUrl;
+            OllamaModelBox.Text = cfg.PrivateLlm.SelectedModel;
+            PrivateSystemBox.Text = cfg.PrivateLlm.SystemInstruction;
 
         foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
         {
@@ -56,12 +72,24 @@ public sealed partial class SettingsPage : Page
         AutoSpeakPublicCheck.IsChecked = cfg.Voice.AutoSpeakPublic;
         AutoSpeakPrivateCheck.IsChecked = cfg.Voice.AutoSpeakPrivate;
 
-        StoragePathText.Text = $"Local Config File: {App.Coordinator.ConfigStore.ConfigFilePath}";
+            StoragePathText.Text = $"Local Config File: {App.Coordinator.ConfigStore.ConfigFilePath}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     private void ApplyUiToConfig()
     {
         var cfg = App.Coordinator.Config;
+
+        if (ThemeCombo.SelectedItem is ComboBoxItem themeItem &&
+            Enum.TryParse<AppThemeMode>(themeItem.Tag?.ToString(), out var parsedTheme))
+        {
+            cfg.Theme = parsedTheme;
+        }
+        cfg.UserProfile.DisplayName = DisplayNameBox.Text.Trim();
 
         cfg.PrivateLlm.OllamaBaseUrl = OllamaUrlBox.Text.Trim();
         cfg.PrivateLlm.SelectedModel = OllamaModelBox.Text.Trim();
@@ -163,5 +191,37 @@ public sealed partial class SettingsPage : Page
     {
         App.Coordinator.ClearHistory();
         SaveFeedbackText.Text = "Cleared local conversation history.";
+    }
+
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoading) return;
+        ApplyUiToConfig();
+        App.Coordinator.SaveConfig();
+    }
+
+    private async void UploadPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        if (MainWindow.CurrentWindow is not null)
+        {
+            await MainWindow.CurrentWindow.PickAndUploadAvatarAsync();
+            SaveFeedbackText.Text = "Updated user profile photo.";
+        }
+    }
+
+    private async void DetectWindowsProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var (name, avatar) = await WindowsUserProfileService.DetectLoggedInUserAsync();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            App.Coordinator.Config.UserProfile.DisplayName = name;
+            DisplayNameBox.Text = name;
+        }
+        if (!string.IsNullOrWhiteSpace(avatar))
+        {
+            App.Coordinator.Config.UserProfile.AvatarPath = avatar;
+        }
+        App.Coordinator.SaveConfig();
+        SaveFeedbackText.Text = "Synced profile from Windows logged-in user.";
     }
 }

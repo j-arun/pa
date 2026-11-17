@@ -26,6 +26,34 @@ public sealed class WorkbenchCoordinator
         }
     }
 
+    public async Task InitializeProfileAsync()
+    {
+        bool needsName = string.IsNullOrWhiteSpace(Config.UserProfile.DisplayName);
+        bool needsAvatar = string.IsNullOrWhiteSpace(Config.UserProfile.AvatarPath)
+                           || !File.Exists(Config.UserProfile.AvatarPath);
+
+        if (!needsName && !needsAvatar) return;
+
+        var (detectedName, detectedAvatar) = await WindowsUserProfileService.DetectLoggedInUserAsync();
+        bool changed = false;
+
+        if (needsName && !string.IsNullOrWhiteSpace(detectedName))
+        {
+            Config.UserProfile.DisplayName = detectedName;
+            changed = true;
+        }
+        if (needsAvatar && !string.IsNullOrWhiteSpace(detectedAvatar))
+        {
+            Config.UserProfile.AvatarPath = detectedAvatar;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            SaveConfig();
+        }
+    }
+
     public void ReloadConfig()
     {
         Config = ConfigStore.LoadConfig();

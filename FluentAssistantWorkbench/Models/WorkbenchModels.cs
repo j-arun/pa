@@ -121,6 +121,20 @@ public sealed class PublicLlmConfig
     };
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AppThemeMode
+{
+    System,
+    Light,
+    Dark
+}
+
+public sealed class UserProfileConfig
+{
+    public string DisplayName { get; set; } = Environment.UserName;
+    public string AvatarPath { get; set; } = string.Empty;
+}
+
 public sealed class VoiceConfig
 {
     public bool AutoSpeakPublic { get; set; }
@@ -130,7 +144,9 @@ public sealed class VoiceConfig
 
 public sealed class WorkbenchConfig
 {
+    public AppThemeMode Theme { get; set; } = AppThemeMode.System;
     public ConversationScope ActiveScope { get; set; } = ConversationScope.Private;
+    public UserProfileConfig UserProfile { get; set; } = new();
     public PrivateLlmConfig PrivateLlm { get; set; } = new();
     public PublicLlmConfig PublicLlm { get; set; } = new();
     public VoiceConfig Voice { get; set; } = new();
