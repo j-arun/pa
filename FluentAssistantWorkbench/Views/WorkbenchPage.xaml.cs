@@ -15,6 +15,7 @@ public sealed partial class WorkbenchPage : Page
 {
     private bool _isListening;
     private bool _isSending;
+    private bool _isNearBottom = true;
     private CancellationTokenSource? _listenCts;
     private string _pendingSettingsUri = "ms-settings:privacy-speech";
 
@@ -22,15 +23,22 @@ public sealed partial class WorkbenchPage : Page
     {
         InitializeComponent();
         ConversationItemsControl.ItemsSource = App.Coordinator.Exchanges;
-        App.Coordinator.Exchanges.CollectionChanged += (_, _) => DispatcherQueue.TryEnqueue(OnExchangesChanged);
+        App.Coordinator.Exchanges.CollectionChanged += (_, _) =>
+            DispatcherQueue.TryEnqueue(() => OnExchangesChanged(scrollToBottom: true));
+        LadderScrollViewer.ViewChanged += (_, _) =>
+        {
+            _isNearBottom =
+                LadderScrollViewer.ScrollableHeight - LadderScrollViewer.VerticalOffset <= 48;
+        };
         App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplyFontFromConfig);
         Loaded += (_, _) =>
         {
             AmbientMistStoryboard.Begin();
             ApplyFontFromConfig();
+            DispatcherQueue.TryEnqueue(ScrollToBottom);
         };
         ApplyFontFromConfig();
-        OnExchangesChanged();
+        OnExchangesChanged(scrollToBottom: false);
     }
 
     private void ApplyFontFromConfig()
@@ -41,13 +49,34 @@ public sealed partial class WorkbenchPage : Page
         PromptTextBox.FontFamily = family;
     }
 
-    private void OnExchangesChanged()
+    public void ClearPrompt()
+    {
+        PromptTextBox.Text = string.Empty;
+    }
+
+    public void SelectPromptText()
+    {
+        PromptTextBox.Focus(FocusState.Programmatic);
+        PromptTextBox.SelectAll();
+    }
+
+    private void OnExchangesChanged(bool scrollToBottom)
     {
         EmptyCloudCard.Visibility = App.Coordinator.Exchanges.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
         LadderScrollViewer.UpdateLayout();
-        LadderScrollViewer.ChangeView(null, LadderScrollViewer.ScrollableHeight, null);
+        if (scrollToBottom)
+        {
+            ScrollToBottom();
+        }
+    }
+
+    private void ScrollToBottom()
+    {
+        LadderScrollViewer.UpdateLayout();
+        LadderScrollViewer.ChangeView(null, LadderScrollViewer.ScrollableHeight, null, disableAnimation: true);
+        _isNearBottom = true;
     }
 
     private async Task DispatchPromptAsync(string text, string inputMode)
@@ -58,10 +87,8 @@ public sealed partial class WorkbenchPage : Page
         SendSpinner.Visibility = Visibility.Visible;
         SendSpinner.IsActive = true;
         SendIcon.Visibility = Visibility.Collapsed;
-        SendLabel.Text = "Working...";
 
-        LadderScrollViewer.UpdateLayout();
-        LadderScrollViewer.ChangeView(null, LadderScrollViewer.ScrollableHeight, null);
+        ScrollToBottom();
 
         try
         {
@@ -73,9 +100,9 @@ public sealed partial class WorkbenchPage : Page
             SendSpinner.IsActive = false;
             SendSpinner.Visibility = Visibility.Collapsed;
             SendIcon.Visibility = Visibility.Visible;
-            SendLabel.Text = "Send";
             SendButton.IsEnabled = true;
-            DispatcherQueue.TryEnqueue(OnExchangesChanged);
+            var shouldScrollToBottom = _isNearBottom;
+            DispatcherQueue.TryEnqueue(() => OnExchangesChanged(shouldScrollToBottom));
         }
     }
 
@@ -204,7 +231,7 @@ public sealed partial class WorkbenchPage : Page
         }
     }
 
-    private async void SavePdfButton_Click(object sender, RoutedEventArgs e)
+    public async Task SaveConversationPdfAsync()
     {
         if (App.Coordinator.Exchanges.Count == 0)
         {
@@ -253,8 +280,4 @@ public sealed partial class WorkbenchPage : Page
         }
     }
 
-    private void NewSession_Click(object sender, RoutedEventArgs e)
-    {
-        App.Coordinator.ClearHistory();
-    }
 }

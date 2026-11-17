@@ -115,7 +115,9 @@ public sealed class WorkbenchCoordinator
 
     public void SetScope(ConversationScope scope)
     {
-        if (Config.ActiveScope == scope) return;
+        var usePublicOverride = scope == ConversationScope.Public;
+        if (Config.UsePublicLlmOverride == usePublicOverride && Config.ActiveScope == scope) return;
+        Config.UsePublicLlmOverride = usePublicOverride;
         Config.ActiveScope = scope;
         SaveConfig();
     }
@@ -180,8 +182,9 @@ public sealed class WorkbenchCoordinator
         string inputMode,
         CancellationToken ct = default)
     {
+        var activeScope = Config.EffectiveScope;
         var adapter = Adapters.Resolve(Config);
-        var model = Config.ActiveScope == ConversationScope.Private
+        var model = activeScope == ConversationScope.Private
             ? Config.PrivateLlm.SelectedModel
             : Config.PublicLlm.ActiveAdapter switch
             {
@@ -196,7 +199,7 @@ public sealed class WorkbenchCoordinator
             Role = "user",
             Content = trimmedMessage,
             InputMode = inputMode,
-            Scope = Config.ActiveScope,
+            Scope = activeScope,
             AdapterId = adapter.AdapterId,
             Model = model
         };
@@ -206,7 +209,7 @@ public sealed class WorkbenchCoordinator
             Id = userTurn.Id,
             QuestionContent = trimmedMessage,
             QuestionTimestamp = userTurn.Timestamp,
-            Scope = Config.ActiveScope,
+            Scope = activeScope,
             IsWaitingReply = true
         };
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily);
@@ -316,7 +319,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "error",
                 Content = errMsg,
-                Scope = Config.ActiveScope,
+                Scope = activeScope,
                 AdapterId = adapter.AdapterId,
                 Model = model
             };
@@ -343,7 +346,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "error",
                 Content = ex.Message,
-                Scope = Config.ActiveScope,
+                Scope = activeScope,
                 AdapterId = adapter.AdapterId,
                 Model = model
             };

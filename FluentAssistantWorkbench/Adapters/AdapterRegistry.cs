@@ -12,7 +12,7 @@ public sealed class AdapterRegistry
 
     public ILlmAdapter Resolve(WorkbenchConfig config)
     {
-        if (config.ActiveScope == ConversationScope.Private)
+        if (config.EffectiveScope == ConversationScope.Private)
         {
             return Ollama;
         }

@@ -348,7 +348,13 @@ public sealed class WorkbenchConfig
 {
     public AppThemeMode Theme { get; set; } = AppThemeMode.ArcticSky;
     public AppFontFamily FontFamily { get; set; } = AppFontFamily.SegoeUI;
+    public bool UsePublicLlmOverride { get; set; }
     public ConversationScope ActiveScope { get; set; } = ConversationScope.Private;
+
+    [JsonIgnore]
+    public ConversationScope EffectiveScope =>
+        UsePublicLlmOverride ? ConversationScope.Public : ConversationScope.Private;
+
     public UserProfileConfig UserProfile { get; set; } = new();
     public PrivateLlmConfig PrivateLlm { get; set; } = new();
     public PublicLlmConfig PublicLlm { get; set; } = new();

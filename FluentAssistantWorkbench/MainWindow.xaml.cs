@@ -88,16 +88,18 @@ public sealed partial class MainWindow : Window
                 App.Coordinator.ClearHistory();
                 NavigateToWorkbench();
             },
-            onExit: () =>
-            {
-                _isExiting = true;
-                _trayIcon?.Dispose();
-                if (Application.Current is App app)
-                {
-                    app.ShutdownInstanceResources();
-                }
-                Close();
-            });
+            onExit: ExitApplication);
+    }
+
+    private void ExitApplication()
+    {
+        _isExiting = true;
+        _trayIcon?.Dispose();
+        if (Application.Current is App app)
+        {
+            app.ShutdownInstanceResources();
+        }
+        Close();
     }
 
     public void HideToTray()
@@ -214,32 +216,17 @@ public sealed partial class MainWindow : Window
     private void SyncMenuBarState()
     {
         var cfg = App.Coordinator.Config;
-        bool isPrivate = cfg.ActiveScope == ConversationScope.Private;
+        bool isPrivate = cfg.EffectiveScope == ConversationScope.Private;
         var accentBrush = new SolidColorBrush(GetThemeAccentColor(cfg.Theme));
 
-        PrivateScopeButton.Background = isPrivate
-            ? accentBrush
-            : new SolidColorBrush(Colors.Transparent);
-        PrivateScopeButton.Foreground = isPrivate
-            ? new SolidColorBrush(Colors.White)
-            : GetPrimaryTextBrush();
-
-        PublicScopeButton.Background = !isPrivate
-            ? accentBrush
-            : new SolidColorBrush(Colors.Transparent);
-        PublicScopeButton.Foreground = !isPrivate
-            ? new SolidColorBrush(Colors.White)
-            : GetPrimaryTextBrush();
-
         bool isMuted = App.Coordinator.IsMuted;
-        MuteToggleButton.IsChecked = isMuted;
-        MuteIcon.Glyph = isMuted ? "\uEC54" : "\uE720";
-        ToolTipService.SetToolTip(MuteToggleButton, isMuted ? "Microphone Muted (click to unmute)" : "Microphone On (click to mute)");
+        MicrophoneMenuItem.IsChecked = isMuted;
+        MicrophoneMenuItem.Text = isMuted ? "Microphone: Muted" : "Microphone: On";
+        ViewContextMonitorMenuItem.IsChecked = ContextMonitorToggleButton.IsChecked == true;
 
         bool autoSpeak = isPrivate ? cfg.Voice.AutoSpeakPrivate : cfg.Voice.AutoSpeakPublic;
-        AutoSpeakToggleButton.IsChecked = autoSpeak;
-        AutoSpeakIcon.Glyph = autoSpeak ? "\uE767" : "\uE74F";
-        ToolTipService.SetToolTip(AutoSpeakToggleButton, autoSpeak ? "Windows Speaker Auto-Speak On" : "Windows Speaker Off");
+        AutoSpeakMenuItem.IsChecked = autoSpeak;
+        AutoSpeakMenuItem.Text = autoSpeak ? "Windows Speaker: On" : "Windows Speaker: Off";
 
         if (isPrivate)
         {
@@ -451,6 +438,19 @@ public sealed partial class MainWindow : Window
     private void ContextMonitorToggleButton_Click(object sender, RoutedEventArgs e)
     {
         bool show = ContextMonitorToggleButton.IsChecked == true;
+        ViewContextMonitorMenuItem.IsChecked = show;
+        SetContextMonitorVisibility(show);
+    }
+
+    private void ViewContextMonitorMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = ViewContextMonitorMenuItem.IsChecked;
+        ContextMonitorToggleButton.IsChecked = show;
+        SetContextMonitorVisibility(show);
+    }
+
+    private void SetContextMonitorVisibility(bool show)
+    {
         RightContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         RightPaneSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         RightSplitterColumn.Width = show ? new GridLength(6) : new GridLength(0);
@@ -476,27 +476,17 @@ public sealed partial class MainWindow : Window
         await SyncWindowsAccountProfileAsync();
     }
 
-    private void PrivateScopeButton_Click(object sender, RoutedEventArgs e)
+    private void MicrophoneMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        App.Coordinator.SetScope(ConversationScope.Private);
-    }
-
-    private void PublicScopeButton_Click(object sender, RoutedEventArgs e)
-    {
-        App.Coordinator.SetScope(ConversationScope.Public);
-    }
-
-    private void MuteToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        App.Coordinator.IsMuted = MuteToggleButton.IsChecked == true;
+        App.Coordinator.IsMuted = MicrophoneMenuItem.IsChecked;
         SyncMenuBarState();
     }
 
-    private void AutoSpeakToggleButton_Click(object sender, RoutedEventArgs e)
+    private void AutoSpeakMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var cfg = App.Coordinator.Config;
-        bool enabled = AutoSpeakToggleButton.IsChecked == true;
-        if (cfg.ActiveScope == ConversationScope.Private)
+        bool enabled = AutoSpeakMenuItem.IsChecked;
+        if (cfg.EffectiveScope == ConversationScope.Private)
         {
             cfg.Voice.AutoSpeakPrivate = enabled;
         }
@@ -507,7 +497,7 @@ public sealed partial class MainWindow : Window
         App.Coordinator.SaveConfig();
     }
 
-    private void StopSpeakerButton_Click(object sender, RoutedEventArgs e)
+    private void StopSpeakerMenuItem_Click(object sender, RoutedEventArgs e)
     {
         App.Coordinator.Speech.StopSpeaking();
     }
@@ -524,12 +514,56 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void SavePdfToolbarButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.Content is WorkbenchPage page)
+        {
+            await page.SaveConversationPdfAsync();
+        }
+    }
+
+    private void NewSessionToolbarButton_Click(object sender, RoutedEventArgs e)
+    {
+        App.Coordinator.ClearHistory();
+    }
+
+    private void OpenPersonalAssistant_Click(object sender, RoutedEventArgs e)
+    {
+        NavigateToWorkbench();
+    }
+
+    private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        ExitApplication();
+    }
+
+    private void ClearPromptMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.Content is WorkbenchPage page)
+        {
+            page.ClearPrompt();
+        }
+    }
+
+    private void SelectPromptMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContentFrame.Content is WorkbenchPage page)
+        {
+            page.SelectPromptText();
+        }
+    }
+
+    private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsToolbarButton_Click(sender, e);
+    }
+
     private void ApplySettings_Click(object sender, RoutedEventArgs e)
     {
         if (SettingsModalFrame.Content is SettingsPage page)
         {
             page.ApplyAndSave();
-            SettingsModalFeedbackText.Text = $"Applied at {DateTime.Now:t}";
+            SettingsModalFeedbackText.Text = string.Empty;
         }
     }
 

@@ -25,7 +25,7 @@ public sealed partial class SettingsPage : Page
     {
         ApplyUiToConfig();
         App.Coordinator.SaveConfig();
-        SaveFeedbackText.Text = $"Saved to {App.Coordinator.ConfigStore.ConfigFilePath} at {DateTime.Now:t}";
+        SaveFeedbackText.Text = string.Empty;
     }
 
     private void LoadFromCoordinator()
@@ -66,15 +66,15 @@ public sealed partial class SettingsPage : Page
             SelectComboByTag(OllamaKeepAliveCombo, cfg.PrivateLlm.KeepAlive, "10m");
             SelectComboByTag(OllamaHistoryCombo, cfg.PrivateLlm.MaxHistoryTurns.ToString(), "16");
             SelectComboByTag(RequestTimeoutCombo, cfg.RequestTimeoutSeconds.ToString(), "0");
+            UsePublicLlmOverrideCheck.IsChecked = cfg.UsePublicLlmOverride;
 
-            foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
-            {
-                if (string.Equals(item.Tag?.ToString(), cfg.PublicLlm.ActiveAdapter, StringComparison.OrdinalIgnoreCase))
-                {
-                    ActivePublicAdapterCombo.SelectedItem = item;
-                    break;
-                }
-            }
+            GeminiAdapterCheck.IsChecked =
+                !string.Equals(cfg.PublicLlm.ActiveAdapter, "claude", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(cfg.PublicLlm.ActiveAdapter, "fable", StringComparison.OrdinalIgnoreCase);
+            ClaudeAdapterCheck.IsChecked =
+                string.Equals(cfg.PublicLlm.ActiveAdapter, "claude", StringComparison.OrdinalIgnoreCase);
+            FableAdapterCheck.IsChecked =
+                string.Equals(cfg.PublicLlm.ActiveAdapter, "fable", StringComparison.OrdinalIgnoreCase);
 
             GeminiModelBox.Text = cfg.PublicLlm.Gemini.Model;
             GeminiKeyBox.Password = cfg.PublicLlm.Gemini.ApiKey;
@@ -153,11 +153,13 @@ public sealed partial class SettingsPage : Page
             cfg.RequestTimeoutSeconds = Math.Max(0, parsedTimeout);
         }
 
-        if (ActivePublicAdapterCombo.SelectedItem is ComboBoxItem selectedAdapter &&
-            selectedAdapter.Tag is string tag)
-        {
-            cfg.PublicLlm.ActiveAdapter = tag;
-        }
+        cfg.PublicLlm.ActiveAdapter = GeminiAdapterCheck.IsChecked == true
+            ? "gemini"
+            : ClaudeAdapterCheck.IsChecked == true
+                ? "claude"
+                : "fable";
+        cfg.UsePublicLlmOverride = UsePublicLlmOverrideCheck.IsChecked == true;
+        cfg.ActiveScope = cfg.EffectiveScope;
 
         cfg.PublicLlm.Gemini.Model = GeminiModelBox.Text.Trim();
         cfg.PublicLlm.Gemini.ApiKey = GeminiKeyBox.Password.Trim();
@@ -208,6 +210,24 @@ public sealed partial class SettingsPage : Page
         if (OllamaModelsList.SelectedItem is OllamaModelInfo model)
         {
             OllamaModelBox.Text = model.Name;
+        }
+    }
+
+    private void PublicAdapterCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading || sender is not CheckBox selectedAdapter) return;
+
+        if (selectedAdapter.IsChecked == true)
+        {
+            if (selectedAdapter != GeminiAdapterCheck) GeminiAdapterCheck.IsChecked = false;
+            if (selectedAdapter != ClaudeAdapterCheck) ClaudeAdapterCheck.IsChecked = false;
+            if (selectedAdapter != FableAdapterCheck) FableAdapterCheck.IsChecked = false;
+        }
+        else if (GeminiAdapterCheck.IsChecked != true &&
+                 ClaudeAdapterCheck.IsChecked != true &&
+                 FableAdapterCheck.IsChecked != true)
+        {
+            selectedAdapter.IsChecked = true;
         }
     }
 

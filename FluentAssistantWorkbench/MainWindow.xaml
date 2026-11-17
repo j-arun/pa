@@ -9,8 +9,9 @@
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="54" />
+            <RowDefinition Height="32" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="6" />
+            <RowDefinition Height="10" />
             <RowDefinition x:Name="BottomStatusRow" Height="30" />
         </Grid.RowDefinitions>
 
@@ -27,8 +28,12 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Zone 1: App Icon & Title -->
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="10">
+            <!-- App Icon & Title -->
+            <StackPanel
+                Grid.Column="0"
+                Orientation="Horizontal"
+                VerticalAlignment="Center"
+                Spacing="10">
                 <Image
                     x:Name="TopBarAppIcon"
                     Width="22"
@@ -40,74 +45,12 @@
                     VerticalAlignment="Center" />
             </StackPanel>
 
-            <!-- Zone 2: Private / Public Toggle in Top Menu Bar -->
-            <Border
-                Grid.Column="1"
-                Padding="4"
-                CornerRadius="8"
-                VerticalAlignment="Center"
-                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                BorderThickness="1">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Button
-                        x:Name="PrivateScopeButton"
-                        Content="Private"
-                        Click="PrivateScopeButton_Click"
-                        Padding="14,5"
-                        CornerRadius="6" />
-                    <Button
-                        x:Name="PublicScopeButton"
-                        Content="Public"
-                        Click="PublicScopeButton_Click"
-                        Padding="14,5"
-                        CornerRadius="6" />
-                </StackPanel>
-            </Border>
-
-            <!-- Zone 3: Icon-Only Mic, Speaker & Settings Toolbar Controls -->
+            <!-- Centered Utilities, Settings, Save and New Session actions -->
             <StackPanel
-                Grid.Column="2"
+                Grid.Column="1"
                 Orientation="Horizontal"
-                HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Spacing="6">
-                <ToggleButton
-                    x:Name="MuteToggleButton"
-                    Click="MuteToggleButton_Click"
-                    ToolTipService.ToolTip="Toggle Microphone"
-                    AutomationProperties.Name="Toggle Microphone"
-                    Width="36"
-                    Height="34"
-                    Padding="0"
-                    CornerRadius="6">
-                    <FontIcon x:Name="MuteIcon" Glyph="&#xE720;" FontSize="15" />
-                </ToggleButton>
-
-                <ToggleButton
-                    x:Name="AutoSpeakToggleButton"
-                    Click="AutoSpeakToggleButton_Click"
-                    ToolTipService.ToolTip="Toggle Windows Speaker"
-                    AutomationProperties.Name="Toggle Windows Speaker"
-                    Width="36"
-                    Height="34"
-                    Padding="0"
-                    CornerRadius="6">
-                    <FontIcon x:Name="AutoSpeakIcon" Glyph="&#xE767;" FontSize="15" />
-                </ToggleButton>
-
-                <Button
-                    x:Name="StopSpeakerButton"
-                    Click="StopSpeakerButton_Click"
-                    ToolTipService.ToolTip="Stop Windows Speaker"
-                    AutomationProperties.Name="Stop Windows Speaker"
-                    Width="36"
-                    Height="34"
-                    Padding="0"
-                    CornerRadius="6">
-                    <FontIcon Glyph="&#xE71A;" FontSize="14" />
-                </Button>
-
                 <Button
                     x:Name="SettingsToolbarButton"
                     Click="SettingsToolbarButton_Click"
@@ -120,23 +63,96 @@
                     <FontIcon Glyph="&#xE713;" FontSize="15" />
                 </Button>
 
-                <ToggleButton
-                    x:Name="ContextMonitorToggleButton"
-                    IsChecked="True"
-                    Click="ContextMonitorToggleButton_Click"
-                    ToolTipService.ToolTip="Toggle Right LLM Context Monitor"
-                    AutomationProperties.Name="Toggle Right LLM Context Monitor"
+                <Button
+                    x:Name="SavePdfToolbarButton"
+                    Click="SavePdfToolbarButton_Click"
+                    ToolTipService.ToolTip="Save Conversation as PDF"
+                    AutomationProperties.Name="Save Conversation as PDF"
                     Width="36"
                     Height="34"
                     Padding="0"
                     CornerRadius="6">
-                    <FontIcon Glyph="&#xE9D9;" FontSize="15" />
-                </ToggleButton>
+                    <FontIcon Glyph="&#xEA90;" FontSize="15" />
+                </Button>
+
+                <Button
+                    x:Name="NewSessionToolbarButton"
+                    Click="NewSessionToolbarButton_Click"
+                    ToolTipService.ToolTip="New Session"
+                    AutomationProperties.Name="New Session"
+                    Width="36"
+                    Height="34"
+                    Padding="0"
+                    CornerRadius="6">
+                    <FontIcon Glyph="&#xE72C;" FontSize="15" />
+                </Button>
             </StackPanel>
+
+            <!-- LLM Context Monitor toggle at the far right -->
+            <ToggleButton
+                x:Name="ContextMonitorToggleButton"
+                Grid.Column="2"
+                IsChecked="True"
+                Click="ContextMonitorToggleButton_Click"
+                ToolTipService.ToolTip="Toggle Right LLM Context Monitor"
+                AutomationProperties.Name="Toggle Right LLM Context Monitor"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                Width="36"
+                Height="34"
+                Padding="0"
+                CornerRadius="6">
+                <FontIcon Glyph="&#xE9D9;" FontSize="15" />
+            </ToggleButton>
         </Grid>
 
+        <MenuBar Grid.Row="1" Height="32">
+            <MenuBarItem Title="File">
+                <MenuFlyoutItem
+                    Text="Personal Assistant Version 2"
+                    Click="OpenPersonalAssistant_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem
+                    Text="Save Conversation as PDF"
+                    Click="SavePdfToolbarButton_Click" />
+                <MenuFlyoutItem
+                    Text="New Session"
+                    Click="NewSessionToolbarButton_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Exit" Click="ExitMenuItem_Click" />
+            </MenuBarItem>
+            <MenuBarItem Title="Edit">
+                <MenuFlyoutItem Text="Clear Prompt" Click="ClearPromptMenuItem_Click" />
+            </MenuBarItem>
+            <MenuBarItem Title="Selection">
+                <MenuFlyoutItem Text="Select Prompt Text" Click="SelectPromptMenuItem_Click" />
+            </MenuBarItem>
+            <MenuBarItem Title="View">
+                <MenuFlyoutItem Text="Settings" Click="SettingsMenuItem_Click" />
+                <ToggleMenuFlyoutItem
+                    x:Name="ViewContextMonitorMenuItem"
+                    Text="LLM Context Monitor"
+                    IsChecked="True"
+                    Click="ViewContextMonitorMenuItem_Click" />
+            </MenuBarItem>
+            <MenuBarItem Title="Utilities">
+                <ToggleMenuFlyoutItem
+                    x:Name="MicrophoneMenuItem"
+                    Text="Microphone: On"
+                    Click="MicrophoneMenuItem_Click" />
+                <ToggleMenuFlyoutItem
+                    x:Name="AutoSpeakMenuItem"
+                    Text="Windows Speaker: Off"
+                    Click="AutoSpeakMenuItem_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem
+                    Text="Stop Windows Speaker"
+                    Click="StopSpeakerMenuItem_Click" />
+            </MenuBarItem>
+        </MenuBar>
+
         <!-- Main Workspace: Left Nav + Chat + Adjustable Splitters + Read-Only Right Context Monitor -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition x:Name="RightSplitterColumn" Width="6" />
@@ -423,11 +439,11 @@
         <!-- Bottom Panel Drag Resizer -->
         <controls:PaneSplitter
             x:Name="BottomPaneSplitter"
-            Grid.Row="2"
-            Height="6"
+            Grid.Row="3"
+            Height="10"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="0,1,0,0"
+            BorderThickness="0,1,0,1"
             ResizeDirection="Horizontal"
             DragStarted="BottomPaneSplitter_DragStarted"
             DragDelta="BottomPaneSplitter_DragDelta"
@@ -435,7 +451,7 @@
 
         <!-- Bottom Panel Status Bar (Engine + Live LLM Stats) -->
         <Grid
-            Grid.Row="3"
+            Grid.Row="4"
             Padding="14,4"
             Background="{ThemeResource LayerFillColorDefaultBrush}">
             <Grid.RowDefinitions>
@@ -508,7 +524,7 @@
         <!-- Compact Settings Modal Dialog -->
         <Grid
             x:Name="SettingsModalOverlay"
-            Grid.RowSpan="4"
+            Grid.RowSpan="5"
             Visibility="Collapsed"
             Background="#7A000000"
             Padding="24">

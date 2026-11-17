@@ -78,8 +78,8 @@ public sealed class PaneSplitter : Grid
         else
         {
             // Horizontal splitter divider: dragged Up/Down
-            _gripBar.Width = 44;
-            _gripBar.Height = 3;
+            _gripBar.Width = 64;
+            _gripBar.Height = 4;
             ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeNorthSouth);
         }
     }
@@ -96,7 +96,7 @@ public sealed class PaneSplitter : Grid
         }
         else
         {
-            _gripBar.Background = new SolidColorBrush(ColorHelper.FromArgb(90, 148, 163, 184));
+            _gripBar.Background = new SolidColorBrush(ColorHelper.FromArgb(150, 148, 163, 184));
         }
     }
 

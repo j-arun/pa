@@ -177,21 +177,26 @@
                 <StackPanel Spacing="16">
                     <TextBlock Text="Public LLM Adapters" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                    <ComboBox
-                        x:Name="ActivePublicAdapterCombo"
-                        Header="Active Public Adapter"
-                        Width="260">
-                        <ComboBoxItem Content="Gemini Pro" Tag="gemini" />
-                        <ComboBoxItem Content="Claude (Anthropic)" Tag="claude" />
-                        <ComboBoxItem Content="Fable" Tag="fable" />
-                    </ComboBox>
+                    <CheckBox
+                        x:Name="UsePublicLlmOverrideCheck"
+                        Content="Override private LLM and use the selected public adapter"
+                        ToolTipService.ToolTip="When enabled, requests use the adapter selected above instead of Windows Ollama." />
 
                     <!-- Gemini Pro Adapter -->
                     <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <StackPanel Spacing="8">
                             <Grid>
-                                <TextBlock Text="Gemini Pro Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Button Content="Test Gemini" Tag="gemini" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox
+                                    x:Name="GeminiAdapterCheck"
+                                    Content="Gemini Pro Adapter"
+                                    Checked="PublicAdapterCheck_Changed"
+                                    Unchecked="PublicAdapterCheck_Changed"
+                                    VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Test Gemini" Tag="gemini" Click="TestAdapter_Click" />
                             </Grid>
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -209,8 +214,17 @@
                     <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <StackPanel Spacing="8">
                             <Grid>
-                                <TextBlock Text="Claude Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Button Content="Test Claude" Tag="claude" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox
+                                    x:Name="ClaudeAdapterCheck"
+                                    Content="Claude Adapter"
+                                    Checked="PublicAdapterCheck_Changed"
+                                    Unchecked="PublicAdapterCheck_Changed"
+                                    VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Test Claude" Tag="claude" Click="TestAdapter_Click" />
                             </Grid>
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -228,8 +242,17 @@
                     <Border Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}">
                         <StackPanel Spacing="8">
                             <Grid>
-                                <TextBlock Text="Fable Adapter" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Button Content="Test Fable" Tag="fable" Click="TestAdapter_Click" HorizontalAlignment="Right" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox
+                                    x:Name="FableAdapterCheck"
+                                    Content="Fable Adapter"
+                                    Checked="PublicAdapterCheck_Changed"
+                                    Unchecked="PublicAdapterCheck_Changed"
+                                    VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Test Fable" Tag="fable" Click="TestAdapter_Click" />
                             </Grid>
                             <Grid ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
