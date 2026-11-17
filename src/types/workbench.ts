@@ -63,6 +63,7 @@ export interface PrivateLlmConfig {
   systemInstruction: string;
   contextWindow: number;
   keepAlive: string;
+  maxHistoryTurns: number;
 }
 
 export interface PublicAdapterConfig {

@@ -94,10 +94,17 @@ public sealed class OllamaAdapter : ILlmAdapter
 
         messages.Add(new { role = "user", content = request.Message });
 
+        object keepAliveValue = string.Equals(cfg.KeepAlive?.Trim(), "0", StringComparison.Ordinal)
+            ? 0
+            : string.IsNullOrWhiteSpace(cfg.KeepAlive)
+                ? "10m"
+                : cfg.KeepAlive.Trim();
+
         var payload = new
         {
             model,
             stream = false,
+            keep_alive = keepAliveValue,
             options = new { num_ctx = cfg.ContextWindow > 0 ? cfg.ContextWindow : 8192 },
             messages
         };
@@ -169,6 +176,100 @@ public sealed class OllamaAdapter : ILlmAdapter
 
         [JsonPropertyName("message")]
         public OllamaChatMessage? Message { get; set; }
+    }
+
+    public async Task<(int UnloadedCount, string Summary)> UnloadModelsAsync(
+        string baseUrl,
+        string? configuredModel,
+        CancellationToken ct = default)
+    {
+        var normalized = NormalizeUrl(baseUrl);
+        using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        probeCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var psResponse = await _http.GetAsync($"{normalized}/api/ps", probeCts.Token);
+            if (psResponse.IsSuccessStatusCode)
+            {
+                var ps = await psResponse.Content.ReadFromJsonAsync<OllamaPsResponse>(cancellationToken: probeCts.Token);
+                if (ps?.Models is not null)
+                {
+                    foreach (var m in ps.Models)
+                    {
+                        var name = !string.IsNullOrWhiteSpace(m.Name) ? m.Name : m.Model;
+                        if (!string.IsNullOrWhiteSpace(name))
+                        {
+                            targets.Add(name.Trim());
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to configured model if /api/ps is unavailable
+        }
+
+        if (targets.Count == 0 && !string.IsNullOrWhiteSpace(configuredModel))
+        {
+            targets.Add(configuredModel.Trim());
+        }
+
+        if (targets.Count == 0)
+        {
+            return (0, "No running Ollama models found in memory.");
+        }
+
+        var unloaded = new List<string>();
+        foreach (var modelName in targets)
+        {
+            try
+            {
+                var unloadPayload = new
+                {
+                    model = modelName,
+                    prompt = string.Empty,
+                    stream = false,
+                    keep_alive = 0
+                };
+                using var res = await _http.PostAsJsonAsync($"{normalized}/api/generate", unloadPayload, probeCts.Token);
+                if (res.IsSuccessStatusCode)
+                {
+                    unloaded.Add(modelName);
+                }
+            }
+            catch
+            {
+                // Continue trying remaining loaded models
+            }
+        }
+
+        if (unloaded.Count == 0)
+        {
+            return (0, $"Could not unload models from Ollama at {normalized}. Ensure Ollama is running.");
+        }
+
+        return (
+            unloaded.Count,
+            $"Unloaded {unloaded.Count} model(s) from Ollama RAM/VRAM: {string.Join(", ", unloaded)}.");
+    }
+
+    private sealed class OllamaPsResponse
+    {
+        [JsonPropertyName("models")]
+        public List<OllamaPsModel>? Models { get; set; }
+    }
+
+    private sealed class OllamaPsModel
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("model")]
+        public string? Model { get; set; }
     }
 
     private sealed class OllamaChatMessage

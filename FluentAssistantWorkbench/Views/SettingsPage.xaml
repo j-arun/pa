@@ -119,6 +119,34 @@
                         </ListView.ItemTemplate>
                     </ListView>
 
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="OllamaContextCombo" Grid.Column="0" Header="Context Window (num_ctx)" HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="4,096 tokens (Low RAM)" Tag="4096" />
+                            <ComboBoxItem Content="8,192 tokens (Balanced)" Tag="8192" />
+                            <ComboBoxItem Content="16,384 tokens (Long)" Tag="16384" />
+                            <ComboBoxItem Content="32,768 tokens (Max)" Tag="32768" />
+                        </ComboBox>
+                        <ComboBox x:Name="OllamaKeepAliveCombo" Grid.Column="1" Header="Memory Keep-Alive" HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Unload immediately (0)" Tag="0" />
+                            <ComboBoxItem Content="2 minutes" Tag="2m" />
+                            <ComboBoxItem Content="5 minutes" Tag="5m" />
+                            <ComboBoxItem Content="10 minutes (Default)" Tag="10m" />
+                            <ComboBoxItem Content="30 minutes" Tag="30m" />
+                        </ComboBox>
+                        <ComboBox x:Name="OllamaHistoryCombo" Grid.Column="2" Header="History Window" HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Last 4 turns (Lightest)" Tag="4" />
+                            <ComboBoxItem Content="Last 8 turns (Fast)" Tag="8" />
+                            <ComboBoxItem Content="Last 12 turns" Tag="12" />
+                            <ComboBoxItem Content="Last 16 turns (Default)" Tag="16" />
+                            <ComboBoxItem Content="Last 24 turns" Tag="24" />
+                        </ComboBox>
+                    </Grid>
+
                     <TextBox
                         x:Name="PrivateSystemBox"
                         Header="Private System Instruction"
@@ -252,12 +280,24 @@
                         TextWrapping="Wrap"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Clear App Cache" Click="ClearCache_Click" />
+                        <Button Content="Unload Ollama Memory" Click="UnloadOllamaMemory_Click" />
+                        <Button
+                            Content="Reset Cache &amp; LLM"
+                            Click="ResetCacheAndLlm_Click"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Button Content="Reload from Disk" Click="ReloadSettings_Click" />
                         <Button Content="Clear History" Click="ClearHistory_Click" />
                     </StackPanel>
 
-                    <TextBlock x:Name="SaveFeedbackText" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock
+                        x:Name="SaveFeedbackText"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                 </StackPanel>
             </Border>
         </StackPanel>

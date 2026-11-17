@@ -62,6 +62,9 @@ public sealed partial class SettingsPage : Page
             OllamaUrlBox.Text = cfg.PrivateLlm.OllamaBaseUrl;
             OllamaModelBox.Text = cfg.PrivateLlm.SelectedModel;
             PrivateSystemBox.Text = cfg.PrivateLlm.SystemInstruction;
+            SelectComboByTag(OllamaContextCombo, cfg.PrivateLlm.ContextWindow.ToString(), "8192");
+            SelectComboByTag(OllamaKeepAliveCombo, cfg.PrivateLlm.KeepAlive, "10m");
+            SelectComboByTag(OllamaHistoryCombo, cfg.PrivateLlm.MaxHistoryTurns.ToString(), "16");
 
             foreach (ComboBoxItem item in ActivePublicAdapterCombo.Items)
             {
@@ -128,6 +131,21 @@ public sealed partial class SettingsPage : Page
         cfg.PrivateLlm.OllamaBaseUrl = OllamaUrlBox.Text.Trim();
         cfg.PrivateLlm.SelectedModel = OllamaModelBox.Text.Trim();
         cfg.PrivateLlm.SystemInstruction = PrivateSystemBox.Text;
+        if (OllamaContextCombo.SelectedItem is ComboBoxItem ctxItem &&
+            int.TryParse(ctxItem.Tag?.ToString(), out var parsedCtx))
+        {
+            cfg.PrivateLlm.ContextWindow = parsedCtx;
+        }
+        if (OllamaKeepAliveCombo.SelectedItem is ComboBoxItem keepItem &&
+            keepItem.Tag is string keepVal)
+        {
+            cfg.PrivateLlm.KeepAlive = keepVal;
+        }
+        if (OllamaHistoryCombo.SelectedItem is ComboBoxItem histItem &&
+            int.TryParse(histItem.Tag?.ToString(), out var parsedHist))
+        {
+            cfg.PrivateLlm.MaxHistoryTurns = parsedHist;
+        }
 
         if (ActivePublicAdapterCombo.SelectedItem is ComboBoxItem selectedAdapter &&
             selectedAdapter.Tag is string tag)
@@ -223,6 +241,50 @@ public sealed partial class SettingsPage : Page
     {
         App.Coordinator.ClearHistory();
         SaveFeedbackText.Text = "Cleared local conversation history.";
+    }
+
+    private void ClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        var summary = App.Coordinator.ClearAppCache();
+        SaveFeedbackText.Text = summary;
+    }
+
+    private async void UnloadOllamaMemory_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyUiToConfig();
+        SaveFeedbackText.Text = "Unloading Private Ollama model memory...";
+        var summary = await App.Coordinator.RelievePrivateLlmAsync();
+        SaveFeedbackText.Text = summary;
+    }
+
+    private async void ResetCacheAndLlm_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyUiToConfig();
+        SaveFeedbackText.Text = "Clearing app cache and relieving Private Ollama memory...";
+        var cacheSummary = App.Coordinator.ClearAppCache();
+        var llmSummary = await App.Coordinator.RelievePrivateLlmAsync();
+        SaveFeedbackText.Text = $"{cacheSummary} {llmSummary}";
+    }
+
+    private static void SelectComboByTag(ComboBox combo, string? value, string fallbackTag)
+    {
+        var target = string.IsNullOrWhiteSpace(value) ? fallbackTag : value.Trim();
+        foreach (ComboBoxItem item in combo.Items)
+        {
+            if (string.Equals(item.Tag?.ToString(), target, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedItem = item;
+                return;
+            }
+        }
+        foreach (ComboBoxItem item in combo.Items)
+        {
+            if (string.Equals(item.Tag?.ToString(), fallbackTag, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedItem = item;
+                return;
+            }
+        }
     }
 
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -78,4 +78,45 @@ public sealed class LocalConfigStore
             // Ignore IO errors when saving local history
         }
     }
+
+    public (int FilesRemoved, long BytesFreed) ClearCache()
+    {
+        int removed = 0;
+        long bytes = 0;
+
+        try
+        {
+            if (!Directory.Exists(StorageDirectory))
+            {
+                return (0, 0);
+            }
+
+            foreach (var file in Directory.EnumerateFiles(StorageDirectory))
+            {
+                if (string.Equals(file, ConfigFilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var info = new FileInfo(file);
+                    long len = info.Exists ? info.Length : 0;
+                    File.Delete(file);
+                    removed++;
+                    bytes += len;
+                }
+                catch
+                {
+                    // Skip locked files
+                }
+            }
+        }
+        catch
+        {
+            // Ignore directory enumeration failures
+        }
+
+        return (removed, bytes);
+    }
 }

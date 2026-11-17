@@ -103,6 +103,24 @@ async function startServer() {
     }
   });
 
+  app.post('/api/ollama/unload', async (req, res) => {
+    try {
+      const { baseUrl, model } = req.body as { baseUrl?: string; model?: string };
+      const result = await adapterRegistry.ollama.unloadModels({
+        ollamaBaseUrl: baseUrl,
+        model,
+      });
+      return res.json(result);
+    } catch (err) {
+      return res.status(502).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to unload Ollama model memory.',
+      });
+    }
+  });
+
   app.post('/api/chat', async (req, res) => {
     req.setTimeout(0);
     res.setTimeout(0);

@@ -124,6 +124,30 @@ public sealed class WorkbenchCoordinator
         ConfigStore.SaveHistory(Turns);
     }
 
+    public string ClearAppCache()
+    {
+        Turns.Clear();
+        Exchanges.Clear();
+        NotificationSoundService.ClearCachedAudioFiles();
+        var (filesRemoved, bytesFreed) = ConfigStore.ClearCache();
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        var kb = bytesFreed > 0 ? Math.Max(1, bytesFreed / 1024) : 0;
+        return filesRemoved > 0
+            ? $"Cleared app cache ({filesRemoved} file(s), ~{kb} KB) and compacted memory."
+            : "Cleared in-memory conversation cache and compacted app memory.";
+    }
+
+    public async Task<string> RelievePrivateLlmAsync(CancellationToken ct = default)
+    {
+        var (_, summary) = await Adapters.Ollama.UnloadModelsAsync(
+            Config.PrivateLlm.OllamaBaseUrl,
+            Config.PrivateLlm.SelectedModel,
+            ct);
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: false, compacting: true);
+        return summary;
+    }
+
     public async Task<ConversationTurn> SendMessageAsync(
         string message,
         string inputMode,
@@ -160,9 +184,10 @@ public sealed class WorkbenchCoordinator
         };
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily);
 
+        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
         var history = Turns
             .Where(t => t.IsUser || t.IsAssistant)
-            .TakeLast(16)
+            .TakeLast(maxHistory)
             .Select(t => (t.Role, t.Content))
             .ToList();
 

@@ -13,6 +13,33 @@ public static class NotificationSoundService
     private static string? _chimeWavPath;
     private static string? _errorWavPath;
 
+    public static void ClearCachedAudioFiles()
+    {
+        lock (SyncLock)
+        {
+            TryDelete(_chimeWavPath);
+            TryDelete(_errorWavPath);
+            _chimeWavPath = null;
+            _errorWavPath = null;
+        }
+    }
+
+    private static void TryDelete(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Ignore if audio handle still releasing
+        }
+    }
+
     public static void PlayReplyChime(bool isError = false)
     {
         try

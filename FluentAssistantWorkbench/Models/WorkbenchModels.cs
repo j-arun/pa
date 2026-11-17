@@ -286,6 +286,8 @@ public sealed class PrivateLlmConfig
     public string SystemInstruction { get; set; } =
         "You are a private, local Windows personal assistant running on Ollama. Be concise, accurate, and practical.";
     public int ContextWindow { get; set; } = 8192;
+    public string KeepAlive { get; set; } = "10m";
+    public int MaxHistoryTurns { get; set; } = 16;
 }
 
 public sealed class PublicAdapterConfig

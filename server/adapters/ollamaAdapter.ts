@@ -214,7 +214,10 @@ export class OllamaAdapter implements ILlmAdapter {
         {
           model,
           stream: false,
-          keep_alive: request.options.keepAlive || '10m',
+          keep_alive:
+            request.options.keepAlive === '0'
+              ? 0
+              : request.options.keepAlive || '10m',
           options: {
             num_ctx: request.options.contextWindow || 8192,
           },
@@ -260,6 +263,84 @@ export class OllamaAdapter implements ILlmAdapter {
       }
       throw new Error(`Failed to communicate with Ollama at ${baseUrl}.`);
     }
+  }
+
+  async unloadModels(options?: AdapterRuntimeOptions): Promise<{
+    unloadedModels: string[];
+    message: string;
+  }> {
+    const baseUrl = normalizeOllamaBaseUrl(options?.ollamaBaseUrl);
+    const targets = new Set<string>();
+
+    const psController = new AbortController();
+    const psTimer = setTimeout(() => psController.abort(), 4500);
+    try {
+      const psRes = await fetch(`${baseUrl}/api/ps`, {
+        method: 'GET',
+        signal: psController.signal,
+      });
+      if (psRes.ok) {
+        const psData = (await psRes.json().catch(() => ({}))) as {
+          models?: Array<{ name?: string; model?: string }>;
+        };
+        for (const item of psData.models || []) {
+          const modelName = (item.name || item.model || '').trim();
+          if (modelName) targets.add(modelName);
+        }
+      }
+    } catch {
+      // Fall back to configured model if /api/ps is unavailable
+    } finally {
+      clearTimeout(psTimer);
+    }
+
+    if (targets.size === 0 && options?.model?.trim()) {
+      targets.add(options.model.trim());
+    }
+
+    if (targets.size === 0) {
+      return {
+        unloadedModels: [],
+        message: 'No running Ollama models found in memory.',
+      };
+    }
+
+    const unloadedModels: string[] = [];
+    for (const modelName of targets) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(`${baseUrl}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: modelName,
+            prompt: '',
+            stream: false,
+            keep_alive: 0,
+          }),
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          unloadedModels.push(modelName);
+        }
+      } catch {
+        // Ignore individual unload failures
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    if (unloadedModels.length === 0) {
+      throw new Error(
+        `Unable to unload models from Ollama at ${baseUrl}. Ensure Ollama is running.`,
+      );
+    }
+
+    return {
+      unloadedModels,
+      message: `Unloaded ${unloadedModels.length} model(s) from Ollama RAM/VRAM: ${unloadedModels.join(', ')}.`,
+    };
   }
 }
 

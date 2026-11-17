@@ -249,9 +249,10 @@ export default function App() {
       model: modelName,
     };
 
+    const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
     const historyPayload = turns
       .filter((t) => t.role === 'user' || t.role === 'assistant')
-      .slice(-16)
+      .slice(-maxHistory)
       .map((t) => ({
         role: t.role as 'user' | 'assistant',
         content: t.content,
@@ -681,6 +682,18 @@ export default function App() {
           onReloadConfigFromFile={() => void reloadConfigFromFile()}
           onExportHistory={handleExportHistory}
           onClearConversation={() => setTurns([])}
+          onClearAppCache={() => {
+            setTurns([]);
+            setReplyToast(null);
+            try {
+              window.localStorage.removeItem('fluent_paw_conversation_v1');
+              if ('caches' in window) {
+                void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)));
+              }
+            } catch {
+              // Ignore storage cleanup errors
+            }
+          }}
           onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
         />
       )}

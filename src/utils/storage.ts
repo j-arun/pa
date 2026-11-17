@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
       'You are a private, local Windows personal assistant running on Ollama. Be concise, accurate, and practical.',
     contextWindow: 8192,
     keepAlive: '10m',
+    maxHistoryTurns: 16,
   },
   publicLlm: {
     activeAdapter: 'gemini',

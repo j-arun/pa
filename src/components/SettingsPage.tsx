@@ -87,6 +87,7 @@ interface SettingsPageProps {
   onReloadConfigFromFile: () => void;
   onExportHistory: () => void;
   onClearConversation: () => void;
+  onClearAppCache: () => void;
   onResetSettings: () => void;
 }
 
@@ -144,6 +145,7 @@ export function SettingsPage({
   onReloadConfigFromFile,
   onExportHistory,
   onClearConversation,
+  onClearAppCache,
   onResetSettings,
 }: SettingsPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -169,6 +171,8 @@ export function SettingsPage({
   const [showWinUiSkeleton, setShowWinUiSkeleton] = useState(false);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const [notifyFeedback, setNotifyFeedback] = useState<string | null>(null);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintenanceFeedback, setMaintenanceFeedback] = useState<string | null>(null);
 
   const updateDraft = (updater: WorkbenchSettings | ((prev: WorkbenchSettings) => WorkbenchSettings)) => {
     setDraft((prev) => (typeof updater === 'function' ? updater(prev) : updater));
@@ -279,6 +283,61 @@ export function SettingsPage({
       // Handled via status state
     } finally {
       setTestingAdapterId(null);
+    }
+  };
+
+  const handleClearCache = () => {
+    onClearAppCache();
+    setOllamaModels([]);
+    setHealthByAdapter({});
+    setOllamaError(null);
+    setOllamaSuccessNote(null);
+    setMaintenanceFeedback('Cleared cached conversation, model list, and browser cache.');
+  };
+
+  const handleUnloadOllamaMemory = async (alsoClearCache: boolean) => {
+    setMaintenanceLoading(true);
+    setMaintenanceFeedback(
+      alsoClearCache
+        ? 'Clearing cache and unloading Private Ollama memory...'
+        : 'Unloading Private Ollama model memory...',
+    );
+
+    if (alsoClearCache) {
+      onClearAppCache();
+      setOllamaModels([]);
+      setHealthByAdapter({});
+    }
+
+    try {
+      const res = await fetch('/api/ollama/unload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: draft.privateLlm.ollamaBaseUrl,
+          model: draft.privateLlm.selectedModel,
+        }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok || payload.error) {
+        throw new Error(payload.error || 'Failed to unload Ollama model memory.');
+      }
+      setMaintenanceFeedback(
+        alsoClearCache
+          ? `Cache cleared. ${payload.message || 'Ollama memory unloaded.'}`
+          : payload.message || 'Unloaded Ollama model memory.',
+      );
+    } catch (err) {
+      setMaintenanceFeedback(
+        err instanceof Error
+          ? err.message
+          : 'Unable to contact Ollama to unload model memory.',
+      );
+    } finally {
+      setMaintenanceLoading(false);
     }
   };
 
@@ -715,8 +774,8 @@ export function SettingsPage({
               )}
             </div>
 
-            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
+            <div className="p-5 space-y-4">
+              <div>
                 <label
                   htmlFor="private-system-prompt"
                   className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
@@ -740,32 +799,92 @@ export function SettingsPage({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="ollama-ctx"
-                  className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                >
-                  Context Window (num_ctx)
-                </label>
-                <select
-                  id="ollama-ctx"
-                  value={draft.privateLlm.contextWindow}
-                  onChange={(e) =>
-                    updateDraft((prev) => ({
-                      ...prev,
-                      privateLlm: {
-                        ...prev.privateLlm,
-                        contextWindow: Number(e.target.value),
-                      },
-                    }))
-                  }
-                  className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                >
-                  <option value={4096}>4,096 tokens</option>
-                  <option value={8192}>8,192 tokens</option>
-                  <option value={16384}>16,384 tokens</option>
-                  <option value={32768}>32,768 tokens</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label
+                    htmlFor="ollama-ctx"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Context Window (num_ctx)
+                  </label>
+                  <select
+                    id="ollama-ctx"
+                    value={draft.privateLlm.contextWindow}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        privateLlm: {
+                          ...prev.privateLlm,
+                          contextWindow: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  >
+                    <option value={4096}>4,096 tokens (Low RAM)</option>
+                    <option value={8192}>8,192 tokens (Balanced)</option>
+                    <option value={16384}>16,384 tokens (Long)</option>
+                    <option value={32768}>32,768 tokens (Max)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="ollama-keep-alive"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Memory Keep-Alive
+                  </label>
+                  <select
+                    id="ollama-keep-alive"
+                    value={draft.privateLlm.keepAlive || '10m'}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        privateLlm: {
+                          ...prev.privateLlm,
+                          keepAlive: e.target.value,
+                        },
+                      }))
+                    }
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  >
+                    <option value="0">Unload immediately (0)</option>
+                    <option value="2m">2 minutes</option>
+                    <option value="5m">5 minutes</option>
+                    <option value="10m">10 minutes (Default)</option>
+                    <option value="30m">30 minutes</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="ollama-history-turns"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    History Window
+                  </label>
+                  <select
+                    id="ollama-history-turns"
+                    value={draft.privateLlm.maxHistoryTurns ?? 16}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        privateLlm: {
+                          ...prev.privateLlm,
+                          maxHistoryTurns: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  >
+                    <option value={4}>Last 4 turns (Lightest)</option>
+                    <option value={8}>Last 8 turns (Fast)</option>
+                    <option value={12}>Last 12 turns</option>
+                    <option value={16}>Last 16 turns (Default)</option>
+                    <option value={24}>Last 24 turns</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1404,34 +1523,82 @@ export function SettingsPage({
               </div>
             </div>
 
-            <div className="p-5 flex items-center justify-between gap-4 flex-wrap">
-              <div className="text-sm text-slate-700 dark:text-slate-300 tabular-nums">
-                Local conversation turns stored: <strong className="font-semibold">{messageCount}</strong>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    Cache &amp; Private LLM Memory Relief
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Clear local caches or unload Ollama RAM/VRAM models after prolonged sessions to prevent slowdown.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleClearCache}
+                    disabled={maintenanceLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear App Cache</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleUnloadOllamaMemory(false)}
+                    disabled={maintenanceLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${maintenanceLoading ? 'animate-spin' : ''}`} />
+                    <span>Unload Ollama Memory</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleUnloadOllamaMemory(true)}
+                    disabled={maintenanceLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-50 transition-colors"
+                  >
+                    <span>Reset Cache &amp; LLM</span>
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={onExportHistory}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Export Conversation JSON</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onClearConversation}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Clear History</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onResetSettings}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/70 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                >
-                  <span>Reset Defaults</span>
-                </button>
+
+              {maintenanceFeedback && (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400">
+                  {maintenanceFeedback}
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-4 flex-wrap">
+                <div className="text-sm text-slate-700 dark:text-slate-300 tabular-nums">
+                  Local conversation turns stored: <strong className="font-semibold">{messageCount}</strong>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={onExportHistory}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export Conversation JSON</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClearConversation}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear History</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onResetSettings}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/70 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                  >
+                    <span>Reset Defaults</span>
+                  </button>
+                </div>
               </div>
             </div>
 
