@@ -117,3 +117,24 @@ export interface WorkbenchSettings {
   voice: VoiceConfig;
   notifications: NotificationConfig;
 }
+
+export interface LlmContextLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'success' | 'error';
+  message: string;
+}
+
+export interface LlmContextTelemetry {
+  phase: 'Idle' | 'Thinking' | 'Ready' | 'Error';
+  isThinking: boolean;
+  startedAtMs?: number;
+  promptChars: number;
+  historyTurnsUsed: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  tokensPerSecond?: number;
+  durationMs?: number;
+  lastError: string;
+}

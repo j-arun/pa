@@ -2,6 +2,7 @@ using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
 using FluentAssistantWorkbench.Views;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -15,6 +16,7 @@ public sealed partial class MainWindow : Window
     public static MainWindow? CurrentWindow { get; private set; }
     private TrayIconService? _trayIcon;
     private bool _isExiting;
+    private DispatcherQueueTimer? _telemetryTimer;
 
     public MainWindow()
     {
@@ -35,6 +37,7 @@ public sealed partial class MainWindow : Window
         };
 
         App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
+        App.Coordinator.ContextTelemetryChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncContextMonitor);
         App.Coordinator.ResponseArrived += (_, args) => DispatcherQueue.TryEnqueue(() =>
         {
             if (!App.Coordinator.Config.Notifications.DesktopNotificationOnReply) return;
@@ -43,7 +46,14 @@ public sealed partial class MainWindow : Window
                 : $"Personal Assistant · {args.Scope} reply ready";
             _trayIcon?.ShowBalloonNotification(title, args.PreviewText, args.IsError);
         });
+
+        ContextLogsList.ItemsSource = App.Coordinator.ContextLogs;
+        _telemetryTimer = DispatcherQueue.CreateTimer();
+        _telemetryTimer.Interval = TimeSpan.FromMilliseconds(200);
+        _telemetryTimer.Tick += (_, _) => SyncContextMonitor();
+
         SyncMenuBarState();
+        SyncContextMonitor();
         _ = App.Coordinator.InitializeProfileAsync();
 
         NavView.SelectedItem = NavView.MenuItems[0];
@@ -277,6 +287,101 @@ public sealed partial class MainWindow : Window
         }
 
         SyncToolbarSelection();
+    }
+
+    private void SyncContextMonitor()
+    {
+        var t = App.Coordinator.Telemetry;
+        if (t.IsThinking)
+        {
+            if (_telemetryTimer is not null && !_telemetryTimer.IsRunning)
+            {
+                _telemetryTimer.Start();
+            }
+        }
+        else if (_telemetryTimer is not null && _telemetryTimer.IsRunning)
+        {
+            _telemetryTimer.Stop();
+        }
+
+        string elapsedText = "—";
+        if (t.IsThinking && t.ThinkingStartedAt.HasValue)
+        {
+            double sec = Math.Max(0, (DateTimeOffset.UtcNow - t.ThinkingStartedAt.Value).TotalSeconds);
+            elapsedText = $"{sec:0.0}s";
+        }
+        else if (t.DurationMs.HasValue)
+        {
+            elapsedText = t.DurationMs.Value >= 1000
+                ? $"{t.DurationMs.Value / 1000.0:0.00}s"
+                : $"{t.DurationMs.Value}ms";
+        }
+
+        MonitorPhaseText.Text = t.IsThinking ? "Thinking" : t.Phase;
+        MonitorProgressBar.IsIndeterminate = t.IsThinking;
+        MonitorProgressBar.Value = t.Phase == "Ready" ? 100 : 0;
+
+        if (t.IsThinking)
+        {
+            MonitorProgressText.Text = $"Thinking... ({elapsedText})";
+            MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(40, 14, 165, 233));
+        }
+        else if (t.Phase == "Error")
+        {
+            MonitorProgressText.Text = $"Failed after {elapsedText}";
+            MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(40, 220, 38, 38));
+        }
+        else if (t.Phase == "Ready")
+        {
+            MonitorProgressText.Text = $"Completed in {elapsedText}";
+            MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(40, 16, 185, 129));
+        }
+        else
+        {
+            MonitorProgressText.Text = "Waiting for next prompt";
+            MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(24, 148, 163, 184));
+        }
+
+        MetricPromptSizeText.Text = t.PromptChars > 0
+            ? $"{t.PromptChars:N0} ch ({t.HistoryTurnsUsed}t)"
+            : "—";
+        MetricInputTokensText.Text = t.InputTokens.HasValue ? $"{t.InputTokens:N0}" : "—";
+        MetricOutputTokensText.Text = t.OutputTokens.HasValue ? $"{t.OutputTokens:N0}" : "—";
+        MetricTokensLoadedText.Text = t.TotalTokens.HasValue ? $"{t.TotalTokens:N0}" : "—";
+        MetricSpeedText.Text = t.TokensPerSecond.HasValue ? $"{t.TokensPerSecond:0.0} tok/s" : "— tok/s";
+        MetricDurationText.Text = elapsedText;
+
+        if (!string.IsNullOrWhiteSpace(t.LastError))
+        {
+            MonitorErrorText.Text = t.LastError;
+            MonitorErrorText.Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 220, 38, 38));
+        }
+        else
+        {
+            MonitorErrorText.Text = "Healthy · No active errors";
+            MonitorErrorText.Foreground = GetPrimaryTextBrush();
+        }
+
+        ContextLogsEmptyText.Visibility = App.Coordinator.ContextLogs.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        // Bottom status bar live readouts
+        StatusBarLlmStateText.Text = t.IsThinking ? $"Thinking ({elapsedText})" : t.Phase;
+        StatusBarTokensText.Text = t.TotalTokens.HasValue
+            ? $"Tokens: {t.TotalTokens:N0} ({t.InputTokens ?? 0} in / {t.OutputTokens ?? 0} out)"
+            : "Tokens: —";
+        StatusBarSpeedText.Text = t.TokensPerSecond.HasValue
+            ? $"{t.TokensPerSecond:0.0} tok/s"
+            : "— tok/s";
+        StatusBarTimeText.Text = elapsedText;
+    }
+
+    private void ContextMonitorToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = ContextMonitorToggleButton.IsChecked == true;
+        RightContextRail.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        RightRailColumn.Width = show ? new GridLength(280) : new GridLength(0);
     }
 
     public async Task SyncWindowsAccountProfileAsync()

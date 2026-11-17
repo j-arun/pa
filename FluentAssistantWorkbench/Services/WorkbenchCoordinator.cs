@@ -14,9 +14,12 @@ public sealed class WorkbenchCoordinator
     public WorkbenchConfig Config { get; private set; }
     public ObservableCollection<ConversationTurn> Turns { get; } = [];
     public ObservableCollection<ConversationExchange> Exchanges { get; } = [];
+    public ObservableCollection<LlmContextLogEntry> ContextLogs { get; } = [];
+    public LlmContextTelemetry Telemetry { get; } = new();
     public bool IsMuted { get; set; }
 
     public event EventHandler? ConfigChanged;
+    public event EventHandler? ContextTelemetryChanged;
     public event EventHandler<LlmResponseNotificationEventArgs>? ResponseArrived;
 
     public WorkbenchCoordinator()
@@ -117,11 +120,31 @@ public sealed class WorkbenchCoordinator
         SaveConfig();
     }
 
+    private void AddContextLog(string level, string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        ContextLogs.Insert(0, new LlmContextLogEntry
+        {
+            TimestampText = DateTime.Now.ToString("HH:mm:ss"),
+            Level = level,
+            Message = message
+        });
+        while (ContextLogs.Count > 12)
+        {
+            ContextLogs.RemoveAt(ContextLogs.Count - 1);
+        }
+        ContextTelemetryChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ClearHistory()
     {
         Turns.Clear();
         Exchanges.Clear();
         ConfigStore.SaveHistory(Turns);
+        Telemetry.Phase = "Idle";
+        Telemetry.IsThinking = false;
+        Telemetry.LastError = string.Empty;
+        AddContextLog("info", "Session context cleared (0 history turns).");
     }
 
     public string ClearAppCache()
@@ -133,9 +156,12 @@ public sealed class WorkbenchCoordinator
         GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         GC.WaitForPendingFinalizers();
         var kb = bytesFreed > 0 ? Math.Max(1, bytesFreed / 1024) : 0;
-        return filesRemoved > 0
+        var msg = filesRemoved > 0
             ? $"Cleared app cache ({filesRemoved} file(s), ~{kb} KB) and compacted memory."
             : "Cleared in-memory conversation cache and compacted app memory.";
+        Telemetry.LastError = string.Empty;
+        AddContextLog("info", "App cache cleared & context history reset.");
+        return msg;
     }
 
     public async Task<string> RelievePrivateLlmAsync(CancellationToken ct = default)
@@ -145,6 +171,7 @@ public sealed class WorkbenchCoordinator
             Config.PrivateLlm.SelectedModel,
             ct);
         GC.Collect(2, GCCollectionMode.Aggressive, blocking: false, compacting: true);
+        AddContextLog("info", summary);
         return summary;
     }
 
@@ -191,9 +218,24 @@ public sealed class WorkbenchCoordinator
             .Select(t => (t.Role, t.Content))
             .ToList();
 
+        int promptChars = trimmedMessage.Length + history.Sum(h => h.Content.Length);
         Turns.Add(userTurn);
         Exchanges.Add(exchange);
         ConfigStore.SaveHistory(Turns);
+
+        Telemetry.Phase = "Thinking";
+        Telemetry.IsThinking = true;
+        Telemetry.ThinkingStartedAt = DateTimeOffset.UtcNow;
+        Telemetry.PromptChars = promptChars;
+        Telemetry.HistoryTurnsUsed = history.Count;
+        Telemetry.LastError = string.Empty;
+        Telemetry.InputTokens = null;
+        Telemetry.OutputTokens = null;
+        Telemetry.TokensPerSecond = null;
+        Telemetry.DurationMs = null;
+
+        var modelDisplay = string.IsNullOrWhiteSpace(model) ? adapter.AdapterId : model;
+        AddContextLog("info", $"Prompt sent · {promptChars:N0} chars · {history.Count} turns · {modelDisplay}");
 
         try
         {
@@ -214,6 +256,22 @@ public sealed class WorkbenchCoordinator
             Turns.Add(assistantTurn);
             exchange.SetReply(assistantTurn.Content, assistantTurn.Timestamp, isError: false);
             ConfigStore.SaveHistory(Turns);
+
+            Telemetry.Phase = "Ready";
+            Telemetry.IsThinking = false;
+            Telemetry.ThinkingStartedAt = null;
+            Telemetry.InputTokens = reply.InputTokens;
+            Telemetry.OutputTokens = reply.OutputTokens;
+            Telemetry.TokensPerSecond = reply.TokensPerSecond;
+            Telemetry.DurationMs = reply.DurationMs;
+            Telemetry.LastError = string.Empty;
+
+            var tokSummary = reply.InputTokens.HasValue || reply.OutputTokens.HasValue
+                ? $"{reply.InputTokens?.ToString() ?? "?"} in · {reply.OutputTokens?.ToString() ?? "?"} out"
+                : $"{reply.Text.Length:N0} chars";
+            var speedSummary = reply.TokensPerSecond.HasValue ? $" · {reply.TokensPerSecond:0.0} tok/s" : string.Empty;
+            var durSummary = reply.DurationMs >= 1000 ? $"{reply.DurationMs / 1000.0:0.00}s" : $"{reply.DurationMs}ms";
+            AddContextLog("success", $"Reply · {tokSummary}{speedSummary} · {durSummary}");
 
             if (Config.Notifications.SoundOnReply)
             {
@@ -253,6 +311,15 @@ public sealed class WorkbenchCoordinator
             Turns.Add(errTurn);
             exchange.SetReply(errTurn.Content, errTurn.Timestamp, isError: true);
             ConfigStore.SaveHistory(Turns);
+
+            Telemetry.Phase = "Error";
+            Telemetry.IsThinking = false;
+            Telemetry.DurationMs = Telemetry.ThinkingStartedAt.HasValue
+                ? (long)(DateTimeOffset.UtcNow - Telemetry.ThinkingStartedAt.Value).TotalMilliseconds
+                : null;
+            Telemetry.ThinkingStartedAt = null;
+            Telemetry.LastError = ex.Message;
+            AddContextLog("error", $"Error · {ex.Message}");
 
             if (Config.Notifications.SoundOnReply)
             {

@@ -136,13 +136,39 @@ public sealed class GeminiAdapter : ILlmAdapter
             throw new InvalidOperationException("Gemini returned an empty response.");
         }
 
-        return new LlmChatResponse(text, AdapterId, Scope, model, sw.ElapsedMilliseconds);
+        int? inputTokens = parsed?.UsageMetadata?.PromptTokenCount;
+        int? outputTokens = parsed?.UsageMetadata?.CandidatesTokenCount;
+        double? tokPerSec = (outputTokens is > 0 && sw.ElapsedMilliseconds > 0)
+            ? Math.Round(outputTokens.Value / (sw.ElapsedMilliseconds / 1000.0), 1)
+            : null;
+
+        return new LlmChatResponse(
+            text,
+            AdapterId,
+            Scope,
+            model,
+            sw.ElapsedMilliseconds,
+            inputTokens,
+            outputTokens,
+            tokPerSec);
     }
 
     private sealed class GeminiGenerateResponse
     {
         [JsonPropertyName("candidates")]
         public List<GeminiCandidate>? Candidates { get; set; }
+
+        [JsonPropertyName("usageMetadata")]
+        public GeminiUsageMetadata? UsageMetadata { get; set; }
+    }
+
+    private sealed class GeminiUsageMetadata
+    {
+        [JsonPropertyName("promptTokenCount")]
+        public int? PromptTokenCount { get; set; }
+
+        [JsonPropertyName("candidatesTokenCount")]
+        public int? CandidatesTokenCount { get; set; }
     }
 
     private sealed class GeminiCandidate

@@ -125,12 +125,30 @@ public sealed class OllamaAdapter : ILlmAdapter
             throw new InvalidOperationException($"Ollama model '{model}' returned an empty response.");
         }
 
+        int? inputTokens = parsed?.PromptEvalCount;
+        int? outputTokens = parsed?.EvalCount;
+        double? tokPerSec = null;
+        if (outputTokens is > 0)
+        {
+            if (parsed?.EvalDuration is > 0)
+            {
+                tokPerSec = Math.Round(outputTokens.Value / (parsed.EvalDuration.Value / 1_000_000_000.0), 1);
+            }
+            else if (sw.ElapsedMilliseconds > 0)
+            {
+                tokPerSec = Math.Round(outputTokens.Value / (sw.ElapsedMilliseconds / 1000.0), 1);
+            }
+        }
+
         return new LlmChatResponse(
             reply,
             AdapterId,
             Scope,
             parsed?.Model ?? model,
-            sw.ElapsedMilliseconds);
+            sw.ElapsedMilliseconds,
+            inputTokens,
+            outputTokens,
+            tokPerSec);
     }
 
     private static string NormalizeUrl(string raw)
@@ -176,6 +194,15 @@ public sealed class OllamaAdapter : ILlmAdapter
 
         [JsonPropertyName("message")]
         public OllamaChatMessage? Message { get; set; }
+
+        [JsonPropertyName("prompt_eval_count")]
+        public int? PromptEvalCount { get; set; }
+
+        [JsonPropertyName("eval_count")]
+        public int? EvalCount { get; set; }
+
+        [JsonPropertyName("eval_duration")]
+        public long? EvalDuration { get; set; }
     }
 
     public async Task<(int UnloadedCount, string Summary)> UnloadModelsAsync(

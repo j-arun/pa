@@ -37,6 +37,9 @@ export interface AdapterChatResponse {
   protocol: string;
   durationMs: number;
   tokenCount?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  tokensPerSecond?: number;
 }
 
 export interface ILlmAdapter {

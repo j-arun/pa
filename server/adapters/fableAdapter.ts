@@ -18,6 +18,8 @@ interface FableChatCompletionResponse {
     };
   }>;
   usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
     total_tokens?: number;
   };
   error?: {
@@ -183,14 +185,25 @@ export class FableAdapter implements ILlmAdapter {
       throw new Error('Fable returned an empty response payload.');
     }
 
+    const durationMs = Date.now() - started;
+    const inputTokens = payload.usage?.prompt_tokens;
+    const outputTokens = payload.usage?.completion_tokens;
+    const tokensPerSecond =
+      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
+        ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
+        : undefined;
+
     return {
       text,
       adapterId: this.id,
       scope: this.scope,
       model: payload.model || model,
       protocol: this.protocol,
-      durationMs: Date.now() - started,
+      durationMs,
       tokenCount: payload.usage?.total_tokens,
+      inputTokens,
+      outputTokens,
+      tokensPerSecond,
     };
   }
 }

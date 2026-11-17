@@ -34,6 +34,7 @@ interface OllamaChatApiResponse {
   };
   eval_count?: number;
   prompt_eval_count?: number;
+  eval_duration?: number;
   error?: string;
 }
 
@@ -243,10 +244,23 @@ export class OllamaAdapter implements ILlmAdapter {
         throw new Error(`Ollama model "${model}" returned an empty message payload.`);
       }
 
+      const durationMs = Date.now() - started;
+      const inputTokens =
+        typeof payload.prompt_eval_count === 'number' ? payload.prompt_eval_count : undefined;
+      const outputTokens =
+        typeof payload.eval_count === 'number' ? payload.eval_count : undefined;
       const tokenCount =
-        typeof payload.eval_count === 'number' || typeof payload.prompt_eval_count === 'number'
-          ? (payload.eval_count || 0) + (payload.prompt_eval_count || 0)
+        typeof inputTokens === 'number' || typeof outputTokens === 'number'
+          ? (inputTokens || 0) + (outputTokens || 0)
           : undefined;
+      let tokensPerSecond: number | undefined;
+      if (typeof outputTokens === 'number' && outputTokens > 0) {
+        if (typeof payload.eval_duration === 'number' && payload.eval_duration > 0) {
+          tokensPerSecond = Number((outputTokens / (payload.eval_duration / 1e9)).toFixed(1));
+        } else if (durationMs > 0) {
+          tokensPerSecond = Number((outputTokens / (durationMs / 1000)).toFixed(1));
+        }
+      }
 
       return {
         text: replyText,
@@ -254,8 +268,11 @@ export class OllamaAdapter implements ILlmAdapter {
         scope: this.scope,
         model: payload.model || model,
         protocol: this.protocol,
-        durationMs: Date.now() - started,
+        durationMs,
         tokenCount,
+        inputTokens,
+        outputTokens,
+        tokensPerSecond,
       };
     } catch (err) {
       if (err instanceof Error) {

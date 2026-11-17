@@ -196,10 +196,16 @@ export class ClaudeAdapter implements ILlmAdapter {
       throw new Error('Claude returned an empty response payload.');
     }
 
+    const durationMs = Date.now() - started;
+    const inputTokens = payload.usage?.input_tokens;
+    const outputTokens = payload.usage?.output_tokens;
     const tokenCount =
-      typeof payload.usage?.input_tokens === 'number' ||
-      typeof payload.usage?.output_tokens === 'number'
-        ? (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0)
+      typeof inputTokens === 'number' || typeof outputTokens === 'number'
+        ? (inputTokens || 0) + (outputTokens || 0)
+        : undefined;
+    const tokensPerSecond =
+      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
+        ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
         : undefined;
 
     return {
@@ -208,8 +214,11 @@ export class ClaudeAdapter implements ILlmAdapter {
       scope: this.scope,
       model: payload.model || model,
       protocol: this.protocol,
-      durationMs: Date.now() - started,
+      durationMs,
       tokenCount,
+      inputTokens,
+      outputTokens,
+      tokensPerSecond,
     };
   }
 }

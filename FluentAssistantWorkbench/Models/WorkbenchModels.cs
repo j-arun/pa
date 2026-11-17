@@ -355,3 +355,37 @@ public sealed class WorkbenchConfig
     public VoiceConfig Voice { get; set; } = new();
     public NotificationConfig Notifications { get; set; } = new();
 }
+
+public sealed class LlmContextLogEntry
+{
+    public string TimestampText { get; init; } = DateTime.Now.ToString("HH:mm:ss");
+    public string Level { get; init; } = "info"; // "info" | "success" | "error"
+    public string Message { get; init; } = string.Empty;
+
+    public Brush IndicatorBrush => Level switch
+    {
+        "error" => new SolidColorBrush(ColorHelper.FromArgb(255, 220, 38, 38)),
+        "success" => new SolidColorBrush(ColorHelper.FromArgb(255, 16, 185, 129)),
+        _ => new SolidColorBrush(ColorHelper.FromArgb(255, 14, 165, 233))
+    };
+
+    public string FormattedLine => $"[{TimestampText}] {Message}";
+}
+
+public sealed class LlmContextTelemetry
+{
+    public string Phase { get; set; } = "Idle"; // "Idle" | "Thinking" | "Ready" | "Error"
+    public bool IsThinking { get; set; }
+    public DateTimeOffset? ThinkingStartedAt { get; set; }
+    public int PromptChars { get; set; }
+    public int HistoryTurnsUsed { get; set; }
+    public int? InputTokens { get; set; }
+    public int? OutputTokens { get; set; }
+    public int? TotalTokens =>
+        InputTokens.HasValue || OutputTokens.HasValue
+            ? (InputTokens ?? 0) + (OutputTokens ?? 0)
+            : null;
+    public double? TokensPerSecond { get; set; }
+    public long? DurationMs { get; set; }
+    public string LastError { get; set; } = string.Empty;
+}

@@ -13,7 +13,10 @@ public sealed record LlmChatResponse(
     string AdapterId,
     ConversationScope Scope,
     string Model,
-    long DurationMs
+    long DurationMs,
+    int? InputTokens = null,
+    int? OutputTokens = null,
+    double? TokensPerSecond = null
 );
 
 public sealed record AdapterHealthStatus(

@@ -5,6 +5,7 @@ import {
   Mic,
   MicOff,
   Palette,
+  PanelRight,
   Settings,
   Square,
   Volume2,
@@ -12,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { SettingsPage } from './components/SettingsPage';
 import { WorkbenchPage } from './components/WorkbenchPage';
 import { useSpeechIO } from './hooks/useSpeechIO';
@@ -19,6 +21,8 @@ import type {
   AnyAdapterId,
   ConversationScope,
   ConversationTurn,
+  LlmContextLogEntry,
+  LlmContextTelemetry,
   ThemeMode,
   WorkbenchSettings,
 } from './types/workbench';
@@ -69,6 +73,38 @@ export default function App() {
     preview: string;
     isError: boolean;
   } | null>(null);
+  const [isContextRailOpen, setIsContextRailOpen] = useState(true);
+  const [telemetry, setTelemetry] = useState<LlmContextTelemetry>({
+    phase: 'Idle',
+    isThinking: false,
+    promptChars: 0,
+    historyTurnsUsed: 0,
+    lastError: '',
+  });
+  const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const pushContextLog = useCallback(
+    (level: 'info' | 'success' | 'error', message: string) => {
+      const now = new Date();
+      const timestamp = now.toTimeString().slice(0, 8);
+      const entry: LlmContextLogEntry = {
+        id: `log-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp,
+        level,
+        message,
+      };
+      setContextLogs((prev) => [entry, ...prev].slice(0, 12));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!telemetry.isThinking) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, [telemetry.isThinking]);
 
   const speech = useSpeechIO(settings.voice, isMuted);
 
@@ -260,6 +296,26 @@ export default function App() {
 
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
+    const requestStartedAt = Date.now();
+    setNowMs(requestStartedAt);
+    setTelemetry((prev) => ({
+      ...prev,
+      phase: 'Thinking',
+      isThinking: true,
+      startedAtMs: requestStartedAt,
+      promptChars: text.trim().length,
+      historyTurnsUsed: historyPayload.length,
+      inputTokens: undefined,
+      outputTokens: undefined,
+      totalTokens: undefined,
+      tokensPerSecond: undefined,
+      durationMs: undefined,
+      lastError: '',
+    }));
+    pushContextLog(
+      'info',
+      `Prompt sent (${text.trim().length} ch, ${historyPayload.length} hist) -> ${scope}:${adapterId}/${modelName}`,
+    );
 
     if (settings.notifications?.desktopNotificationOnReply !== false) {
       void requestDesktopNotificationPermission();
@@ -310,12 +366,28 @@ export default function App() {
         protocol?: string;
         durationMs?: number;
         tokenCount?: number;
+        inputTokens?: number;
+        outputTokens?: number;
+        tokensPerSecond?: number;
         error?: string;
       };
 
       if (!response.ok || payload.error || !payload.text) {
         throw new Error(payload.error || 'Adapter returned an error.');
       }
+
+      const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStartedAt);
+      const inputTokens = payload.inputTokens;
+      const outputTokens = payload.outputTokens ?? payload.tokenCount;
+      const totalTokens =
+        inputTokens !== undefined && outputTokens !== undefined
+          ? inputTokens + outputTokens
+          : payload.tokenCount ?? outputTokens ?? inputTokens;
+      const tokensPerSecond =
+        payload.tokensPerSecond ??
+        (outputTokens !== undefined && elapsedMs > 0
+          ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
+          : undefined);
 
       const assistantTurn: ConversationTurn = {
         id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -325,12 +397,35 @@ export default function App() {
         scope: payload.scope || scope,
         adapterId: payload.adapterId || adapterId,
         model: payload.model || modelName,
-        durationMs: payload.durationMs,
-        tokenCount: payload.tokenCount,
+        durationMs: elapsedMs,
+        tokenCount: totalTokens,
         adapterProtocol: payload.protocol,
       };
 
       setTurns((prev) => [...prev, assistantTurn]);
+      setTelemetry((prev) => ({
+        ...prev,
+        phase: 'Ready',
+        isThinking: false,
+        startedAtMs: undefined,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        tokensPerSecond,
+        durationMs: elapsedMs,
+        lastError: '',
+      }));
+
+      const tokenSummary =
+        totalTokens !== undefined
+          ? `${totalTokens} tok (in ${inputTokens ?? '—'} / out ${outputTokens ?? '—'})`
+          : 'tokens n/a';
+      const speedSummary =
+        tokensPerSecond !== undefined ? ` @ ${tokensPerSecond.toFixed(1)} tok/s` : '';
+      pushContextLog(
+        'success',
+        `Reply in ${(elapsedMs / 1000).toFixed(2)}s · ${tokenSummary}${speedSummary}`,
+      );
 
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(false);
@@ -359,16 +454,26 @@ export default function App() {
         }
       }
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Request failed.';
       const errTurn: ConversationTurn = {
         id: `err-${Date.now()}`,
         role: 'error',
-        content: err instanceof Error ? err.message : 'Request failed.',
+        content: errorMessage,
         timestamp: new Date().toISOString(),
         scope,
         adapterId,
         model: modelName,
       };
       setTurns((prev) => [...prev, errTurn]);
+      setTelemetry((prev) => ({
+        ...prev,
+        phase: 'Error',
+        isThinking: false,
+        startedAtMs: undefined,
+        durationMs: Math.max(0, Date.now() - requestStartedAt),
+        lastError: errorMessage,
+      }));
+      pushContextLog('error', `Context error: ${errorMessage}`);
 
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(true);
@@ -587,6 +692,22 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => setIsContextRailOpen((prev) => !prev)}
+              aria-label={isContextRailOpen ? 'Hide LLM Context Monitor' : 'Show LLM Context Monitor'}
+              title={isContextRailOpen ? 'Hide LLM Context Monitor' : 'Show LLM Context Monitor'}
+              aria-pressed={isContextRailOpen}
+              className={`hidden lg:inline-flex p-2 rounded-lg border transition-colors shrink-0 ${
+                isContextRailOpen
+                  ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              style={isContextRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+            >
+              <PanelRight className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsSettingsOpen((prev) => !prev)}
               aria-label="Settings"
               title="Settings"
@@ -603,19 +724,39 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Assistant Surface */}
-        <WorkbenchPage
-          scope={scope}
-          settings={settings}
-          turns={turns}
-          isSending={isSending}
-          isMuted={isMuted}
-          speech={speech}
-          onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
-          onClearConversation={() => setTurns([])}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onToggleMute={() => setIsMuted((prev) => !prev)}
-        />
+        {/* Main Assistant Surface + Read-Only Right Context Inspector Rail */}
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <WorkbenchPage
+            scope={scope}
+            settings={settings}
+            turns={turns}
+            isSending={isSending}
+            isMuted={isMuted}
+            speech={speech}
+            onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
+            onClearConversation={() => {
+              setTurns([]);
+              setTelemetry({
+                phase: 'Idle',
+                isThinking: false,
+                promptChars: 0,
+                historyTurnsUsed: 0,
+                lastError: '',
+              });
+              pushContextLog('info', 'Session context cleared');
+            }}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onToggleMute={() => setIsMuted((prev) => !prev)}
+          />
+
+          {isContextRailOpen && (
+            <ContextMonitorRail
+              telemetry={telemetry}
+              logs={contextLogs}
+              nowMs={nowMs}
+            />
+          )}
+        </div>
 
         {/* Bottom Panel Status Bar */}
         <footer className="h-7 shrink-0 px-4 sm:px-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex items-center justify-between gap-4 text-xs">
@@ -630,9 +771,47 @@ export default function App() {
             />
             <span className="truncate font-medium">{connectedEngineText}</span>
           </div>
-          <span className="hidden sm:inline font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">
-            {configFileInfo.filePath}
-          </span>
+
+          <div className="flex items-center gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+            <span
+              className={
+                telemetry.phase === 'Thinking'
+                  ? 'text-sky-600 dark:text-sky-400 font-semibold'
+                  : telemetry.phase === 'Error'
+                    ? 'text-red-600 dark:text-red-400 font-semibold'
+                    : telemetry.phase === 'Ready'
+                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                      : 'text-slate-500 dark:text-slate-400'
+              }
+            >
+              {telemetry.isThinking && telemetry.startedAtMs
+                ? `Thinking ${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                : telemetry.phase}
+            </span>
+            <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
+            <span className="hidden sm:inline">
+              Tokens: {telemetry.totalTokens !== undefined ? telemetry.totalTokens.toLocaleString() : '—'}
+            </span>
+            <span className="hidden md:inline text-slate-300 dark:text-slate-700">|</span>
+            <span className="hidden md:inline">
+              {telemetry.tokensPerSecond !== undefined
+                ? `${telemetry.tokensPerSecond.toFixed(1)} tok/s`
+                : '— tok/s'}
+            </span>
+            <span className="hidden lg:inline text-slate-300 dark:text-slate-700">|</span>
+            <span className="hidden lg:inline">
+              Time:{' '}
+              {telemetry.isThinking && telemetry.startedAtMs
+                ? `${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                : telemetry.durationMs !== undefined
+                  ? `${(telemetry.durationMs / 1000).toFixed(2)}s`
+                  : '—'}
+            </span>
+            <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
+            <span className="hidden xl:inline text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
+              {configFileInfo.filePath}
+            </span>
+          </div>
         </footer>
       </div>
 
@@ -681,10 +860,27 @@ export default function App() {
           configFileInfo={configFileInfo}
           onReloadConfigFromFile={() => void reloadConfigFromFile()}
           onExportHistory={handleExportHistory}
-          onClearConversation={() => setTurns([])}
+          onClearConversation={() => {
+            setTurns([]);
+            setTelemetry({
+              phase: 'Idle',
+              isThinking: false,
+              promptChars: 0,
+              historyTurnsUsed: 0,
+              lastError: '',
+            });
+            pushContextLog('info', 'Session context cleared');
+          }}
           onClearAppCache={() => {
             setTurns([]);
             setReplyToast(null);
+            setTelemetry({
+              phase: 'Idle',
+              isThinking: false,
+              promptChars: 0,
+              historyTurnsUsed: 0,
+              lastError: '',
+            });
             try {
               window.localStorage.removeItem('fluent_paw_conversation_v1');
               if ('caches' in window) {
@@ -693,8 +889,10 @@ export default function App() {
             } catch {
               // Ignore storage cleanup errors
             }
+            pushContextLog('info', 'App cache cleared');
           }}
           onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
+          onContextLog={pushContextLog}
         />
       )}
     </div>

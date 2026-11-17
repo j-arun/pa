@@ -89,6 +89,7 @@ interface SettingsPageProps {
   onClearConversation: () => void;
   onClearAppCache: () => void;
   onResetSettings: () => void;
+  onContextLog?: (level: 'info' | 'success' | 'error', message: string) => void;
 }
 
 const THEME_OPTIONS: Array<{
@@ -147,6 +148,7 @@ export function SettingsPage({
   onClearConversation,
   onClearAppCache,
   onResetSettings,
+  onContextLog,
 }: SettingsPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<WorkbenchSettings>(settings);
@@ -325,17 +327,18 @@ export function SettingsPage({
       if (!res.ok || payload.error) {
         throw new Error(payload.error || 'Failed to unload Ollama model memory.');
       }
-      setMaintenanceFeedback(
-        alsoClearCache
-          ? `Cache cleared. ${payload.message || 'Ollama memory unloaded.'}`
-          : payload.message || 'Unloaded Ollama model memory.',
-      );
+      const summary = alsoClearCache
+        ? `Cache cleared. ${payload.message || 'Ollama memory unloaded.'}`
+        : payload.message || 'Unloaded Ollama model memory.';
+      setMaintenanceFeedback(summary);
+      onContextLog?.('success', summary);
     } catch (err) {
-      setMaintenanceFeedback(
+      const errMsg =
         err instanceof Error
           ? err.message
-          : 'Unable to contact Ollama to unload model memory.',
-      );
+          : 'Unable to contact Ollama to unload model memory.';
+      setMaintenanceFeedback(errMsg);
+      onContextLog?.('error', `Ollama unload failed: ${errMsg}`);
     } finally {
       setMaintenanceLoading(false);
     }

@@ -129,7 +129,21 @@ public sealed class ClaudeAdapter : ILlmAdapter
             throw new InvalidOperationException("Claude returned an empty response.");
         }
 
-        return new LlmChatResponse(text, AdapterId, Scope, parsed?.Model ?? model, sw.ElapsedMilliseconds);
+        int? inputTokens = parsed?.Usage?.InputTokens;
+        int? outputTokens = parsed?.Usage?.OutputTokens;
+        double? tokPerSec = (outputTokens is > 0 && sw.ElapsedMilliseconds > 0)
+            ? Math.Round(outputTokens.Value / (sw.ElapsedMilliseconds / 1000.0), 1)
+            : null;
+
+        return new LlmChatResponse(
+            text,
+            AdapterId,
+            Scope,
+            parsed?.Model ?? model,
+            sw.ElapsedMilliseconds,
+            inputTokens,
+            outputTokens,
+            tokPerSec);
     }
 
     private sealed class AnthropicResponse
@@ -139,6 +153,18 @@ public sealed class ClaudeAdapter : ILlmAdapter
 
         [JsonPropertyName("content")]
         public List<AnthropicContentBlock>? Content { get; set; }
+
+        [JsonPropertyName("usage")]
+        public AnthropicUsage? Usage { get; set; }
+    }
+
+    private sealed class AnthropicUsage
+    {
+        [JsonPropertyName("input_tokens")]
+        public int? InputTokens { get; set; }
+
+        [JsonPropertyName("output_tokens")]
+        public int? OutputTokens { get; set; }
     }
 
     private sealed class AnthropicContentBlock

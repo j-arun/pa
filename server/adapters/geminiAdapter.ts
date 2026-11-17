@@ -179,14 +179,25 @@ export class GeminiAdapter implements ILlmAdapter {
       throw new Error('Gemini returned an empty response.');
     }
 
+    const durationMs = Date.now() - started;
+    const inputTokens = response.usageMetadata?.promptTokenCount;
+    const outputTokens = response.usageMetadata?.candidatesTokenCount;
+    const tokensPerSecond =
+      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
+        ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
+        : undefined;
+
     return {
       text,
       adapterId: this.id,
       scope: this.scope,
       model,
       protocol: this.protocol,
-      durationMs: Date.now() - started,
+      durationMs,
       tokenCount: response.usageMetadata?.totalTokenCount,
+      inputTokens,
+      outputTokens,
+      tokensPerSecond,
     };
   }
 }

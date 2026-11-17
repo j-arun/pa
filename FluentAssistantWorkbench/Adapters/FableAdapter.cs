@@ -126,7 +126,21 @@ public sealed class FableAdapter : ILlmAdapter
             throw new InvalidOperationException("Fable returned an empty response.");
         }
 
-        return new LlmChatResponse(text, AdapterId, Scope, parsed?.Model ?? model, sw.ElapsedMilliseconds);
+        int? inputTokens = parsed?.Usage?.PromptTokens;
+        int? outputTokens = parsed?.Usage?.CompletionTokens;
+        double? tokPerSec = (outputTokens is > 0 && sw.ElapsedMilliseconds > 0)
+            ? Math.Round(outputTokens.Value / (sw.ElapsedMilliseconds / 1000.0), 1)
+            : null;
+
+        return new LlmChatResponse(
+            text,
+            AdapterId,
+            Scope,
+            parsed?.Model ?? model,
+            sw.ElapsedMilliseconds,
+            inputTokens,
+            outputTokens,
+            tokPerSec);
     }
 
     private sealed class FableResponse
@@ -136,6 +150,18 @@ public sealed class FableAdapter : ILlmAdapter
 
         [JsonPropertyName("choices")]
         public List<FableChoice>? Choices { get; set; }
+
+        [JsonPropertyName("usage")]
+        public FableUsage? Usage { get; set; }
+    }
+
+    private sealed class FableUsage
+    {
+        [JsonPropertyName("prompt_tokens")]
+        public int? PromptTokens { get; set; }
+
+        [JsonPropertyName("completion_tokens")]
+        public int? CompletionTokens { get; set; }
     }
 
     private sealed class FableChoice
