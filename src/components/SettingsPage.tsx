@@ -207,10 +207,10 @@ export function SettingsPage({
         {/* Page Header */}
         <header className="border-b border-slate-200 dark:border-slate-800 pb-5">
           <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Settings & LLM Adapters
+            Personal Assistant Settings
           </h1>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
-            Choose your theme and profile photo, configure Windows Ollama Private LLM, manage Public LLM adapters, and tune native voice playback.
+            Choose your theme and profile photo, configure Windows Ollama Private LLM, manage Public LLM adapters, and tune native voice playback for Personal Assistant.
           </p>
         </header>
 
@@ -855,7 +855,7 @@ export function SettingsPage({
                 onClick={() =>
                   speech.speakText(
                     'voice-test',
-                    'Windows native speaker playback is ready for your personal assistant workbench.',
+                    'Windows native speaker playback is ready for Personal Assistant.',
                   )
                 }
                 disabled={!speech.speechSynthesisSupported}

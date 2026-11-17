@@ -7,9 +7,9 @@
     <ScrollViewer Padding="28,24" VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="860" Spacing="24">
             <StackPanel Spacing="4">
-                <TextBlock Text="Settings &amp; LLM Adapters" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="Personal Assistant Settings" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock
-                    Text="Configure theme, your Windows profile, local Windows Ollama models, Public LLM adapters, and %LOCALAPPDATA% storage."
+                    Text="Configure theme, your Windows profile, local Windows Ollama models, Public LLM adapters, and %LOCALAPPDATA% storage for Personal Assistant."
                     TextWrapping="Wrap"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>

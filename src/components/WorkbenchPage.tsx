@@ -174,16 +174,6 @@ export function WorkbenchPage({
               Select Ollama Model
             </button>
           )}
-          {turns.length > 0 && (
-            <button
-              type="button"
-              onClick={onClearConversation}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>New Session</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -202,9 +192,7 @@ export function WorkbenchPage({
                 </div>
 
                 <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 text-balance">
-                  {scope === 'private'
-                    ? 'Private Local Assistant Cloud'
-                    : 'Public Assistant Adapter Cloud'}
+                  Personal Assistant
                 </h1>
 
                 <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
@@ -216,11 +204,11 @@ export function WorkbenchPage({
                           : settings.publicLlm.activeAdapter === 'claude'
                             ? 'Claude'
                             : 'Fable'
-                      } adapter and can be read aloud with your native Windows speaker.`}
+                      } engine and can be read aloud with your native Windows speaker.`}
                 </p>
 
                 <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2 flex-wrap">
-                  <span>Mode: {scope === 'private' ? 'Private (Ollama)' : 'Public Adapter'}</span>
+                  <span>Mode: {scope === 'private' ? 'Private · Windows Ollama' : 'Public'}</span>
                   <span aria-hidden="true">·</span>
                   <span>Input: Keyboard or Microphone</span>
                   <span aria-hidden="true">·</span>
@@ -523,6 +511,17 @@ export function WorkbenchPage({
               }
               className="flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none max-h-36 leading-snug"
             />
+
+            <button
+              type="button"
+              onClick={onClearConversation}
+              disabled={turns.length === 0 || isSending}
+              title="New Session"
+              aria-label="New Session"
+              className="h-11 w-11 rounded-xl flex items-center justify-center border border-slate-200/90 dark:border-slate-700/80 bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
 
             <button
               type="submit"

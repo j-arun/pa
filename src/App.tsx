@@ -165,6 +165,18 @@ export default function App() {
       ? settings.voice.autoSpeakPublic
       : settings.voice.autoSpeakPrivate;
 
+  const activePublicAdapterLabel =
+    settings.publicLlm.activeAdapter === 'gemini'
+      ? 'Gemini'
+      : settings.publicLlm.activeAdapter === 'claude'
+        ? 'Claude'
+        : 'Fable';
+
+  const connectedEngineText =
+    scope === 'private'
+      ? `Connected: Private · Windows Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
+      : `Connected: Public · ${activePublicAdapterLabel} (${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model})`;
+
   const toggleTopBarSpeak = () => {
     if (speech.speakingTurnId) {
       speech.stopSpeaking();
@@ -312,7 +324,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `assistant-workbench-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `personal-assistant-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -322,12 +334,15 @@ export default function App() {
       {/* Left WinUI 3 NavigationView Rail */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col justify-between border-r border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3">
         <div className="space-y-6">
-          <div className="px-3 pt-2 pb-1">
-            <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-              Personal Workbench
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              WinUI 3 Fluent Edition
+          <div className="px-3 pt-2 pb-1 flex items-center gap-2.5">
+            <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
+            <div className="min-w-0">
+              <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
+                Personal Assistant
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                WinUI 3 Fluent Edition
+              </div>
             </div>
           </div>
 
@@ -342,7 +357,7 @@ export default function App() {
               }`}
             >
               <Cloud className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-              <span>Cloud Workbench</span>
+              <span>Personal Assistant</span>
             </button>
 
             <button
@@ -429,16 +444,18 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Fluent Top Menu Bar */}
         <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between gap-4">
-          {/* Zone 1: Page Title + Mobile Page Switch */}
-          <div className="flex items-center gap-3 min-w-0">
+          {/* Zone 1: App Icon, Title + Mobile Page Switch */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img src="/favicon.svg" alt="Personal Assistant" className="w-6 h-6 shrink-0 md:hidden" />
             <span className="font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
-              Assistant Workbench
+              Personal Assistant
             </span>
-            <div className="flex md:hidden items-center gap-1 ml-2">
+            <div className="flex md:hidden items-center gap-1 ml-1">
               <button
                 type="button"
                 onClick={() => setActivePage('workbench')}
-                aria-label="Cloud Workbench"
+                aria-label="Personal Assistant"
+                title="Personal Assistant"
                 className={`p-2 rounded-lg ${
                   activePage === 'workbench'
                     ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
@@ -446,18 +463,6 @@ export default function App() {
                 }`}
               >
                 <Cloud className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePage('settings')}
-                aria-label="Settings"
-                className={`p-2 rounded-lg ${
-                  activePage === 'settings'
-                    ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
-                    : 'text-slate-500'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -494,25 +499,42 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Mute, Speak & Theme Controls */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Zone 3: Icon-Only Mic, Speaker, Theme & Settings Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setIsMuted((prev) => !prev)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+              aria-label={isMuted ? 'Microphone muted, click to unmute' : 'Microphone on, click to mute'}
+              title={isMuted ? 'Microphone Muted (click to unmute)' : 'Microphone On (click to mute)'}
+              aria-pressed={isMuted}
+              className={`p-2 rounded-lg border transition-colors shrink-0 ${
                 isMuted
                   ? 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
                   : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
             >
-              {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isMuted ? 'Muted' : 'Mic On'}</span>
+              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
 
             <button
               type="button"
               onClick={toggleTopBarSpeak}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+              aria-label={
+                speech.speakingTurnId
+                  ? 'Stop Windows Speaker'
+                  : activeAutoSpeak
+                    ? 'Auto-speak on, click to disable'
+                    : 'Speaker off, click to enable auto-speak'
+              }
+              title={
+                speech.speakingTurnId
+                  ? 'Stop Windows Speaker'
+                  : activeAutoSpeak
+                    ? 'Windows Speaker Auto-Speak On'
+                    : 'Windows Speaker Off'
+              }
+              aria-pressed={Boolean(speech.speakingTurnId) || activeAutoSpeak}
+              className={`p-2 rounded-lg border transition-colors shrink-0 ${
                 speech.speakingTurnId
                   ? 'bg-sky-600 border-sky-600 text-white hover:bg-sky-700'
                   : activeAutoSpeak
@@ -521,20 +543,11 @@ export default function App() {
               }`}
             >
               {speech.speakingTurnId ? (
-                <>
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  <span className="hidden sm:inline">Stop</span>
-                </>
+                <Square className="w-4 h-4 fill-current" />
               ) : activeAutoSpeak ? (
-                <>
-                  <Volume2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Auto-Speak</span>
-                </>
+                <Volume2 className="w-4 h-4" />
               ) : (
-                <>
-                  <VolumeX className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Speak Off</span>
-                </>
+                <VolumeX className="w-4 h-4" />
               )}
             </button>
 
@@ -547,6 +560,7 @@ export default function App() {
                 }))
               }
               aria-label="Toggle light or dark theme"
+              title="Toggle light or dark theme"
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
             >
               {isDarkActive ? (
@@ -554,6 +568,23 @@ export default function App() {
               ) : (
                 <Moon className="w-4 h-4" />
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActivePage((prev) => (prev === 'settings' ? 'workbench' : 'settings'))
+              }
+              aria-label="Settings"
+              title={activePage === 'settings' ? 'Back to Personal Assistant' : 'Settings'}
+              aria-pressed={activePage === 'settings'}
+              className={`p-2 rounded-lg border transition-colors shrink-0 ${
+                activePage === 'settings'
+                  ? 'bg-sky-600 border-sky-600 text-white hover:bg-sky-700'
+                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </header>
@@ -585,6 +616,22 @@ export default function App() {
             onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
           />
         )}
+
+        {/* Bottom Panel Status Bar */}
+        <footer className="h-7 shrink-0 px-4 sm:px-6 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                scope === 'private' ? 'bg-emerald-500' : 'bg-sky-500'
+              }`}
+              aria-hidden="true"
+            />
+            <span className="truncate font-medium">{connectedEngineText}</span>
+          </div>
+          <span className="hidden sm:inline font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">
+            {configFileInfo.filePath}
+          </span>
+        </footer>
       </div>
     </div>
   );

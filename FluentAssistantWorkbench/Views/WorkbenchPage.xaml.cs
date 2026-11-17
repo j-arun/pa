@@ -160,18 +160,4 @@ public sealed partial class WorkbenchPage : Page
     {
         App.Coordinator.ClearHistory();
     }
-
-    private void OpenSettings_Click(object sender, RoutedEventArgs e)
-    {
-        if (App.Current is App)
-        {
-            // Navigate via Frame parent NavigationView
-            var parent = Frame?.Parent;
-            if (parent is NavigationView navView && navView.MenuItems.Count > 1)
-            {
-                navView.SelectedItem = navView.MenuItems[1];
-                Frame?.Navigate(typeof(SettingsPage));
-            }
-        }
-    }
 }
