@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: "Plus Jakarta Sans", "Segoe UI Variable Display", system-ui, sans-serif;
+    --font-sans: "DM Sans", "Segoe UI Variable Text", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  }
+
+  html,
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* WinUI 3 Mica & Cloud Atmospheric Surfaces */
+.mica-canvas {
+  background:
+    radial-gradient(1200px 620px at 14% -8%, rgba(56, 189, 248, 0.10), transparent 60%),
+    radial-gradient(900px 540px at 88% 8%, rgba(14, 165, 233, 0.07), transparent 58%),
+    linear-gradient(180deg, #f3f6fa 0%, #eef2f7 100%);
+}
+
+.dark .mica-canvas {
+  background:
+    radial-gradient(1100px 600px at 14% -8%, rgba(56, 189, 248, 0.08), transparent 60%),
+    radial-gradient(900px 520px at 88% 12%, rgba(99, 102, 241, 0.07), transparent 58%),
+    linear-gradient(180deg, #16191f 0%, #111419 100%);
+}
+
+.cloud-surface {
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+}
+
+.dark .cloud-surface {
+  background: rgba(30, 34, 42, 0.82);
+  backdrop-filter: blur(24px) saturate(1.15);
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+}
+
+/* Subtle Fluent scrollbar */
+.fluent-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.fluent-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fluent-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.28);
+  border-radius: 9999px;
+}
+
+.fluent-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
+}

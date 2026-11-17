@@ -1,0 +1,164 @@
+import 'dotenv/config';
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createServer as createViteServer } from 'vite';
+import type { AnyAdapterId, ConversationScope, WorkbenchSettings } from './src/types/workbench.ts';
+import { adapterRegistry } from './server/adapters/registry.ts';
+import type { AdapterRuntimeOptions, ChatHistoryItem } from './server/adapters/types.ts';
+import { readLocalConfigFile, writeLocalConfigFile } from './server/configStore.ts';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  const app = express();
+  const port = Number(process.env.PORT || 3000);
+  const isProd = process.env.NODE_ENV === 'production';
+
+  app.use(express.json({ limit: '1mb' }));
+
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.get('/api/config', (_req, res) => {
+    try {
+      const result = readLocalConfigFile();
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unable to read workbench.config.json.',
+      });
+    }
+  });
+
+  app.put('/api/config', (req, res) => {
+    try {
+      const next = (req.body || {}) as Partial<WorkbenchSettings>;
+      const result = writeLocalConfigFile(next);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error: err instanceof Error ? err.message : 'Unable to write workbench.config.json.',
+      });
+    }
+  });
+
+  app.get('/api/adapters', (_req, res) => {
+    res.json({
+      adapters: adapterRegistry.listSummaries(),
+    });
+  });
+
+  app.post('/api/adapters/health', async (req, res) => {
+    try {
+      const { adapterId, options } = req.body as {
+        adapterId?: AnyAdapterId;
+        options?: AdapterRuntimeOptions;
+      };
+      if (!adapterId) {
+        return res.status(400).json({ error: 'adapterId is required.' });
+      }
+      const adapter = adapterRegistry.get(adapterId);
+      const result = await adapter.healthCheck(options);
+      return res.json(result);
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Failed to inspect adapter health.',
+      });
+    }
+  });
+
+  app.post('/api/ollama/models', async (req, res) => {
+    try {
+      const { baseUrl } = req.body as { baseUrl?: string };
+      const models = await adapterRegistry.ollama.listModels({ ollamaBaseUrl: baseUrl });
+      return res.json({ models });
+    } catch (err) {
+      return res.status(502).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to query Windows Ollama /api/tags endpoint.',
+      });
+    }
+  });
+
+  app.post('/api/chat', async (req, res) => {
+    try {
+      const { scope, adapterId, message, history, options } = req.body as {
+        scope?: ConversationScope;
+        adapterId?: AnyAdapterId;
+        message?: string;
+        history?: ChatHistoryItem[];
+        options?: AdapterRuntimeOptions;
+      };
+
+      if (scope !== 'private' && scope !== 'public') {
+        return res.status(400).json({ error: 'scope must be "private" or "public".' });
+      }
+
+      if (!message || !message.trim()) {
+        return res.status(400).json({ error: 'message cannot be empty.' });
+      }
+
+      const adapter = adapterRegistry.resolve(scope, adapterId);
+      const safeHistory: ChatHistoryItem[] = Array.isArray(history)
+        ? history
+            .filter(
+              (item) =>
+                item &&
+                (item.role === 'user' || item.role === 'assistant') &&
+                typeof item.content === 'string' &&
+                item.content.trim().length > 0,
+            )
+            .slice(-24)
+        : [];
+
+      const reply = await adapter.sendMessage({
+        message: message.trim(),
+        history: safeHistory,
+        options: options || {},
+      });
+
+      return res.json(reply);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Adapter request failed.';
+      const status =
+        message.includes('not configured') || message.includes('No Private Ollama model')
+          ? 400
+          : 502;
+      return res.status(status).json({ error: message });
+    }
+  });
+
+  if (!isProd) {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distDir = path.resolve(__dirname, 'dist');
+    if (fs.existsSync(distDir)) {
+      app.use(express.static(distDir));
+      app.get('*', (_req, res) => {
+        res.sendFile(path.join(distDir, 'index.html'));
+      });
+    }
+  }
+
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`Fluent Personal Assistant Workbench listening on http://0.0.0.0:${port}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

@@ -1,0 +1,6 @@
+{
+  "name": "Fluent Personal Assistant Workbench",
+  "description": "WinUI 3-inspired Personal Assistant Workbench with local Windows Ollama Private LLM and modular Gemini, Claude, and Fable Public LLM adapters.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

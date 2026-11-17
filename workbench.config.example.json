@@ -1,0 +1,40 @@
+{
+  "theme": "light",
+  "privateLlm": {
+    "activeAdapter": "ollama",
+    "ollamaBaseUrl": "http://127.0.0.1:11434",
+    "selectedModel": "llama3.2",
+    "systemInstruction": "You are a private, local Windows personal assistant running on Ollama. Be concise, accurate, and practical.",
+    "contextWindow": 8192,
+    "keepAlive": "10m"
+  },
+  "publicLlm": {
+    "activeAdapter": "gemini",
+    "adapters": {
+      "gemini": {
+        "model": "gemini-4-hydrogen",
+        "thinkingLevel": "HIGH",
+        "systemInstruction": "You are a helpful, articulate personal assistant responding through the Public Gemini Adapter. Keep answers clear and well-structured."
+      },
+      "claude": {
+        "model": "claude-sonnet-4-20250514",
+        "maxTokens": 2048,
+        "endpointUrl": "https://api.anthropic.com/v1/messages",
+        "systemInstruction": "You are a helpful personal assistant responding through the Public Claude Adapter."
+      },
+      "fable": {
+        "model": "fable-1-pro",
+        "maxTokens": 2048,
+        "endpointUrl": "https://api.fable.ai/v1/chat/completions",
+        "systemInstruction": "You are a helpful personal assistant responding through the Public Fable Adapter."
+      }
+    }
+  },
+  "voice": {
+    "autoSpeakPublic": false,
+    "autoSpeakPrivate": false,
+    "selectedVoiceURI": "",
+    "rate": 1,
+    "pitch": 1
+  }
+}
