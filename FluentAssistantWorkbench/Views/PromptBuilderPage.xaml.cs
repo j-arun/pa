@@ -51,8 +51,10 @@ public sealed partial class PromptBuilderPage : Page
 
     private static string GetDomainDisplayName(PromptDomain domain) => domain switch
     {
-        PromptDomain.Astrology => "Astrology - Career & Profession",
-        PromptDomain.General => "General - Family & Love",
+        PromptDomain.Astrology => "Career & Profession",
+        PromptDomain.Health => "Health & Vitality",
+        PromptDomain.Finance => "Family & Domestic Life",
+        PromptDomain.General => "Love & Relationships",
         _ => domain.ToString()
     };
 

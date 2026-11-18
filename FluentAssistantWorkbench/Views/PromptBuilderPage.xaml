@@ -34,32 +34,32 @@
                 <TabViewItem x:Name="AstrologyTab" Tag="Astrology">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Astrology - Career &amp; Profession" VerticalAlignment="Center" />
-                            <CheckBox x:Name="AstrologyActiveCheckBox" Tag="Astrology" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Astrology - Career &amp; Profession as the active prompt domain" />
+                            <TextBlock Text="Career &amp; Profession" VerticalAlignment="Center" />
+                            <CheckBox x:Name="AstrologyActiveCheckBox" Tag="Astrology" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Career &amp; Profession as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>
                 <TabViewItem x:Name="HealthTab" Tag="Health">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Health" VerticalAlignment="Center" />
-                            <CheckBox x:Name="HealthActiveCheckBox" Tag="Health" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Health as the active prompt domain" />
+                            <TextBlock Text="Health &amp; Vitality" VerticalAlignment="Center" />
+                            <CheckBox x:Name="HealthActiveCheckBox" Tag="Health" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Health &amp; Vitality as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>
                 <TabViewItem x:Name="FinanceTab" Tag="Finance">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Finance" VerticalAlignment="Center" />
-                            <CheckBox x:Name="FinanceActiveCheckBox" Tag="Finance" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Finance as the active prompt domain" />
+                            <TextBlock Text="Family &amp; Domestic Life" VerticalAlignment="Center" />
+                            <CheckBox x:Name="FinanceActiveCheckBox" Tag="Finance" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Family &amp; Domestic Life as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>
                 <TabViewItem x:Name="GeneralTab" Tag="General">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="General - Family &amp; Love" VerticalAlignment="Center" />
-                            <CheckBox x:Name="GeneralActiveCheckBox" Tag="General" Click="DomainCheckBox_Click" AutomationProperties.Name="Set General - Family &amp; Love as the active prompt domain" />
+                            <TextBlock Text="Love &amp; Relationships" VerticalAlignment="Center" />
+                            <CheckBox x:Name="GeneralActiveCheckBox" Tag="General" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Love &amp; Relationships as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>
@@ -76,7 +76,7 @@
                         <StackPanel Spacing="3">
                             <TextBlock
                                 x:Name="ActiveDomainStatusText"
-                                Text="Active domain for this session: Astrology"
+                                Text="Active domain for this session: Career &amp; Profession"
                                 Style="{StaticResource BodyStrongTextBlockStyle}" />
                             <TextBlock
                                 Text="Use {{prompt}} where the user's chat draft should be inserted. Templates save automatically."
