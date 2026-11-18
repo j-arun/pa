@@ -839,6 +839,7 @@ export default function App() {
                         setIsSettingsOpen(false);
                         setIsPromptBuilderOpen(false);
                         setIsReferenceContextOpen(false);
+                        setScope(threadScope);
                         setTurns(record.turns);
                         setTelemetry({
                           phase: 'Idle',
