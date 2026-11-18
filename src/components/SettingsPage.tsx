@@ -158,6 +158,7 @@ export function SettingsPage({
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<OllamaModelInfo[]>([]);
   const [ollamaLoading, setOllamaLoading] = useState(false);
+  const [ollamaRefreshing, setOllamaRefreshing] = useState(false);
   const [ollamaError, setOllamaError] = useState<string | null>(null);
   const [ollamaSuccessNote, setOllamaSuccessNote] = useState<string | null>(null);
   const [manualModelInput, setManualModelInput] = useState(
@@ -258,6 +259,42 @@ export function SettingsPage({
       );
     } finally {
       setOllamaLoading(false);
+    }
+  };
+
+  const handleRefreshPrivateModel = async () => {
+    setOllamaRefreshing(true);
+    setOllamaError(null);
+    setOllamaSuccessNote(null);
+
+    try {
+      const response = await fetch('/api/ollama/unload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: draft.privateLlm.ollamaBaseUrl,
+          model: draft.privateLlm.selectedModel,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error || 'Failed to refresh the Ollama model.');
+      }
+      const message =
+        payload.message ||
+        'Ollama model refreshed and unloaded; it will reload with a brand new context on your next prompt.';
+      setOllamaSuccessNote(message);
+      onContextLog?.('success', message);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to refresh the Ollama model.';
+      setOllamaError(message);
+      onContextLog?.('error', `Ollama model refresh failed: ${message}`);
+    } finally {
+      setOllamaRefreshing(false);
     }
   };
 
@@ -612,15 +649,27 @@ export function SettingsPage({
                 Discover and connect to models deployed locally through Ollama on Windows.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={discoverOllamaModels}
-              disabled={ollamaLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${ollamaLoading ? 'animate-spin' : ''}`} />
-              <span>{ollamaLoading ? 'Scanning Ollama...' : 'Discover Local Models'}</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              <button
+                type="button"
+                onClick={() => void handleRefreshPrivateModel()}
+                disabled={ollamaRefreshing || !draft.privateLlm.selectedModel.trim()}
+                title="Unload running Ollama model memory (keep_alive: 0) to get a brand new context on the next prompt"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200 text-xs font-medium hover:bg-sky-100 dark:hover:bg-sky-900/60 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${ollamaRefreshing ? 'animate-spin' : ''}`} />
+                <span>{ollamaRefreshing ? 'Refreshing Model...' : 'Refresh Model'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={discoverOllamaModels}
+                disabled={ollamaLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${ollamaLoading ? 'animate-spin' : ''}`} />
+                <span>{ollamaLoading ? 'Scanning Ollama...' : 'Discover Local Models'}</span>
+              </button>
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 divide-y divide-slate-200 dark:divide-slate-800">

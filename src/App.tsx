@@ -456,27 +456,6 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theme: nextTheme }));
   };
 
-  const handleRefreshPrivateModel = async () => {
-    const response = await fetch('/api/ollama/unload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        baseUrl: settings.privateLlm.ollamaBaseUrl,
-        model: settings.privateLlm.selectedModel,
-      }),
-    });
-    const payload = (await response.json()) as { message?: string; error?: string };
-    if (!response.ok || payload.error) {
-      const errorMessage = payload.error || 'Failed to refresh the Ollama model.';
-      pushContextLog('error', `Ollama model refresh failed: ${errorMessage}`);
-      throw new Error(errorMessage);
-    }
-
-    const message = payload.message || 'Ollama model refreshed; it will reload on your next prompt.';
-    pushContextLog('success', message);
-    return message;
-  };
-
   const handleSaveReferenceContext = async (
     targetScope: ConversationScope,
     text: string,
@@ -1298,7 +1277,6 @@ export default function App() {
               speech={speech}
               onSendMessage={(payload) => void handleSendMessage(payload)}
               onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
-              onRefreshModel={handleRefreshPrivateModel}
               onClearConversation={() => {
                 setTurns([]);
                 setTelemetry({

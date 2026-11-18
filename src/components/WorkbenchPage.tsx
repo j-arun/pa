@@ -3,15 +3,12 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Cloud,
   Copy,
-  FileSearch,
   FileDown,
+  FileSearch,
+  GripHorizontal,
   Hourglass,
-  Lock,
   Plus,
-  RefreshCw,
-  RotateCcw,
   Settings as SettingsIcon,
   SlidersHorizontal,
   Trash2,
@@ -31,7 +28,6 @@ import type {
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
 import { renderMarkdownToHtml } from '../utils/markdownExport';
-import { exportConversationToPdf } from '../utils/pdfExport';
 import {
   PROMPT_DOMAINS,
   THREAD_MONTHS,
@@ -126,7 +122,6 @@ interface WorkbenchPageProps {
   speech: UseSpeechIOResult;
   onSendMessage: (payload: SendThreadMessagePayload) => void;
   onUpdateExchangeMetadata: (exchangeId: string, patch: ThreadMetadataPatch) => void;
-  onRefreshModel: () => Promise<string>;
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
   onOpenSettings: () => void;
@@ -140,6 +135,101 @@ function buildPrompt(draft: string, template: string): string {
     return normalizedTemplate.replace(/\{\{prompt\}\}/g, () => prompt);
   }
   return `${normalizedTemplate}\n\n${prompt}`;
+}
+
+function ScopeModeSvg({
+  scope,
+  className = 'w-11 h-11',
+}: {
+  scope: ConversationScope;
+  className?: string;
+}) {
+  const isPrivate = scope === 'private';
+
+  return (
+    <svg
+      viewBox="0 0 120 120"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle
+        cx="60"
+        cy="60"
+        r="56"
+        fill={isPrivate ? '#d1fae5' : '#dbeafe'}
+      />
+      {/* Person head & shoulders */}
+      <path
+        d="M16 106c4-22 17-34 36-34s31 12 34 34"
+        fill={isPrivate ? '#0f766e' : '#1d4ed8'}
+      />
+      <circle cx="48" cy="48" r="17" fill="#f3c6a5" />
+      <path
+        d="M31 46c1-14 11-22 22-21 9 1 16 7 17 16-6-2-12-6-16-12-5 8-13 13-23 17z"
+        fill="#334155"
+      />
+      <circle cx="55" cy="46" r="2" fill="#1e293b" />
+
+      {isPrivate ? (
+        <g>
+          {/* Murmuring hand cupped gently near mouth + subtle soft whisper ripples */}
+          <path
+            d="M58 55c3 1 5 2 6 4"
+            fill="none"
+            stroke="#9a5d4a"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+          <path
+            d="M61 73l6-17c1-3 5-3 6 0l1 15c0 4-3 8-8 8z"
+            fill="#eab38f"
+            stroke="#9a5d4a"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M78 52c3 2 3 6 0 8"
+            fill="none"
+            stroke="#059669"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeDasharray="2 3"
+          />
+          <path
+            d="M85 48c4 4 4 12 0 16"
+            fill="none"
+            stroke="#059669"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeDasharray="2 3"
+          />
+        </g>
+      ) : (
+        <g>
+          {/* Shouting open mouth into handheld loudspeaker / megaphone + acoustic waves */}
+          <ellipse cx="61" cy="56" rx="3.2" ry="4" fill="#991b1b" />
+          <path
+            d="M65 51l14-1 19-13v34l-19-12H65z"
+            fill="#f59e0b"
+            stroke="#b45309"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M71 60l5 15h8l-5-15"
+            fill="#d97706"
+          />
+          <path
+            d="M102 45c5 5 5 15 0 20M108 38c8 8 8 26 0 34"
+            fill="none"
+            stroke="#0284c7"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+          />
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function ScopeArtwork({
@@ -156,46 +246,68 @@ function ScopeArtwork({
       className={`pointer-events-none absolute ${className}`}
       aria-hidden="true"
     >
-      <svg viewBox="0 0 360 260" className="h-auto w-full">
-        <circle cx="158" cy="130" r="115" fill="#dbeafe" />
-        <path d="M66 248c5-49 37-77 86-77s81 28 86 77" fill="#2563eb" />
+      <svg viewBox="0 0 360 240" className="h-auto w-full">
+        <circle
+          cx="150"
+          cy="125"
+          r="105"
+          fill={isPrivate ? '#d1fae5' : '#dbeafe'}
+        />
         <path
-          d="M119 88c0-32 19-53 47-53 30 0 51 24 48 57l-4 38c-3 27-21 45-46 45-27 0-45-20-45-48z"
+          d="M64 236c5-46 35-72 82-72s77 26 82 72"
+          fill={isPrivate ? '#0f766e' : '#2563eb'}
+        />
+        <path
+          d="M115 86c0-30 18-50 44-50 28 0 48 22 45 54l-4 36c-3 25-20 42-43 42-25 0-42-19-42-45z"
           fill="#f3c6a5"
         />
         <path
-          d="M118 91c-5-40 18-68 53-68 29 0 48 19 49 48-15-5-26-16-31-30-13 18-39 30-71 30z"
+          d="M114 89c-5-38 17-64 50-64 27 0 45 18 46 45-14-5-24-15-29-28-12 17-37 28-67 28z"
           fill="#334155"
         />
-        <circle cx="176" cy="105" r="3" fill="#334155" />
-        <path d="M181 128c5 3 10 3 14 0" fill="none" stroke="#9a5d4a" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="170" cy="102" r="3.2" fill="#334155" />
         {isPrivate ? (
           <g>
+            {/* Soft murmuring mouth + cupped hand + quiet dashed whisper arcs */}
             <path
-              d="M201 62h94a17 17 0 0 1 17 17v29a17 17 0 0 1-17 17h-38l-17 16v-16h-39a17 17 0 0 1-17-17V79a17 17 0 0 1 17-17z"
-              fill="#fff"
-              stroke="#60a5fa"
-              strokeWidth="4"
+              d="M174 123c4 2 8 2 11 0"
+              fill="none"
+              stroke="#9a5d4a"
+              strokeWidth="3"
+              strokeLinecap="round"
             />
-            <circle cx="228" cy="94" r="4" fill="#60a5fa" />
-            <circle cx="247" cy="94" r="4" fill="#60a5fa" />
-            <circle cx="266" cy="94" r="4" fill="#60a5fa" />
-            <path d="M201 143c-10 5-15 13-16 22" fill="none" stroke="#60a5fa" strokeWidth="4" strokeLinecap="round" />
+            <path
+              d="M188 164l12-40c2-7 12-7 14 0l2 34c0 9-7 17-18 17z"
+              fill="#eab38f"
+              stroke="#9a5d4a"
+              strokeWidth="3"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M226 112c7 6 7 18 0 24M244 102c11 10 11 32 0 42"
+              fill="none"
+              stroke="#059669"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray="4 6"
+            />
           </g>
         ) : (
           <g>
+            {/* Shouting into loudspeaker */}
+            <ellipse cx="184" cy="123" rx="6" ry="8" fill="#991b1b" />
             <path
-              d="M197 91h28l47-27v81l-47-27h-28z"
+              d="M196 105h30l48-28v82l-48-28h-30z"
               fill="#f59e0b"
               stroke="#b45309"
               strokeWidth="4"
               strokeLinejoin="round"
             />
-            <path d="M213 118l10 34h19l-13-41" fill="#d97706" />
+            <path d="M210 131l10 34h19l-13-40" fill="#d97706" />
             <path
-              d="M282 79c15 12 15 36 0 48M296 66c24 20 24 54 0 74"
+              d="M286 92c15 12 15 36 0 48M302 78c24 20 24 54 0 74"
               fill="none"
-              stroke="#2563eb"
+              stroke="#0284c7"
               strokeWidth="5"
               strokeLinecap="round"
             />
@@ -357,7 +469,6 @@ export function WorkbenchPage({
   speech,
   onSendMessage,
   onUpdateExchangeMetadata,
-  onRefreshModel,
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
@@ -368,15 +479,9 @@ export function WorkbenchPage({
   const [threadYear, setThreadYear] = useState('');
   const [metadataNotice, setMetadataNotice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [downloadFeedback, setDownloadFeedback] = useState<{
     threadId: string;
-    message: string;
-    isError: boolean;
-  } | null>(null);
-  const [isRefreshingModel, setIsRefreshingModel] = useState(false);
-  const [refreshModelFeedback, setRefreshModelFeedback] = useState<{
     message: string;
     isError: boolean;
   } | null>(null);
@@ -385,10 +490,55 @@ export function WorkbenchPage({
   );
   const [sourcePromptThreadId, setSourcePromptThreadId] = useState<string | null>(null);
   const [settingsThreadId, setSettingsThreadId] = useState<string | null>(null);
+  const [chatPanelHeight, setChatPanelHeight] = useState<number>(() => {
+    try {
+      const raw = Number(window.localStorage.getItem('pa_chat_panel_height'));
+      return Number.isFinite(raw) && raw >= 200 && raw <= 540 ? raw : 264;
+    } catch {
+      return 264;
+    }
+  });
+  const [isDraggingChatPanel, setIsDraggingChatPanel] = useState(false);
 
   const ladderEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const threadNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('pa_chat_panel_height', String(chatPanelHeight));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [chatPanelHeight]);
+
+  const startChatPanelResize = (startY: number, initialHeight: number) => {
+    setIsDraggingChatPanel(true);
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'row-resize';
+
+    const maxHeight = Math.max(260, Math.round(window.innerHeight * 0.62));
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const next = Math.min(
+        maxHeight,
+        Math.max(200, initialHeight - (moveEvent.clientY - startY)),
+      );
+      setChatPanelHeight(Math.round(next));
+    };
+
+    const onPointerUp = () => {
+      setIsDraggingChatPanel(false);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
@@ -508,25 +658,6 @@ export function WorkbenchPage({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
-    }
-  };
-
-  const handleRefreshModel = async () => {
-    setIsRefreshingModel(true);
-    setRefreshModelFeedback(null);
-    try {
-      const message = await onRefreshModel();
-      setRefreshModelFeedback({
-        message,
-        isError: message.startsWith('Could not unload'),
-      });
-    } catch (error) {
-      setRefreshModelFeedback({
-        message: error instanceof Error ? error.message : 'Unable to refresh the Ollama model.',
-        isError: true,
-      });
-    } finally {
-      setIsRefreshingModel(false);
     }
   };
 
@@ -746,13 +877,6 @@ export function WorkbenchPage({
     onDeleteExchange(exchange.id);
   };
 
-  const handleExportPdf = async () => {
-    if (turns.length === 0) return;
-    await exportConversationToPdf(turns);
-    setPdfNotice('Conversation exported to PDF.');
-    setTimeout(() => setPdfNotice(null), 2600);
-  };
-
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleTimeString([], {
       hour: '2-digit',
@@ -761,62 +885,74 @@ export function WorkbenchPage({
 
   return (
     <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Plain Light Translucent Animated Mist Backdrop */}
+      {/* Light Translucent Scope-Tinted Mist Backdrop */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <div
           className="pa-mist-a absolute -top-28 -left-24 w-[560px] h-[420px] rounded-full blur-3xl opacity-55 dark:opacity-20"
           style={{
             background:
-              'radial-gradient(circle, rgba(125,211,252,0.28) 0%, rgba(255,255,255,0.08) 65%, transparent 100%)',
+              scope === 'private'
+                ? 'radial-gradient(circle, rgba(16,185,129,0.18) 0%, rgba(255,255,255,0.10) 65%, transparent 100%)'
+                : 'radial-gradient(circle, rgba(125,211,252,0.28) 0%, rgba(255,255,255,0.08) 65%, transparent 100%)',
           }}
         />
         <div
           className="pa-mist-b absolute -bottom-24 -right-24 w-[520px] h-[380px] rounded-full blur-3xl opacity-50 dark:opacity-20"
           style={{
             background:
-              'radial-gradient(circle, rgba(186,230,253,0.32) 0%, rgba(255,255,255,0.10) 60%, transparent 100%)',
+              scope === 'private'
+                ? 'radial-gradient(circle, rgba(167,243,208,0.24) 0%, rgba(255,255,255,0.12) 60%, transparent 100%)'
+                : 'radial-gradient(circle, rgba(186,230,253,0.32) 0%, rgba(255,255,255,0.10) 60%, transparent 100%)',
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-white/35 to-white/60 dark:from-slate-950/35 dark:via-slate-900/25 dark:to-slate-950/45" />
+        <div
+          className={`absolute inset-0 bg-gradient-to-b ${
+            scope === 'private'
+              ? 'from-emerald-50/55 via-white/45 to-emerald-50/50 dark:from-slate-950/30 dark:via-slate-900/20 dark:to-slate-950/40'
+              : 'from-sky-50/55 via-white/45 to-sky-50/50 dark:from-slate-950/30 dark:via-slate-900/20 dark:to-slate-950/40'
+          }`}
+        />
       </div>
 
       {/* Continual Conversational Bubble Ladder */}
-      <div className="relative z-10 flex-1 overflow-y-auto fluent-scroll px-4 sm:px-8 py-6">
+      <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-4 sm:px-8 py-6">
         <div
           className={`${hasCompletedDualResponse ? 'w-full max-w-none' : 'max-w-4xl'} mx-auto min-h-full flex flex-col justify-end gap-5`}
         >
           {exchanges.length === 0 ? (
             <div className="my-auto py-8">
-              <div className="bg-white/50 dark:bg-slate-900/55 backdrop-blur-xl rounded-[28px] border border-white/85 dark:border-slate-700/60 shadow-[0_10px_36px_rgba(2,132,199,0.06)] p-8 sm:p-10 text-center max-w-2xl mx-auto">
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-sky-500/10 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 mb-5">
-                  {scope === 'private' ? (
-                    <Lock className="w-7 h-7" />
-                  ) : (
-                    <Cloud className="w-7 h-7" />
-                  )}
+              <div
+                className={`rounded-[28px] border backdrop-blur-xl shadow-[0_10px_36px_rgba(2,132,199,0.06)] p-8 sm:p-10 text-center max-w-2xl mx-auto ${
+                  scope === 'private'
+                    ? 'bg-[#f4fbf7]/92 border-emerald-200/85 text-slate-900'
+                    : 'bg-[#f4f9ff]/92 border-sky-200/85 text-slate-900'
+                }`}
+              >
+                <div className="inline-flex items-center justify-center mb-4">
+                  <ScopeModeSvg scope={scope} className="w-16 h-16" />
                 </div>
 
-                <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 text-balance">
+                <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 text-balance">
                   Personal Assistant
                 </h1>
 
-                <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
+                <p className="mt-3 text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
                   {scope === 'private'
-                    ? 'Private mode · Your prompt stays with your local Ollama model. Type below to begin.'
-                    : `Public mode · Compare local Ollama with ${
+                    ? 'Private mode · Murmuring locally with your Ollama model. Type below to begin.'
+                    : `Public mode · Broadcasting to cloud (${
                         settings.publicLlm.activeAdapter === 'gemini'
                           ? 'Gemini'
                           : settings.publicLlm.activeAdapter === 'claude'
                             ? 'Claude'
                             : 'Fable'
-                      } through the cloud. Both responses appear side by side.`}
+                      }) alongside Ollama.`}
                 </p>
 
                 <div className="mt-5 flex justify-center">
                   <button
                     type="button"
                     onClick={onOpenSettings}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/80 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
                   >
                     <SettingsIcon className="w-3.5 h-3.5" />
                     <span>Configure Models &amp; Themes</span>
@@ -829,7 +965,7 @@ export function WorkbenchPage({
                       key={idx}
                       type="button"
                       onClick={() => handleStarterPromptClick(promptText)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 bg-white/70 dark:bg-slate-800/60 hover:bg-sky-50/75 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-between gap-3"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200/85 bg-white/85 hover:bg-sky-50/85 text-sm text-slate-700 transition-colors flex items-center justify-between gap-3"
                     >
                       <span className="truncate">{promptText}</span>
                       <ArrowUp className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1320,26 +1456,60 @@ export function WorkbenchPage({
         </div>
       </div>
 
-      {/* Bottom Floating Bubble Input Dock (3x Prompt Space + Save PDF) */}
-      <div className="relative z-10 px-4 sm:px-8 pb-5 pt-2">
-        <div className="max-w-4xl mx-auto">
+      {/* Horizontal Drag Splitter for Bottom Chat Panel */}
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="horizontal"
+        aria-label="Drag up or down to move or resize chat panel"
+        aria-valuemin={200}
+        aria-valuemax={540}
+        aria-valuenow={chatPanelHeight}
+        title="Drag up or down to move chat panel (double-click to reset)"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          startChatPanelResize(e.clientY, chatPanelHeight);
+        }}
+        onDoubleClick={() => setChatPanelHeight(264)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setChatPanelHeight((prev) => Math.min(540, prev + 20));
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setChatPanelHeight((prev) => Math.max(200, prev - 20));
+          }
+        }}
+        className="relative z-20 h-3 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/45 hover:bg-sky-500/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-colors group select-none"
+      >
+        <div
+          className={`inline-flex items-center justify-center rounded-full px-3 py-0.5 transition-colors ${
+            isDraggingChatPanel
+              ? 'text-sky-600 dark:text-sky-400'
+              : 'text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400'
+          }`}
+        >
+          <GripHorizontal className="h-3.5 w-3.5" />
+        </div>
+      </div>
+
+      {/* Bottom Movable Chat Panel */}
+      <div
+        style={{ '--pa-chat-height': `${chatPanelHeight}px` } as React.CSSProperties}
+        className="relative z-10 shrink-0 px-4 sm:px-8 pb-4 pt-1.5 flex flex-col min-h-[200px] md:h-[var(--pa-chat-height)]"
+      >
+        <div className="max-w-4xl w-full mx-auto flex-1 min-h-0 flex flex-col">
           {copyError && (
             <div
               role="alert"
-              className="mb-2.5 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/55 dark:text-red-200"
+              className="mb-2 shrink-0 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/55 dark:text-red-200"
             >
               {copyError}
             </div>
           )}
 
-          {pdfNotice && (
-            <div className="mb-2.5 px-4 py-2 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
-              {pdfNotice}
-            </div>
-          )}
-
           {privateNeedsModel && (
-            <div className="mb-2.5 flex items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-amber-50/90 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+            <div className="mb-2 shrink-0 flex items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-amber-50/90 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
               <span>No Windows Ollama model selected yet.</span>
               <button
                 type="button"
@@ -1351,7 +1521,7 @@ export function WorkbenchPage({
             </div>
           )}
 
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-1">
+          <div className="mb-1.5 shrink-0 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-1">
             <span className="font-semibold text-slate-800 dark:text-slate-100">
               Domain: {activeDomainShortLabel}
             </span>
@@ -1369,7 +1539,7 @@ export function WorkbenchPage({
 
           <section
             aria-label="Thread naming and period"
-            className="mb-2.5 rounded-2xl border border-slate-200/85 bg-white/80 px-3.5 py-2.5 dark:border-slate-700/80 dark:bg-slate-900/70"
+            className="mb-2 shrink-0 rounded-2xl border border-slate-200/85 bg-white/85 px-3.5 py-2 dark:border-slate-700/80 dark:bg-slate-900/70"
           >
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 lg:flex lg:items-end">
               <label className="sm:col-span-12 lg:flex-1 lg:min-w-0 block space-y-1">
@@ -1387,7 +1557,7 @@ export function WorkbenchPage({
                   placeholder="e.g., First Time Checkup, 2027 Health Revisit"
                   aria-label="Thread Name"
                   required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </label>
 
@@ -1403,7 +1573,7 @@ export function WorkbenchPage({
                     if (metadataNotice) setMetadataNotice(null);
                   }}
                   required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">Select month...</option>
                   {THREAD_MONTHS.map((monthName) => (
@@ -1426,7 +1596,7 @@ export function WorkbenchPage({
                     if (metadataNotice) setMetadataNotice(null);
                   }}
                   required
-                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs tabular-nums text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs tabular-nums text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">Select year...</option>
                   {THREAD_YEARS.map((yr) => (
@@ -1452,7 +1622,7 @@ export function WorkbenchPage({
                       type="button"
                       onClick={() => onPromptStyleChange(style)}
                       aria-pressed={promptStyle === style}
-                      className={`flex-1 sm:flex-none rounded-[10px] px-3 py-1.5 text-xs font-medium capitalize transition-colors whitespace-nowrap shrink-0 ${
+                      className={`flex-1 sm:flex-none rounded-[10px] px-3 py-1 text-xs font-medium capitalize transition-colors whitespace-nowrap shrink-0 ${
                         promptStyle === style
                           ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
                           : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
@@ -1476,15 +1646,32 @@ export function WorkbenchPage({
 
           <form
             onSubmit={handleSubmit}
-            className="relative overflow-hidden cloud-surface rounded-[26px] border border-white/90 dark:border-slate-700/75 shadow-[0_12px_36px_rgba(15,23,42,0.08)] p-3 flex items-end gap-2.5"
+            className={`relative flex-1 min-h-[86px] overflow-hidden rounded-[26px] border shadow-[0_12px_36px_rgba(15,23,42,0.08)] px-3.5 py-2.5 flex items-stretch gap-3 transition-colors ${
+              scope === 'private'
+                ? 'bg-[#f4fbf7]/95 border-emerald-200/95 text-slate-900'
+                : 'bg-[#f4f9ff]/95 border-sky-200/95 text-slate-900'
+            }`}
           >
             <ScopeArtwork
               scope={scope}
-              className="right-16 top-1/2 z-0 w-36 sm:w-44 -translate-y-1/2 opacity-20"
+              className="right-20 top-1/2 z-0 w-32 sm:w-40 -translate-y-1/2 opacity-30"
             />
+
+            {/* Unmistakable Private (Murmuring) vs Public (Shouting in Loudspeaker) indicator */}
+            <div className="relative z-10 flex flex-col items-center justify-center shrink-0 pr-1 border-r border-slate-200/80">
+              <ScopeModeSvg scope={scope} className="w-10 h-10 sm:w-11 sm:h-11" />
+              <span
+                className={`mt-1 text-[10px] font-semibold leading-none whitespace-nowrap ${
+                  scope === 'private' ? 'text-emerald-800' : 'text-sky-800'
+                }`}
+              >
+                {scope === 'private' ? 'Private' : 'Public'}
+              </span>
+            </div>
+
             <textarea
               ref={textareaRef}
-              rows={4}
+              rows={2}
               value={draft}
               disabled={!isComposerMetadataReady}
               onChange={(e) => setDraft(e.target.value)}
@@ -1493,85 +1680,31 @@ export function WorkbenchPage({
                 !isComposerMetadataReady
                   ? 'Enter Thread Name, Month, and Year above before typing in chat...'
                   : scope === 'private'
-                    ? 'Type a private prompt... (Enter to send, Shift+Enter for new line)'
-                    : 'Type a public prompt... (Enter to send, Shift+Enter for new line)'
+                    ? 'Murmur privately to your local Ollama model... (Enter to send, Shift+Enter for new line)'
+                    : 'Broadcast publicly to cloud + Ollama... (Enter to send, Shift+Enter for new line)'
               }
               style={{ fontFamily: 'var(--pa-font-body)' }}
-              className="relative z-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
+              className="relative z-10 flex-1 h-full min-h-[56px] resize-none bg-transparent px-1 py-1 text-[15px] text-slate-900 placeholder:text-slate-500 focus:outline-none leading-relaxed disabled:cursor-not-allowed disabled:opacity-65"
             />
 
-            <div className="relative z-10 flex shrink-0 flex-col items-center gap-2">
-              {scope === 'private' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void handleRefreshModel()}
-                    disabled={privateNeedsModel || isSending || isRefreshingModel}
-                    title="Unload running Ollama models with keep_alive set to 0. They reload on your next prompt."
-                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-medium text-sky-800 transition-colors hover:bg-sky-100 disabled:pointer-events-none disabled:opacity-45 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200 dark:hover:bg-sky-900/60"
-                  >
-                    {isRefreshingModel ? (
-                      <Hourglass className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    )}
-                    <span>{isRefreshingModel ? 'Refreshing…' : 'Refresh Model'}</span>
-                  </button>
-                  {refreshModelFeedback && (
-                    <span
-                      role={refreshModelFeedback.isError ? 'alert' : 'status'}
-                      className={`max-w-40 text-center text-[10px] leading-tight ${
-                        refreshModelFeedback.isError
-                          ? 'text-red-700 dark:text-red-300'
-                          : 'text-emerald-700 dark:text-emerald-300'
-                      }`}
-                    >
-                      {refreshModelFeedback.message}
-                    </span>
-                  )}
-                </>
-              )}
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => void handleExportPdf()}
-                  disabled={turns.length === 0}
-                  title="Save Conversation as PDF"
-                  aria-label="Save Conversation as PDF"
-                  className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
-                >
-                  <FileDown className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClearConversation}
-                  disabled={turns.length === 0 || isSending}
-                  title="New Thread (clear screen)"
-                  aria-label="New Thread"
-                  className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={!isComposerMetadataReady || !draft.trim() || isSending}
-                  className="relative z-10 h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
-                >
-                  {isSending ? (
-                    <>
-                      <Hourglass className="w-4 h-4 animate-spin" />
-                      <span>Working</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Send</span>
-                      <ArrowUp className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
+            <div className="relative z-10 flex shrink-0 items-end">
+              <button
+                type="submit"
+                disabled={!isComposerMetadataReady || !draft.trim() || isSending}
+                className="h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+              >
+                {isSending ? (
+                  <>
+                    <Hourglass className="w-4 h-4 animate-spin" />
+                    <span>Working</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Send</span>
+                    <ArrowUp className="w-4 h-4" />
+                  </>
+                )}
+              </button>
             </div>
           </form>
         </div>
