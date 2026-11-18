@@ -24,6 +24,7 @@ interface AnthropicMessageResponse {
 }
 
 const CLAUDE_MODELS = [
+  'claude-fable-5-1',
   'claude-sonnet-4-20250514',
   'claude-3-7-sonnet-latest',
   'claude-3-5-haiku-latest',

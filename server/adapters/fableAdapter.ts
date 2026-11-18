@@ -34,7 +34,7 @@ interface FableChatCompletionResponse {
   };
 }
 
-const FABLE_MODELS = ['fable-1-pro', 'fable-1-fast'] as const;
+const FABLE_MODELS = ['claude-fable-5-1', 'claude-sonnet-4-20250514'] as const;
 const RETIRED_FABLE_ENDPOINT = 'https://api.fable.ai/v1/chat/completions';
 
 export class FableAdapter implements ILlmAdapter {
@@ -58,9 +58,9 @@ export class FableAdapter implements ILlmAdapter {
     const endpoint =
       options?.endpointUrl?.trim() ||
       process.env.FABLE_API_URL?.trim() ||
-      '';
+      'https://api.anthropic.com/v1/messages';
     return endpoint.replace(/\/+$/, '').toLowerCase() === RETIRED_FABLE_ENDPOINT
-      ? ''
+      ? 'https://api.anthropic.com/v1/messages'
       : endpoint;
   }
 

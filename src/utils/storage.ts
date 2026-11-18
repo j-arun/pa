@@ -151,9 +151,9 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
           'You are a helpful personal assistant responding through the Public Claude Adapter.',
       },
       fable: {
-        model: 'fable-1-pro',
+        model: 'claude-fable-5-1',
         maxTokens: 2048,
-        endpointUrl: 'https://api.fable.ai/v1/chat/completions',
+        endpointUrl: 'https://api.anthropic.com/v1/messages',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Fable Adapter.',
       },
@@ -246,10 +246,28 @@ export function loadSettings(): WorkbenchSettings {
             ...DEFAULT_SETTINGS.publicLlm.adapters.claude,
             ...(parsed.publicLlm?.adapters?.claude || {}),
           },
-          fable: {
-            ...DEFAULT_SETTINGS.publicLlm.adapters.fable,
-            ...(parsed.publicLlm?.adapters?.fable || {}),
-          },
+          fable: (() => {
+            const mergedFable = {
+              ...DEFAULT_SETTINGS.publicLlm.adapters.fable,
+              ...(parsed.publicLlm?.adapters?.fable || {}),
+            };
+            const normalizedEndpoint = (mergedFable.endpointUrl || '')
+              .trim()
+              .replace(/\/+$/, '')
+              .toLowerCase();
+            return {
+              ...mergedFable,
+              model:
+                !mergedFable.model || mergedFable.model === 'fable-1-pro'
+                  ? 'claude-fable-5-1'
+                  : mergedFable.model,
+              endpointUrl:
+                !normalizedEndpoint ||
+                normalizedEndpoint === 'https://api.fable.ai/v1/chat/completions'
+                  ? 'https://api.anthropic.com/v1/messages'
+                  : mergedFable.endpointUrl,
+            };
+          })(),
         },
       },
       voice: {
