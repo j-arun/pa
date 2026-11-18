@@ -12,6 +12,7 @@ public sealed partial class PromptBuilderPage : Page
     {
         _updatingControls = true;
         InitializeComponent();
+        UpdatePromptEditingControls();
         _updatingControls = false;
         Loaded += (_, _) => SyncTemplateFields();
         SyncTemplateFields();
@@ -58,6 +59,20 @@ public sealed partial class PromptBuilderPage : Page
         _ => domain.ToString()
     };
 
+    private void EditPromptsToggleSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        UpdatePromptEditingControls();
+    }
+
+    private void UpdatePromptEditingControls()
+    {
+        var isEditingEnabled = EditPromptsToggleSwitch.IsOn;
+        FormalTemplateTextBox.IsEnabled = isEditingEnabled;
+        ClassicTemplateTextBox.IsEnabled = isEditingEnabled;
+        FormalResetButton.IsEnabled = isEditingEnabled;
+        ClassicResetButton.IsEnabled = isEditingEnabled;
+    }
+
     private void DomainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_updatingControls || DomainTabs.SelectedItem is not TabViewItem selectedTab) return;
@@ -85,7 +100,12 @@ public sealed partial class PromptBuilderPage : Page
 
     private void TemplateTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_updatingControls || sender is not TextBox textBox) return;
+        if (_updatingControls ||
+            !EditPromptsToggleSwitch.IsOn ||
+            sender is not TextBox textBox)
+        {
+            return;
+        }
         var style = textBox == ClassicTemplateTextBox
             ? PromptStyle.Classic
             : PromptStyle.Formal;
@@ -98,7 +118,8 @@ public sealed partial class PromptBuilderPage : Page
 
     private void ResetTemplate_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string styleName } ||
+        if (!EditPromptsToggleSwitch.IsOn ||
+            sender is not Button { Tag: string styleName } ||
             !Enum.TryParse(styleName, out PromptStyle style))
         {
             return;

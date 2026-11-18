@@ -76,6 +76,7 @@ export function PromptBuilderPage({
   onSelectDomain,
   onChangeTemplates,
 }: PromptBuilderPageProps) {
+  const [isEditingEnabled, setIsEditingEnabled] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const domain = DOMAIN_OPTIONS.find((option) => option.id === activeDomain) ?? DOMAIN_OPTIONS[0];
@@ -100,6 +101,7 @@ export function PromptBuilderPage({
   };
 
   const updateTemplate = (style: PromptStyle, value: string) => {
+    if (!isEditingEnabled) return;
     onChangeTemplates({
       ...templates,
       [activeDomain]: {
@@ -112,39 +114,58 @@ export function PromptBuilderPage({
   return (
     <main className="relative flex-1 min-w-0 overflow-y-auto fluent-scroll px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
-              Session prompt setup
-            </p>
-            <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-              Prompt Builder
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+        <header className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                Session prompt setup
+              </p>
+              <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                Prompt Builder
+              </h1>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <span>Enable prompt editing</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={isEditingEnabled}
+                onChange={(event) => setIsEditingEnabled(event.currentTarget.checked)}
+                aria-label="Enable prompt editing"
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden="true"
+                className="relative h-6 w-11 rounded-full bg-slate-300 transition-colors after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:bg-sky-600 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-500 peer-focus-visible:ring-offset-2 dark:bg-slate-700"
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
               Choose the active domain for this session and maintain the Formal and Classic
               templates used by the chat panel. Changes are saved to the application settings file.
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
-              <span className="h-2 w-2 rounded-full bg-sky-500" />
-              Active domain: {domain.label}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
+                <span className="h-2 w-2 rounded-full bg-sky-500" />
+                Active domain: {domain.label}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleApplySettings()}
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--pa-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--pa-accent-hover)] disabled:cursor-wait disabled:opacity-65"
+              >
+                {isSaving ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : saveNotice?.startsWith('Prompt Builder settings saved') ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {isSaving ? 'Saving…' : 'Save / Apply'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleApplySettings()}
-              disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-xl bg-[var(--pa-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--pa-accent-hover)] disabled:cursor-wait disabled:opacity-65"
-            >
-              {isSaving ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              ) : saveNotice?.startsWith('Prompt Builder settings saved') ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              {isSaving ? 'Saving…' : 'Save / Apply'}
-            </button>
           </div>
         </header>
 
@@ -253,12 +274,11 @@ export function PromptBuilderPage({
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      updateTemplate(id, DEFAULT_PROMPT_TEMPLATES[activeDomain][id])
-                    }
+                    onClick={() => updateTemplate(id, DEFAULT_PROMPT_TEMPLATES[activeDomain][id])}
+                    disabled={!isEditingEnabled}
                     aria-label={`Restore default ${label} ${domain.label} template`}
                     title="Restore default template"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
                   </button>
@@ -267,9 +287,10 @@ export function PromptBuilderPage({
                   aria-label={`${label} ${domain.label} prompt template`}
                   value={templates[activeDomain][id]}
                   onChange={(event) => updateTemplate(id, event.target.value)}
+                  disabled={!isEditingEnabled}
                   rows={9}
                   spellCheck
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-white/85 px-3 py-2.5 text-sm leading-relaxed text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:focus:border-sky-600"
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white/85 px-3 py-2.5 text-xs leading-relaxed text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-500/15 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-100 dark:focus:border-sky-600 dark:disabled:bg-slate-950/60"
                 />
               </div>
             ))}

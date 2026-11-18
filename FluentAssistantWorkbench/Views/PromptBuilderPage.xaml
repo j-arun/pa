@@ -16,9 +16,25 @@
                     FontWeight="SemiBold"
                     CharacterSpacing="120"
                     Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                <TextBlock
-                    Text="Prompt Builder"
-                    Style="{StaticResource TitleTextBlockStyle}" />
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Grid.Column="0"
+                        Text="Prompt Builder"
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        VerticalAlignment="Center" />
+                    <ToggleSwitch
+                        x:Name="EditPromptsToggleSwitch"
+                        Grid.Column="1"
+                        Header="Enable prompt editing"
+                        IsOn="False"
+                        Toggled="EditPromptsToggleSwitch_Toggled"
+                        AutomationProperties.Name="Enable prompt editing"
+                        VerticalAlignment="Center" />
+                </Grid>
                 <TextBlock
                     Text="Choose this session's active domain and maintain its Formal and Classic templates. The chat composer previews and applies the selected template before sending."
                     MaxWidth="760"
@@ -115,16 +131,20 @@
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                     <Button
+                                        x:Name="FormalResetButton"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Top"
                                         Content="Restore default"
                                         Tag="Formal"
+                                        IsEnabled="False"
                                         Click="ResetTemplate_Click" />
                                 </Grid>
                                 <TextBox
                                     x:Name="FormalTemplateTextBox"
                                     MinHeight="190"
+                                    FontSize="12"
                                     AcceptsReturn="True"
+                                    IsEnabled="False"
                                     TextWrapping="Wrap"
                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                     PlaceholderText="Enter the Formal prompt template..."
@@ -149,16 +169,20 @@
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                     <Button
+                                        x:Name="ClassicResetButton"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Top"
                                         Content="Restore default"
                                         Tag="Classic"
+                                        IsEnabled="False"
                                         Click="ResetTemplate_Click" />
                                 </Grid>
                                 <TextBox
                                     x:Name="ClassicTemplateTextBox"
                                     MinHeight="190"
+                                    FontSize="12"
                                     AcceptsReturn="True"
+                                    IsEnabled="False"
                                     TextWrapping="Wrap"
                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                     PlaceholderText="Enter the Classic prompt template..."
