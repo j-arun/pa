@@ -9,8 +9,10 @@ import {
   Volume2,
   VolumeX,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { SettingsPage } from './components/SettingsPage';
 import { WorkbenchPage } from './components/WorkbenchPage';
@@ -47,11 +49,32 @@ const THEME_CYCLE: ThemeMode[] = [
   'royal-amethyst',
 ];
 
+function appendCachedContext(
+  instruction: string,
+  cachedContext: string,
+  existingContent: string[],
+): string {
+  const normalizedInstruction = instruction.trim();
+  const normalizedContext = cachedContext.trim();
+  if (
+    !normalizedContext ||
+    normalizedInstruction.includes(normalizedContext) ||
+    existingContent.some((content) => content.includes(normalizedContext))
+  ) {
+    return normalizedInstruction;
+  }
+  return [normalizedInstruction, normalizedContext].filter(Boolean).join('\n\n');
+}
+
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
+  const activePromptDomain = settings.promptBuilder.activeDomain;
+  const promptStyle = settings.promptBuilder.activeStyle;
+  const promptTemplates = settings.promptBuilder.templates;
   const [isSending, setIsSending] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [configFileInfo, setConfigFileInfo] = useState<{
@@ -72,6 +95,8 @@ export default function App() {
   } | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(true);
+  const [isContextRailHiddenForComparison, setIsContextRailHiddenForComparison] =
+    useState(false);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -94,6 +119,27 @@ export default function App() {
   });
   const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const latestQuestionTurn = [...turns].reverse().find((turn) => turn.role === 'user');
+  const latestComparisonScopes = latestQuestionTurn?.responseScopes ?? [];
+  const latestComparisonReplies = latestQuestionTurn
+    ? turns.filter(
+        (turn) =>
+          turn.exchangeId === latestQuestionTurn.id && turn.role === 'assistant',
+      )
+    : [];
+  const hasPublicDualResponseReady =
+    scope === 'public' &&
+    latestComparisonScopes.includes('private') &&
+    latestComparisonScopes.includes('public') &&
+    ['private', 'public'].every((targetScope) =>
+      latestComparisonReplies.some((turn) => turn.scope === targetScope),
+    );
+  const isContextRailVisible =
+    isContextRailOpen && !isContextRailHiddenForComparison;
+
+  useEffect(() => {
+    setIsContextRailHiddenForComparison(hasPublicDualResponseReady);
+  }, [hasPublicDualResponseReady]);
 
   useEffect(() => {
     try {
@@ -200,9 +246,15 @@ export default function App() {
         config?: WorkbenchSettings;
         filePath?: string;
         platform?: string;
+        hasPromptBuilderSettings?: boolean;
       };
       if (data.config) {
-        setSettings(data.config);
+        setSettings((previous) => ({
+          ...data.config!,
+          promptBuilder: data.hasPromptBuilderSettings
+            ? data.config!.promptBuilder
+            : previous.promptBuilder,
+        }));
       }
       setConfigFileInfo((prev) => ({
         ...prev,
@@ -218,6 +270,35 @@ export default function App() {
       }));
     } finally {
       configHydratedRef.current = true;
+    }
+  }, []);
+
+  const persistSettingsToFile = useCallback(async (nextSettings: WorkbenchSettings) => {
+    try {
+      const res = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        filePath?: string;
+        savedAt?: string;
+      };
+      setConfigFileInfo((prev) => ({
+        ...prev,
+        filePath: data.filePath || prev.filePath,
+        lastSavedAt: data.savedAt || new Date().toISOString(),
+        syncError: undefined,
+      }));
+      return true;
+    } catch (err) {
+      setConfigFileInfo((prev) => ({
+        ...prev,
+        syncError:
+          err instanceof Error ? err.message : 'Failed to sync workbench.config.json.',
+      }));
+      return false;
     }
   }, []);
 
@@ -241,35 +322,11 @@ export default function App() {
     if (!configHydratedRef.current) return;
 
     const timer = setTimeout(() => {
-      void fetch('/api/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = (await res.json()) as {
-            filePath?: string;
-            savedAt?: string;
-          };
-          setConfigFileInfo((prev) => ({
-            ...prev,
-            filePath: data.filePath || prev.filePath,
-            lastSavedAt: data.savedAt || new Date().toISOString(),
-            syncError: undefined,
-          }));
-        })
-        .catch((err) => {
-          setConfigFileInfo((prev) => ({
-            ...prev,
-            syncError:
-              err instanceof Error ? err.message : 'Failed to sync workbench.config.json.',
-          }));
-        });
+      void persistSettingsToFile(settings);
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [settings]);
+  }, [settings, persistSettingsToFile]);
 
   useEffect(() => {
     saveConversation(turns);
@@ -320,6 +377,27 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theme: nextTheme }));
   };
 
+  const handleRefreshPrivateModel = async () => {
+    const response = await fetch('/api/ollama/unload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: settings.privateLlm.ollamaBaseUrl,
+        model: settings.privateLlm.selectedModel,
+      }),
+    });
+    const payload = (await response.json()) as { message?: string; error?: string };
+    if (!response.ok || payload.error) {
+      const errorMessage = payload.error || 'Failed to refresh the Ollama model.';
+      pushContextLog('error', `Ollama model refresh failed: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
+    const message = payload.message || 'Ollama model refreshed; it will reload on your next prompt.';
+    pushContextLog('success', message);
+    return message;
+  };
+
   const handleSendMessage = async (text: string, inputMode: 'text') => {
     const responseScopes: ConversationScope[] =
       scope === 'public' ? ['private', 'public'] : ['private'];
@@ -332,6 +410,38 @@ export default function App() {
       scope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+    const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
+    const historyForScope = (targetScope: ConversationScope) =>
+      turns
+        .filter((turn) => {
+          if (turn.role === 'user') {
+            return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
+          }
+          return turn.role === 'assistant' && turn.scope === targetScope;
+        })
+        .slice(-maxHistory)
+        .map((turn) => ({
+          role: turn.role as 'user' | 'assistant',
+          content: turn.content,
+        }));
+    const historyByScope = {
+      private: historyForScope('private'),
+      public: historyForScope('public'),
+    };
+    const privateCachedContext = settings.contextCache.privateText.trim();
+    const publicCachedContext = settings.contextCache.publicText.trim();
+    const systemInstructionByScope = {
+      private: appendCachedContext(
+        settings.privateLlm.systemInstruction,
+        privateCachedContext,
+        [text, ...historyByScope.private.map((turn) => turn.content)],
+      ),
+      public: appendCachedContext(
+        settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
+        publicCachedContext,
+        [text, ...historyByScope.public.map((turn) => turn.content)],
+      ),
+    };
 
     const userTurn: ConversationTurn = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -343,23 +453,19 @@ export default function App() {
       scope,
       adapterId: selectedAdapterId,
       model: selectedModelName,
+      promptDomain: activePromptDomain,
+      promptStyle,
+      systemInstruction: systemInstructionByScope[scope],
+      cachedContext: scope === 'private' ? privateCachedContext : publicCachedContext,
+      privateSystemInstruction: systemInstructionByScope.private,
+      publicSystemInstruction: systemInstructionByScope.public,
+      privateCachedContext,
+      publicCachedContext,
     };
 
-    const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
-    const historyForScope = (targetScope: ConversationScope) =>
-      turns
-        .filter((turn) => {
-          if (turn.role === 'user') {
-            return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
-          }
-          return turn.role === 'assistant' && turn.scope === targetScope;
-        })
-        .slice(-maxHistory)
-      .map((t) => ({
-        role: t.role as 'user' | 'assistant',
-        content: t.content,
-      }));
-    const historyCounts = responseScopes.map((targetScope) => historyForScope(targetScope).length);
+    const historyCounts = responseScopes.map(
+      (targetScope) => historyByScope[targetScope].length,
+    );
 
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
@@ -402,13 +508,13 @@ export default function App() {
         targetScope === 'private'
           ? settings.privateLlm.selectedModel || 'unselected'
           : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
-      const historyPayload = historyForScope(targetScope);
+      const historyPayload = historyByScope[targetScope];
       const requestStart = Date.now();
       const options =
         targetScope === 'private'
           ? {
               model: settings.privateLlm.selectedModel,
-              systemInstruction: settings.privateLlm.systemInstruction,
+              systemInstruction: systemInstructionByScope.private,
               ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl,
               contextWindow: settings.privateLlm.contextWindow,
               keepAlive: settings.privateLlm.keepAlive,
@@ -416,9 +522,7 @@ export default function App() {
             }
           : {
               model: settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model,
-              systemInstruction:
-                settings.publicLlm.adapters[settings.publicLlm.activeAdapter]
-                  .systemInstruction,
+              systemInstruction: systemInstructionByScope.public,
               thinkingLevel:
                 settings.publicLlm.adapters[settings.publicLlm.activeAdapter]
                   .thinkingLevel,
@@ -629,20 +733,26 @@ export default function App() {
               <nav className="space-y-1" aria-label="Primary pages">
                 <button
                   type="button"
-                  onClick={() => setIsSettingsOpen(false)}
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsPromptBuilderOpen(false);
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isSettingsOpen
+                    isSettingsOpen || isPromptBuilderOpen
                       ? 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                       : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
                   }`}
-                  aria-current={!isSettingsOpen ? 'page' : undefined}
+                  aria-current={!isSettingsOpen && !isPromptBuilderOpen ? 'page' : undefined}
                 >
                   <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
                   <span className="truncate">Personal Assistant</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsSettingsOpen(true)}
+                  onClick={() => {
+                    setIsSettingsOpen(true);
+                    setIsPromptBuilderOpen(false);
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isSettingsOpen
                       ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
@@ -653,6 +763,22 @@ export default function App() {
                   <Settings className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
                   <span className="truncate">Settings</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsPromptBuilderOpen(true);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    isPromptBuilderOpen
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                  aria-current={isPromptBuilderOpen ? 'page' : undefined}
+                >
+                  <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span className="truncate">Prompt Builder</span>
+                </button>
               </nav>
             </div>
 
@@ -660,7 +786,10 @@ export default function App() {
             <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-1 py-1.5">
               <button
                 type="button"
-                onClick={() => setIsSettingsOpen(true)}
+                onClick={() => {
+                  setIsSettingsOpen(true);
+                  setIsPromptBuilderOpen(false);
+                }}
                 title="View account profile in Settings"
                 className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left"
               >
@@ -747,7 +876,11 @@ export default function App() {
             </button>
             <img src="/favicon.svg" alt="Personal Assistant" className="w-6 h-6 shrink-0 md:hidden" />
             <span className="font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
-              Personal Assistant
+              {isSettingsOpen
+                ? 'Settings'
+                : isPromptBuilderOpen
+                  ? 'Prompt Builder'
+                  : 'Personal Assistant'}
             </span>
           </div>
 
@@ -840,16 +973,23 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => setIsContextRailOpen((prev) => !prev)}
-              aria-label={isContextRailOpen ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
-              title={isContextRailOpen ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
-              aria-pressed={isContextRailOpen}
+              onClick={() => {
+                if (isContextRailHiddenForComparison) {
+                  setIsContextRailHiddenForComparison(false);
+                  setIsContextRailOpen(true);
+                } else {
+                  setIsContextRailOpen((prev) => !prev);
+                }
+              }}
+              aria-label={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
+              title={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
+              aria-pressed={isContextRailVisible}
               className={`hidden lg:inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
-                isContextRailOpen
+                isContextRailVisible
                   ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-              style={isContextRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+              style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
             >
               <PanelRight className="w-4 h-4" />
             </button>
@@ -902,14 +1042,53 @@ export default function App() {
               onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
               onContextLog={pushContextLog}
             />
+          ) : isPromptBuilderOpen ? (
+            <PromptBuilderPage
+              activeDomain={activePromptDomain}
+              templates={promptTemplates}
+              settingsFilePath={configFileInfo.filePath}
+              saveError={configFileInfo.syncError}
+              onApplySettings={() => persistSettingsToFile(settings)}
+              onSelectDomain={(activeDomain) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  promptBuilder: {
+                    ...previous.promptBuilder,
+                    activeDomain,
+                  },
+                }))
+              }
+              onChangeTemplates={(templates) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  promptBuilder: {
+                    ...previous.promptBuilder,
+                    templates,
+                  },
+                }))
+              }
+            />
           ) : (
             <WorkbenchPage
               scope={scope}
               settings={settings}
               turns={turns}
+              activePromptDomain={activePromptDomain}
+              promptStyle={promptStyle}
+              promptTemplates={promptTemplates}
+              onPromptStyleChange={(activeStyle) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  promptBuilder: {
+                    ...previous.promptBuilder,
+                    activeStyle,
+                  },
+                }))
+              }
               isSending={isSending}
               speech={speech}
               onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
+              onRefreshModel={handleRefreshPrivateModel}
               onClearConversation={() => {
                 setTurns([]);
                 setTelemetry({
@@ -921,11 +1100,19 @@ export default function App() {
                 });
                 pushContextLog('info', 'Session context cleared');
               }}
+              onDeleteExchange={(exchangeId) => {
+                setTurns((previous) =>
+                  previous.filter(
+                    (turn) => turn.id !== exchangeId && turn.exchangeId !== exchangeId,
+                  ),
+                );
+                pushContextLog('info', 'Conversation thread deleted from session');
+              }}
               onOpenSettings={() => setIsSettingsOpen(true)}
             />
           )}
 
-          {!isSettingsOpen && isContextRailOpen && (
+          {!isSettingsOpen && !isPromptBuilderOpen && isContextRailVisible && (
             <>
               {/* Right Rail Drag Splitter */}
               <div

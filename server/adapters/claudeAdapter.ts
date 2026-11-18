@@ -43,6 +43,15 @@ export class ClaudeAdapter implements ILlmAdapter {
     );
   }
 
+  private resolveApiKey(options?: AdapterRuntimeOptions): string {
+    return (
+      options?.apiKey?.trim() ||
+      process.env.ANTHROPIC_API_KEY?.trim() ||
+      process.env.CLAUDE_API_KEY?.trim() ||
+      ''
+    );
+  }
+
   getSummary(): AdapterWireSummary {
     return {
       id: this.id,
@@ -77,13 +86,15 @@ export class ClaudeAdapter implements ILlmAdapter {
         null,
         2,
       ),
-      configuredOnServer: Boolean(process.env.ANTHROPIC_API_KEY),
+      configuredOnServer: Boolean(
+        process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_API_KEY?.trim(),
+      ),
     };
   }
 
   async healthCheck(options?: AdapterRuntimeOptions): Promise<AdapterHealthResult> {
     const started = Date.now();
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = this.resolveApiKey(options);
     const endpoint = this.resolveEndpoint(options);
 
     if (!apiKey) {
@@ -93,7 +104,7 @@ export class ClaudeAdapter implements ILlmAdapter {
         reachable: false,
         configured: false,
         statusLabel: 'Server Env Unset',
-        detail: `Adapter contract ready (${endpoint}). Configure ANTHROPIC_API_KEY in server environment secrets to activate live calls.`,
+        detail: `Adapter contract ready (${endpoint}). Provide apiKey or x-api-key per request, or configure ANTHROPIC_API_KEY or CLAUDE_API_KEY on the server.`,
         latencyMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       };
@@ -145,12 +156,12 @@ export class ClaudeAdapter implements ILlmAdapter {
 
   async sendMessage(request: AdapterChatRequest): Promise<AdapterChatResponse> {
     const started = Date.now();
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = this.resolveApiKey(request.options);
     const endpoint = this.resolveEndpoint(request.options);
 
     if (!apiKey) {
       throw new Error(
-        'Claude Adapter is registered, but ANTHROPIC_API_KEY is not configured in the server environment. Switch to Gemini in Settings or configure ANTHROPIC_API_KEY on the server.',
+        'Claude API key is missing. Provide apiKey or x-api-key per request, or configure ANTHROPIC_API_KEY or CLAUDE_API_KEY on the server.',
       );
     }
 

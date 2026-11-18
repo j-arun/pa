@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="FluentAssistantWorkbench.Views.PromptBuilderPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer
+        Padding="28,24"
+        HorizontalScrollBarVisibility="Disabled"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="1040" Spacing="18">
+            <StackPanel Spacing="5">
+                <TextBlock
+                    Text="SESSION PROMPT SETUP"
+                    FontSize="11"
+                    FontWeight="SemiBold"
+                    CharacterSpacing="120"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <TextBlock
+                    Text="Prompt Builder"
+                    Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Text="Choose this session's active domain and maintain its Formal and Classic templates. The chat composer previews and applies the selected template before sending."
+                    MaxWidth="760"
+                    TextWrapping="Wrap"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+
+            <TabView
+                x:Name="DomainTabs"
+                IsAddTabButtonVisible="False"
+                CanReorderTabs="False"
+                SelectionChanged="DomainTabs_SelectionChanged">
+                <TabViewItem x:Name="AstrologyTab" Tag="Astrology">
+                    <TabViewItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Astrology" VerticalAlignment="Center" />
+                            <CheckBox x:Name="AstrologyActiveCheckBox" Tag="Astrology" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Astrology as the active prompt domain" />
+                        </StackPanel>
+                    </TabViewItem.Header>
+                </TabViewItem>
+                <TabViewItem x:Name="HealthTab" Tag="Health">
+                    <TabViewItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Health" VerticalAlignment="Center" />
+                            <CheckBox x:Name="HealthActiveCheckBox" Tag="Health" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Health as the active prompt domain" />
+                        </StackPanel>
+                    </TabViewItem.Header>
+                </TabViewItem>
+                <TabViewItem x:Name="FinanceTab" Tag="Finance">
+                    <TabViewItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Finance" VerticalAlignment="Center" />
+                            <CheckBox x:Name="FinanceActiveCheckBox" Tag="Finance" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Finance as the active prompt domain" />
+                        </StackPanel>
+                    </TabViewItem.Header>
+                </TabViewItem>
+                <TabViewItem x:Name="GeneralTab" Tag="General">
+                    <TabViewItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="General" VerticalAlignment="Center" />
+                            <CheckBox x:Name="GeneralActiveCheckBox" Tag="General" Click="DomainCheckBox_Click" AutomationProperties.Name="Set General as the active prompt domain" />
+                        </StackPanel>
+                    </TabViewItem.Header>
+                </TabViewItem>
+            </TabView>
+
+            <Border
+                Padding="16"
+                CornerRadius="14"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="12">
+                    <Grid>
+                        <StackPanel Spacing="3">
+                            <TextBlock
+                                x:Name="ActiveDomainStatusText"
+                                Text="Active domain for this session: Astrology"
+                                Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                Text="Use {{prompt}} where the user's chat draft should be inserted. Templates save automatically."
+                                FontSize="12"
+                                TextWrapping="Wrap"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Content="Save / Apply"
+                            Click="SaveButton_Click"
+                            AutomationProperties.Name="Save and apply prompt builder settings" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border
+                            Grid.Column="0"
+                            Padding="14"
+                            CornerRadius="12"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <Grid>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="Formal" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock
+                                            Text="Straightforward, neutral instructions"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <Button
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Content="Restore default"
+                                        Tag="Formal"
+                                        Click="ResetTemplate_Click" />
+                                </Grid>
+                                <TextBox
+                                    x:Name="FormalTemplateTextBox"
+                                    MinHeight="190"
+                                    AcceptsReturn="True"
+                                    TextWrapping="Wrap"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    PlaceholderText="Enter the Formal prompt template..."
+                                    TextChanged="TemplateTextBox_TextChanged" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Grid.Column="1"
+                            Padding="14"
+                            CornerRadius="12"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <Grid>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="Classic" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock
+                                            Text="Context-rich instructions with structured output"
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <Button
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Content="Restore default"
+                                        Tag="Classic"
+                                        Click="ResetTemplate_Click" />
+                                </Grid>
+                                <TextBox
+                                    x:Name="ClassicTemplateTextBox"
+                                    MinHeight="190"
+                                    AcceptsReturn="True"
+                                    TextWrapping="Wrap"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    PlaceholderText="Enter the Classic prompt template..."
+                                    TextChanged="TemplateTextBox_TextChanged" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <InfoBar
+                        x:Name="SaveStatusInfoBar"
+                        IsOpen="False"
+                        IsClosable="True"
+                        Severity="Error" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

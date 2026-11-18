@@ -165,6 +165,11 @@
                             <FontIcon Glyph="&#xE713;" />
                         </NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem Content="Prompt Builder" Tag="prompt-builder">
+                        <NavigationViewItem.Icon>
+                            <FontIcon Glyph="&#xE8D4;" />
+                        </NavigationViewItem.Icon>
+                    </NavigationViewItem>
                 </NavigationView.MenuItems>
 
                 <NavigationView.PaneFooter>
@@ -495,6 +500,57 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Spacing="4">
+                        <Grid ColumnSpacing="10">
+                            <TextBlock
+                                x:Name="PromptDomainStatusText"
+                                Text="Astrology · Formal"
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                VerticalAlignment="Center" />
+                            <StackPanel
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal"
+                                Spacing="6">
+                                <ToggleButton
+                                    x:Name="FormalPromptStyleButton"
+                                    Content="Formal"
+                                    Tag="Formal"
+                                    IsChecked="True"
+                                    Click="PromptStyleButton_Click"
+                                    MinWidth="72"
+                                    Height="30"
+                                    AutomationProperties.Name="Use Formal prompt template" />
+                                <ToggleButton
+                                    x:Name="ClassicPromptStyleButton"
+                                    Content="Classic"
+                                    Tag="Classic"
+                                    Click="PromptStyleButton_Click"
+                                    MinWidth="72"
+                                    Height="30"
+                                    AutomationProperties.Name="Use Classic prompt template" />
+                            </StackPanel>
+                        </Grid>
+                        <Border
+                            MaxHeight="76"
+                            Padding="9,6"
+                            CornerRadius="10"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <ScrollViewer
+                                MaxHeight="62"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Disabled">
+                                <TextBlock
+                                    x:Name="PromptPreviewText"
+                                    Text="Type a prompt to preview the composed request."
+                                    TextWrapping="Wrap"
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    AutomationProperties.Name="Composed prompt preview" />
+                            </ScrollViewer>
+                        </Border>
                     <TextBlock
                         x:Name="PromptContextStatusText"
                         Text="Reference: 0 est. · Context used: ~0 / 32K · Remaining: ~32,768"
@@ -552,8 +608,23 @@
                     Grid.Column="1"
                     VerticalAlignment="Bottom"
                     HorizontalAlignment="Right"
-                    Orientation="Horizontal"
-                    Spacing="8">
+                    Orientation="Vertical"
+                    Spacing="7">
+                    <Button
+                        x:Name="RefreshModelButton"
+                        Content="Refresh Model"
+                        Click="RefreshModelButton_Click"
+                        MinWidth="112"
+                        Height="30"
+                        FontSize="11"
+                        ToolTipService.ToolTip="Unload running Ollama models with keep_alive set to 0. They reload on your next prompt."
+                        AutomationProperties.Name="Refresh Model" />
+                    <TextBlock
+                        x:Name="RefreshModelStatusText"
+                        MaxWidth="160"
+                        TextWrapping="Wrap"
+                        FontSize="10"
+                        Visibility="Collapsed" />
                     <Button
                         x:Name="SendButton"
                         Click="SendButton_Click"

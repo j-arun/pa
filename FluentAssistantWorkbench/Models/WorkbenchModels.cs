@@ -16,6 +16,22 @@ public enum ConversationScope
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PromptDomain
+{
+    Astrology,
+    Health,
+    Finance,
+    General
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PromptStyle
+{
+    Formal,
+    Classic
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum AppThemeMode
 {
     System,
@@ -112,8 +128,23 @@ public sealed class ConversationTurn
     public ConversationScope Scope { get; set; } = ConversationScope.Private;
     public string? ExchangeId { get; set; }
     public List<ConversationScope> ResponseScopes { get; set; } = [];
+    public PromptDomain? PromptDomain { get; set; }
+    public PromptStyle? PromptStyle { get; set; }
+    public string SystemInstruction { get; set; } = string.Empty;
+    public string CachedContext { get; set; } = string.Empty;
+    public string PrivateSystemInstruction { get; set; } = string.Empty;
+    public string PublicSystemInstruction { get; set; } = string.Empty;
+    public string PrivateCachedContext { get; set; } = string.Empty;
+    public string PublicCachedContext { get; set; } = string.Empty;
     public string AdapterId { get; set; } = "ollama";
     public string Model { get; set; } = string.Empty;
+    [JsonIgnore]
+    public string QualifiedModelName =>
+        string.IsNullOrWhiteSpace(Model)
+            ? AdapterId
+            : Model.StartsWith($"{AdapterId}/", StringComparison.OrdinalIgnoreCase)
+                ? Model
+                : $"{AdapterId}/{Model}";
     public long? DurationMs { get; set; }
     public double? TokensPerSecond { get; set; }
     public int? PromptTokenCount { get; set; }
@@ -164,12 +195,14 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     private int? _referenceTokenEstimate;
     private int? _responseTokenCount;
     private bool _responseTokenCountIsEstimate;
-    private int? _contextWindowTokenCount;
+    private string _qualifiedModelName = string.Empty;
     private bool _isReplyError;
     private bool _isWaitingReply;
     private bool _isDualResponse;
     private bool _isQuestionExpanded = true;
     private bool _isReplyExpanded = true;
+    private bool _isThreadExpanded = true;
+    private int _threadNumber;
     private AppThemeMode _themeMode = AppThemeMode.ArcticSky;
     private AppFontFamily _fontMode = AppFontFamily.SegoeUI;
     private AppChatFontSize _chatFontSize = AppChatFontSize.Small;
@@ -180,6 +213,31 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     public ConversationScope Scope { get; init; } = ConversationScope.Private;
     public ConversationResponse PrivateResponse { get; } = new(ConversationScope.Private);
     public ConversationResponse PublicResponse { get; } = new(ConversationScope.Public);
+    public PromptDomain? PromptDomain { get; init; }
+    public PromptStyle? PromptStyle { get; init; }
+    public string SystemInstruction { get; init; } = string.Empty;
+    public string CachedContext { get; init; } = string.Empty;
+    public string PrivateSystemInstruction { get; init; } = string.Empty;
+    public string PublicSystemInstruction { get; init; } = string.Empty;
+    public string PrivateCachedContext { get; init; } = string.Empty;
+    public string PublicCachedContext { get; init; } = string.Empty;
+    public int ThreadNumber
+    {
+        get => _threadNumber;
+        set
+        {
+            if (_threadNumber == value) return;
+            _threadNumber = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThreadNumber)));
+        }
+    }
+
+    public bool IsThreadExpanded => _isThreadExpanded;
+    public Visibility ThreadContentVisibility =>
+        _isThreadExpanded ? Visibility.Visible : Visibility.Collapsed;
+    public string ThreadToggleGlyph => _isThreadExpanded ? "\uE70E" : "\uE70D";
+    public string ThreadToggleToolTip =>
+        _isThreadExpanded ? "Collapse thread" : "Expand thread";
 
     public string QuestionHeaderLabel => $"U · {QuestionTimestamp:t}";
 
@@ -204,6 +262,8 @@ public sealed class ConversationExchange : INotifyPropertyChanged
             NotifyAllReplyProperties();
         }
     }
+
+    public bool IsReplyCanceled => _isReplyCanceled;
 
     public bool IsWaitingReply
     {
@@ -230,14 +290,27 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     public Visibility DualResponseVisibility =>
         IsDualResponse ? Visibility.Visible : Visibility.Collapsed;
 
+    public bool CanDelete => !IsWaitingReply;
+
+    public bool HasSuccessfulAnswer =>
+        IsDualResponse
+            ? HasAnswer(PrivateResponse) || HasAnswer(PublicResponse)
+            : !IsReplyError && !_isReplyCanceled && !string.IsNullOrWhiteSpace(ReplyContent);
+
+    private static bool HasAnswer(ConversationResponse response) =>
+        !response.IsError && !string.IsNullOrWhiteSpace(response.Content);
+
     public string ReplyHeaderLabel
     {
         get
         {
             var ts = _replyTimestamp ?? QuestionTimestamp;
+            var model = string.IsNullOrWhiteSpace(_qualifiedModelName)
+                ? string.Empty
+                : $" · {_qualifiedModelName}";
             return _isReplyCanceled
-                ? $"Stopped · {ts:t}"
-                : IsReplyError ? $"Error · {ts:t}" : $"{Scope} · {ts:t}";
+                ? $"Stopped{model} · {ts:t}"
+                : IsReplyError ? $"Error{model} · {ts:t}" : $"{Scope}{model} · {ts:t}";
         }
     }
 
@@ -258,27 +331,15 @@ public sealed class ConversationExchange : INotifyPropertyChanged
                 var reference = _referenceTokenEstimate > 0
                     ? $" (reference ~{_referenceTokenEstimate.Value:N0})"
                     : string.Empty;
-                parts.Add($"{prompt} prompt{reference}");
+                var model = string.IsNullOrWhiteSpace(_qualifiedModelName)
+                    ? string.Empty
+                    : $" - {_qualifiedModelName}";
+                parts.Add($"Prompt size: {prompt} tokens{model}{reference}");
             }
 
             if (_responseTokenCount.HasValue)
             {
                 parts.Add($"{FormatTokenCount(_responseTokenCount.Value, _responseTokenCountIsEstimate)} response");
-            }
-
-            if (_promptTokenCount.HasValue && _contextWindowTokenCount is > 0)
-            {
-                var remaining = _contextWindowTokenCount.Value
-                    - _promptTokenCount.Value
-                    - (_responseTokenCount ?? 0);
-                var isEstimate = _promptTokenCountIsEstimate || _responseTokenCountIsEstimate;
-                parts.Add(remaining >= 0
-                    ? $"{(isEstimate ? "~" : string.Empty)}{remaining:N0} tokens remaining"
-                    : $"{(isEstimate ? "~" : string.Empty)}{Math.Abs(remaining):N0} over context");
-            }
-            else if (_promptTokenCount.HasValue)
-            {
-                parts.Add("remaining provider-defined");
             }
 
             return string.Join(" · ", parts);
@@ -382,6 +443,15 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuestionToggleToolTip)));
     }
 
+    public void ToggleThread()
+    {
+        _isThreadExpanded = !_isThreadExpanded;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsThreadExpanded)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThreadContentVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThreadToggleGlyph)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThreadToggleToolTip)));
+    }
+
     public void ToggleReply()
     {
         _isReplyExpanded = !_isReplyExpanded;
@@ -440,7 +510,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         int? referenceTokenEstimate = null,
         int? responseTokenCount = null,
         bool responseTokenCountIsEstimate = false,
-        int? contextWindowTokenCount = null)
+        string? qualifiedModelName = null)
     {
         _replyTimestamp = timestamp;
         _responseDurationMs = responseDurationMs;
@@ -449,7 +519,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         _referenceTokenEstimate = referenceTokenEstimate;
         _responseTokenCount = responseTokenCount;
         _responseTokenCountIsEstimate = responseTokenCountIsEstimate;
-        _contextWindowTokenCount = contextWindowTokenCount;
+        _qualifiedModelName = qualifiedModelName ?? string.Empty;
         _isWaitingReply = false;
         _isReplyCanceled = false;
         _isReplyError = isError;
@@ -478,6 +548,8 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsReplyError)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanceledVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWaitingReply)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanDelete)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasSuccessfulAnswer)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DividerVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyVisibility)));
@@ -515,6 +587,7 @@ public sealed class ConversationResponse : INotifyPropertyChanged
     public string ErrorText => _errorText;
     public string TurnId => _turnId;
     public bool IsWaiting => _isWaiting;
+    public bool IsError => _isError;
 
     public Visibility WaitingVisibility =>
         _isWaiting ? Visibility.Visible : Visibility.Collapsed;
@@ -605,7 +678,8 @@ public sealed class ConversationResponse : INotifyPropertyChanged
         }
         if (turn.PromptTokenCount.HasValue)
         {
-            parts.Add($"{(turn.PromptTokenCountIsEstimate ? "~" : string.Empty)}{turn.PromptTokenCount.Value:N0} prompt");
+            parts.Add(
+                $"Prompt size: {(turn.PromptTokenCountIsEstimate ? "~" : string.Empty)}{turn.PromptTokenCount.Value:N0} tokens - {turn.QualifiedModelName}");
         }
         if (turn.ResponseTokenCount.HasValue)
         {
@@ -624,6 +698,7 @@ public sealed class ConversationResponse : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HeaderLabel)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MetricsText)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsError)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnId)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWaiting)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
@@ -704,7 +779,7 @@ public sealed class PublicLlmConfig
     public PublicAdapterConfig Fable { get; set; } = new()
     {
         Model = "fable-1-pro",
-        EndpointUrl = "https://api.fable.ai/v1/chat/completions",
+        EndpointUrl = string.Empty,
         SystemInstruction = "You are a helpful personal assistant responding through the Public Fable Adapter."
     };
 }
@@ -746,7 +821,96 @@ public sealed class WorkbenchConfig
     public VoiceConfig Voice { get; set; } = new();
     public NotificationConfig Notifications { get; set; } = new();
     public ContextCacheConfig ContextCache { get; set; } = new();
+    public PromptBuilderConfig PromptBuilder { get; set; } = new();
     public int RequestTimeoutSeconds { get; set; } = 0; // 0 = No timeout (Unlimited / Full Throttle)
+}
+
+public sealed class PromptBuilderConfig
+{
+    public PromptDomain ActiveDomain { get; set; } = PromptDomain.Astrology;
+    public PromptStyle ActiveStyle { get; set; } = PromptStyle.Formal;
+    public PromptTemplatePair Astrology { get; set; } = new()
+    {
+        Formal = "Respond in clear, neutral, professional language. Address the request directly, organize the answer where useful, and distinguish astrological interpretation from established facts. State assumptions and uncertainty clearly.\n\nRequest:\n{{prompt}}",
+        Classic = "Consider the astrological context provided in the request. Give a thoughtful, well-organized interpretation with useful headings and a practical timeline. Include specific dates or date ranges in YYYY-MM-DD format when the available context supports them; do not invent missing birth details or dates. Clearly distinguish interpretation, assumptions, and facts.\n\nAstrological request:\n{{prompt}}"
+    };
+    public PromptTemplatePair Health { get; set; } = new()
+    {
+        Formal = "Respond in clear, neutral, professional language. Provide general information, explain uncertainty, and do not diagnose or replace advice from a qualified health professional.\n\nRequest:\n{{prompt}}",
+        Classic = "Review the health-related context carefully. Organize general information into relevant points and practical next steps. Identify important unknowns, avoid making a diagnosis, and recommend a qualified health professional when appropriate.\n\nHealth request:\n{{prompt}}"
+    };
+    public PromptTemplatePair Finance { get; set; } = new()
+    {
+        Formal = "Respond in clear, neutral, professional language. Explain assumptions and risks, and do not present general information as personalized financial advice.\n\nRequest:\n{{prompt}}",
+        Classic = "Analyze the financial context and organize the response into key considerations, assumptions, risks, and possible next steps. Use specific amounts and dates only when supplied or supportable, and clearly identify uncertainty.\n\nFinancial request:\n{{prompt}}"
+    };
+    public PromptTemplatePair General { get; set; } = new()
+    {
+        Formal = "Respond clearly and professionally. Address the request directly, organize details where useful, and identify any important assumptions.\n\nRequest:\n{{prompt}}",
+        Classic = "Use the context in the request to prepare a thoughtful, well-structured response. Use useful headings, specific details, and an actionable sequence where appropriate. Identify assumptions and unknowns.\n\nRequest:\n{{prompt}}"
+    };
+
+    public string GetTemplate(PromptDomain domain, PromptStyle style)
+    {
+        var templates = domain switch
+        {
+            PromptDomain.Astrology => Astrology,
+            PromptDomain.Health => Health,
+            PromptDomain.Finance => Finance,
+            _ => General
+        };
+        return style == PromptStyle.Classic ? templates.Classic : templates.Formal;
+    }
+
+    public void SetTemplate(PromptDomain domain, PromptStyle style, string value)
+    {
+        var templates = domain switch
+        {
+            PromptDomain.Astrology => Astrology,
+            PromptDomain.Health => Health,
+            PromptDomain.Finance => Finance,
+            _ => General
+        };
+        if (style == PromptStyle.Classic)
+        {
+            templates.Classic = value;
+        }
+        else
+        {
+            templates.Formal = value;
+        }
+    }
+
+    public void Normalize()
+    {
+        if (!Enum.IsDefined(typeof(PromptDomain), ActiveDomain))
+        {
+            ActiveDomain = PromptDomain.Astrology;
+        }
+        if (!Enum.IsDefined(typeof(PromptStyle), ActiveStyle))
+        {
+            ActiveStyle = PromptStyle.Formal;
+        }
+
+        Astrology ??= new PromptBuilderConfig().Astrology;
+        Health ??= new PromptBuilderConfig().Health;
+        Finance ??= new PromptBuilderConfig().Finance;
+        General ??= new PromptBuilderConfig().General;
+        Astrology.Formal ??= string.Empty;
+        Astrology.Classic ??= string.Empty;
+        Health.Formal ??= string.Empty;
+        Health.Classic ??= string.Empty;
+        Finance.Formal ??= string.Empty;
+        Finance.Classic ??= string.Empty;
+        General.Formal ??= string.Empty;
+        General.Classic ??= string.Empty;
+    }
+}
+
+public sealed class PromptTemplatePair
+{
+    public string Formal { get; set; } = string.Empty;
+    public string Classic { get; set; } = string.Empty;
 }
 
 public sealed class ContextCacheConfig

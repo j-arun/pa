@@ -1071,17 +1071,32 @@ export function SettingsPage({
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                         Model
                       </label>
-                      <select
-                        value={cfg.model}
-                        onChange={(e) => updatePublicAdapter(adapterId, { model: e.target.value })}
-                        className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                      >
-                        {(summary?.availableModels || [cfg.model]).map((modelOpt) => (
-                          <option key={modelOpt} value={modelOpt}>
-                            {modelOpt}
-                          </option>
-                        ))}
-                      </select>
+                      {adapterId === 'fable' ? (
+                        <input
+                          type="text"
+                          value={cfg.model}
+                          onChange={(e) => updatePublicAdapter('fable', { model: e.target.value })}
+                          placeholder="Enter the model ID supported by the endpoint"
+                          className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                        />
+                      ) : (
+                        <select
+                          value={cfg.model}
+                          onChange={(e) => updatePublicAdapter(adapterId, { model: e.target.value })}
+                          className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                        >
+                          {(summary?.availableModels || [cfg.model]).map((modelOpt) => (
+                            <option key={modelOpt} value={modelOpt}>
+                              {modelOpt}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {adapterId === 'fable' && (
+                        <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          For Anthropic endpoints, enter a model ID enabled for your Anthropic API key.
+                        </p>
+                      )}
                     </div>
 
                     {adapterId === 'gemini' ? (
@@ -1111,11 +1126,25 @@ export function SettingsPage({
                         <input
                           type="url"
                           value={cfg.endpointUrl || ''}
+                          placeholder={
+                            adapterId === 'fable'
+                              ? 'e.g. https://api.anthropic.com/v1/messages'
+                              : undefined
+                          }
                           onChange={(e) =>
                             updatePublicAdapter(adapterId, { endpointUrl: e.target.value })
                           }
                           className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
                         />
+                        {adapterId === 'fable' && (
+                          <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                            Anthropic /v1/messages endpoints use x-api-key and
+                            anthropic-version automatically. Keys may be provided per
+                            request or through FABLE_API_KEY, ANTHROPIC_API_KEY, or
+                            CLAUDE_API_KEY on the server. Other endpoints use Bearer
+                            authentication.
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -1194,6 +1223,36 @@ export function SettingsPage({
                 </div>
               );
             })}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5">
+            <label
+              htmlFor="public-context-cache"
+              className="block text-sm font-medium text-slate-900 dark:text-slate-100"
+            >
+              Public LLM Context Cache
+            </label>
+            <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              Reference context for the selected public model. It is included in the system
+              instruction when absent from the current prompt, retained history, and system
+              instruction.
+            </p>
+            <textarea
+              id="public-context-cache"
+              rows={6}
+              value={draft.contextCache.publicText}
+              onChange={(event) =>
+                updateDraft((previous) => ({
+                  ...previous,
+                  contextCache: {
+                    ...previous.contextCache,
+                    publicText: event.target.value,
+                  },
+                }))
+              }
+              placeholder="Add reference material to provide to the selected public LLM..."
+              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm leading-relaxed text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            />
           </div>
         </section>
 

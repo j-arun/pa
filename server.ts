@@ -71,15 +71,22 @@ async function startServer() {
 
   app.post('/api/adapters/health', async (req, res) => {
     try {
-      const { adapterId, options } = req.body as {
+      const { adapterId, options, apiKey } = req.body as {
         adapterId?: AnyAdapterId;
         options?: AdapterRuntimeOptions;
+        apiKey?: string;
       };
       if (!adapterId) {
         return res.status(400).json({ error: 'adapterId is required.' });
       }
       const adapter = adapterRegistry.get(adapterId);
-      const result = await adapter.healthCheck(options);
+      const requestApiKey =
+        (typeof apiKey === 'string' ? apiKey.trim() : '') || req.get('x-api-key')?.trim();
+      const requestOptions =
+        requestApiKey && adapter.scope === 'public'
+          ? { ...options, apiKey: requestApiKey }
+          : options;
+      const result = await adapter.healthCheck(requestOptions);
       return res.json(result);
     } catch (err) {
       return res.status(400).json({
@@ -125,12 +132,13 @@ async function startServer() {
     req.setTimeout(0);
     res.setTimeout(0);
     try {
-      const { scope, adapterId, message, history, options } = req.body as {
+      const { scope, adapterId, message, history, options, apiKey } = req.body as {
         scope?: ConversationScope;
         adapterId?: AnyAdapterId;
         message?: string;
         history?: ChatHistoryItem[];
         options?: AdapterRuntimeOptions;
+        apiKey?: string;
       };
 
       if (scope !== 'private' && scope !== 'public') {
@@ -153,11 +161,17 @@ async function startServer() {
             )
             .slice(-24)
         : [];
+      const requestApiKey =
+        (typeof apiKey === 'string' ? apiKey.trim() : '') || req.get('x-api-key')?.trim();
+      const requestOptions =
+        requestApiKey && scope === 'public'
+          ? { ...options, apiKey: requestApiKey }
+          : options || {};
 
       const reply = await adapter.sendMessage({
         message: message.trim(),
         history: safeHistory,
-        options: options || {},
+        options: requestOptions,
       });
 
       return res.json(reply);

@@ -2,6 +2,7 @@ using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -123,6 +124,261 @@ public sealed partial class WorkbenchPage : Page
         if (sender is Button { DataContext: ConversationExchange exchange })
         {
             exchange.ToggleReply();
+        }
+    }
+
+    private void ToggleThread_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ConversationExchange exchange })
+        {
+            exchange.ToggleThread();
+        }
+    }
+
+    private void CopyExchange_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConversationExchange exchange } ||
+            !exchange.HasSuccessfulAnswer)
+        {
+            return;
+        }
+
+        var answers = new List<string>();
+        if (exchange.IsDualResponse)
+        {
+            if (!exchange.PrivateResponse.IsError &&
+                !string.IsNullOrWhiteSpace(exchange.PrivateResponse.Content))
+            {
+                answers.Add(exchange.PrivateResponse.Content);
+            }
+            if (!exchange.PublicResponse.IsError &&
+                !string.IsNullOrWhiteSpace(exchange.PublicResponse.Content))
+            {
+                answers.Add(exchange.PublicResponse.Content);
+            }
+        }
+        else if (!exchange.IsReplyError && !exchange.IsReplyCanceled)
+        {
+            answers.Add(exchange.ReplyContent);
+        }
+
+        var sections = new List<string>();
+        if (!string.IsNullOrWhiteSpace(exchange.QuestionContent))
+        {
+            sections.Add($"Question:\n{exchange.QuestionContent}");
+        }
+        sections.AddRange(answers.Select((answer, index) =>
+            $"{(answers.Count > 1 ? $"Answer {index + 1}" : "Answer")}:\n{answer}"));
+
+        try
+        {
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(string.Join("\n\n", sections));
+            Clipboard.SetContent(dataPackage);
+            Clipboard.Flush();
+            StatusInfoBar.Severity = InfoBarSeverity.Success;
+            StatusInfoBar.Title = "Thread copied";
+            StatusInfoBar.Message = "Copied this thread's question and answer content.";
+            StatusInfoBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Unable to copy conversation";
+            StatusInfoBar.Message = ex.Message;
+            StatusInfoBar.IsOpen = true;
+        }
+    }
+
+    private async void DownloadExchangeHtml_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConversationExchange exchange } ||
+            !exchange.HasSuccessfulAnswer)
+        {
+            return;
+        }
+
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = $"PersonalAssistant-Thread-{exchange.ThreadNumber}-{DateTime.Now:yyyyMMdd-HHmm}"
+            };
+            picker.FileTypeChoices.Add("HTML Document", [".html"]);
+
+            if (MainWindow.CurrentWindow is not null)
+            {
+                var hwnd = WindowNative.GetWindowHandle(MainWindow.CurrentWindow);
+                InitializeWithWindow.Initialize(picker, hwnd);
+            }
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null) return;
+
+            await File.WriteAllTextAsync(file.Path, BuildThreadHtml(exchange));
+            StatusInfoBar.Severity = InfoBarSeverity.Success;
+            StatusInfoBar.Title = "Thread downloaded";
+            StatusInfoBar.Message = $"Thread #{exchange.ThreadNumber} saved as HTML to {file.Path}";
+            StatusInfoBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Thread download failed";
+            StatusInfoBar.Message = ex.Message;
+            StatusInfoBar.IsOpen = true;
+        }
+    }
+
+    private static string BuildThreadHtml(ConversationExchange exchange)
+    {
+        var answers = new List<string>();
+        if (exchange.IsDualResponse)
+        {
+            foreach (var response in new[] { exchange.PrivateResponse, exchange.PublicResponse })
+            {
+                if (!response.IsError && !string.IsNullOrWhiteSpace(response.Content))
+                {
+                    answers.Add(response.Content);
+                }
+            }
+        }
+        else if (!exchange.IsReplyError && !exchange.IsReplyCanceled &&
+            !string.IsNullOrWhiteSpace(exchange.ReplyContent))
+        {
+            answers.Add(exchange.ReplyContent);
+        }
+
+        var answerSections = string.Join(
+            Environment.NewLine,
+            answers.Select((answer, index) =>
+            {
+                var label = answers.Count > 1 ? $"Answer {index + 1}" : "Answer";
+                return $"<section><h2>{label}</h2><pre>{System.Net.WebUtility.HtmlEncode(answer)}</pre></section>";
+            }));
+        var questionSection = string.IsNullOrWhiteSpace(exchange.QuestionContent)
+            ? string.Empty
+            : $"<section><h2>Question</h2><pre>{System.Net.WebUtility.HtmlEncode(exchange.QuestionContent)}</pre></section>";
+        return $$"""
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>Thread #{{exchange.ThreadNumber}}</title>
+              <style>
+                body { font: 16px/1.6 system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
+                section { margin: 1.5rem 0; }
+                pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+              </style>
+            </head>
+            <body>
+              <main>
+                <h1>Thread #{{exchange.ThreadNumber}}</h1>
+                {{questionSection}}
+                {{answerSections}}
+              </main>
+            </body>
+            </html>
+            """;
+    }
+
+    private void CopyMetadata_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConversationExchange exchange }) return;
+
+        var sections = new List<string>
+        {
+            $"Thread {exchange.ThreadNumber} metadata",
+            $"Domain: {exchange.PromptDomain?.ToString() ?? "Unknown"}",
+            $"Style: {exchange.PromptStyle?.ToString() ?? "Unknown"}"
+        };
+        if (exchange.IsDualResponse)
+        {
+            sections.Add($"Private system instruction:\n{exchange.PrivateSystemInstruction}");
+            sections.Add($"Private context cache:\n{FormatCachedContext(exchange.PrivateCachedContext)}");
+            sections.Add($"Public system instruction:\n{exchange.PublicSystemInstruction}");
+            sections.Add($"Public context cache:\n{FormatCachedContext(exchange.PublicCachedContext)}");
+        }
+        else
+        {
+            sections.Add($"System instruction:\n{exchange.SystemInstruction}");
+            sections.Add($"Context cache:\n{FormatCachedContext(exchange.CachedContext)}");
+        }
+        sections.Add($"Question / composed prompt:\n{exchange.QuestionContent}");
+
+        try
+        {
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(string.Join("\n\n", sections));
+            Clipboard.SetContent(dataPackage);
+            Clipboard.Flush();
+            StatusInfoBar.Severity = InfoBarSeverity.Success;
+            StatusInfoBar.Title = "Thread metadata copied";
+            StatusInfoBar.Message = "Copied the prompt, system instruction, context cache, and question.";
+            StatusInfoBar.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Unable to copy thread metadata";
+            StatusInfoBar.Message = ex.Message;
+            StatusInfoBar.IsOpen = true;
+        }
+    }
+
+    private static string FormatCachedContext(string context) =>
+        string.IsNullOrWhiteSpace(context) ? "(No context cache configured)" : context;
+
+    private async void ShowSourcePrompt_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConversationExchange exchange }) return;
+
+        var sourceTextBox = new TextBox
+        {
+            Text = exchange.QuestionContent,
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinWidth = 480,
+            MaxWidth = 760,
+            MinHeight = 180,
+            MaxHeight = 420
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Thread {exchange.ThreadNumber} · Source Prompt",
+            Content = sourceTextBox,
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void DeleteExchange_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: ConversationExchange exchange }) return;
+        if (exchange.IsWaitingReply) return;
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Delete this conversation?",
+            Content = "Only this thread will be removed from the current session.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        if (!App.Coordinator.DeleteExchange(exchange.Id))
+        {
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Thread not deleted";
+            StatusInfoBar.Message = "The thread could not be found or is still receiving a response.";
+            StatusInfoBar.IsOpen = true;
         }
     }
 

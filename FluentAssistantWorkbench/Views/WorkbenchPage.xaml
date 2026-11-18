@@ -140,6 +140,105 @@
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1">
                                 <StackPanel Spacing="10">
+                                    <Grid ColumnSpacing="10">
+                                        <Border
+                                            HorizontalAlignment="Left"
+                                            Padding="11,5"
+                                            CornerRadius="9"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <TextBlock
+                                                    Text="Thread #"
+                                                    FontSize="13"
+                                                    FontWeight="Bold"
+                                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                    VerticalAlignment="Center" />
+                                                <TextBlock
+                                                    Text="{Binding ThreadNumber, Mode=OneWay}"
+                                                    FontSize="13"
+                                                    FontWeight="Bold"
+                                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                    VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel
+                                            HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            Spacing="6">
+                                            <Button
+                                                Click="CopyMetadata_Click"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="Copy the prompt, system instruction, and context cache"
+                                                AutomationProperties.Name="Copy thread metadata">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                                    <TextBlock Text="Copy Metadata" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                Click="ShowSourcePrompt_Click"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="Show the exact composed prompt sent for this thread"
+                                                AutomationProperties.Name="Show source prompt">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE8A5;" FontSize="14" />
+                                                    <TextBlock Text="Source Prompt" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                Click="DownloadExchangeHtml_Click"
+                                                IsEnabled="{Binding HasSuccessfulAnswer}"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="Download only this thread's question and answers as HTML"
+                                                AutomationProperties.Name="Download this thread as HTML">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE896;" FontSize="14" />
+                                                    <TextBlock Text="Download" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                Click="CopyExchange_Click"
+                                                IsEnabled="{Binding HasSuccessfulAnswer}"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="Copy this thread's question and answers"
+                                                AutomationProperties.Name="Copy thread question and answers">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                                    <TextBlock Text="Copy" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                Click="DeleteExchange_Click"
+                                                IsEnabled="{Binding CanDelete}"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="Delete only this thread from the session"
+                                                AutomationProperties.Name="Delete this thread">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                                                    <TextBlock Text="Delete" FontSize="12" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                Click="ToggleThread_Click"
+                                                Padding="8,5"
+                                                CornerRadius="8"
+                                                ToolTipService.ToolTip="{Binding ThreadToggleToolTip}"
+                                                AutomationProperties.Name="{Binding ThreadToggleToolTip}">
+                                                <FontIcon
+                                                    Glyph="{Binding ThreadToggleGlyph}"
+                                                    FontSize="14" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel Visibility="{Binding ThreadContentVisibility}" Spacing="10">
                                     <!-- Question Block (Theme Question Color Code + Accent Bar) -->
                                     <Border
                                         Padding="14,11"
@@ -507,6 +606,7 @@
                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                     </Border>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>

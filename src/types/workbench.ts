@@ -1,4 +1,14 @@
 export type ConversationScope = 'private' | 'public';
+export type PromptDomain = 'astrology' | 'health' | 'finance' | 'general';
+export type PromptStyle = 'formal' | 'classic';
+
+export type PromptTemplates = Record<PromptDomain, Record<PromptStyle, string>>;
+
+export interface PromptBuilderSettings {
+  activeDomain: PromptDomain;
+  activeStyle: PromptStyle;
+  templates: PromptTemplates;
+}
 
 export type PrivateAdapterId = 'ollama';
 export type PublicAdapterId = 'gemini' | 'claude' | 'fable';
@@ -10,6 +20,14 @@ export interface ConversationTurn {
   id: string;
   exchangeId?: string;
   responseScopes?: ConversationScope[];
+  promptDomain?: PromptDomain;
+  promptStyle?: PromptStyle;
+  systemInstruction?: string;
+  cachedContext?: string;
+  privateSystemInstruction?: string;
+  publicSystemInstruction?: string;
+  privateCachedContext?: string;
+  publicCachedContext?: string;
   role: 'user' | 'assistant' | 'error';
   content: string;
   timestamp: string;
@@ -71,6 +89,11 @@ export interface PrivateLlmConfig {
   maxHistoryTurns: number;
 }
 
+export interface ContextCacheConfig {
+  privateText: string;
+  publicText: string;
+}
+
 export interface PublicAdapterConfig {
   model: string;
   systemInstruction: string;
@@ -118,9 +141,11 @@ export interface WorkbenchSettings {
   fontFamily: FontOption;
   profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
+  contextCache: ContextCacheConfig;
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;
   notifications: NotificationConfig;
+  promptBuilder: PromptBuilderSettings;
   requestTimeoutSeconds: number;
 }
 

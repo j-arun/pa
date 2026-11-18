@@ -13,6 +13,7 @@ export interface ChatHistoryItem {
 }
 
 export interface AdapterRuntimeOptions {
+  apiKey?: string;
   model?: string;
   systemInstruction?: string;
   ollamaBaseUrl?: string;

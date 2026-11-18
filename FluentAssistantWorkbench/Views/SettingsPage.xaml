@@ -303,9 +303,17 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="FableModelBox" Grid.Column="0" Header="Model" />
-                                <PasswordBox x:Name="FableKeyBox" Grid.Column="1" Header="API Key (or FABLE_API_KEY env)" />
+                                <PasswordBox x:Name="FableKeyBox" Grid.Column="1" Header="API Key (FABLE_API_KEY / ANTHROPIC_API_KEY env)" />
                             </Grid>
-                            <TextBox x:Name="FableEndpointBox" Header="Endpoint URL" />
+                            <TextBox
+                                x:Name="FableEndpointBox"
+                                Header="Endpoint URL"
+                                PlaceholderText="For example: https://api.anthropic.com/v1/messages" />
+                            <TextBlock
+                                Text="Anthropic /v1/messages endpoints automatically use x-api-key and anthropic-version headers. Other endpoints use Bearer authentication."
+                                FontSize="11"
+                                TextWrapping="Wrap"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </Border>
 

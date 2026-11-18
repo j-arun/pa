@@ -1,14 +1,18 @@
 import {
-  AlertCircle,
   ArrowUp,
   Check,
+  ChevronDown,
+  ChevronRight,
   Cloud,
   Copy,
+  FileSearch,
   FileDown,
   Hourglass,
   Lock,
+  RefreshCw,
   RotateCcw,
   Settings as SettingsIcon,
+  Trash2,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -17,9 +21,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ConversationScope,
   ConversationTurn,
+  PromptDomain,
+  PromptStyle,
+  PromptTemplates,
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
+import { renderMarkdownToHtml } from '../utils/markdownExport';
 import { exportConversationToPdf } from '../utils/pdfExport';
 import { MessageContent } from './MessageContent';
 
@@ -36,21 +44,56 @@ const STARTER_PROMPTS: Record<ConversationScope, string[]> = {
   ],
 };
 
+const PROMPT_DOMAIN_LABELS: Record<PromptDomain, string> = {
+  astrology: 'Astrology',
+  health: 'Health',
+  finance: 'Finance',
+  general: 'General',
+};
+
 interface ConversationExchange {
   id: string;
   questionTurn: ConversationTurn | null;
   replyTurns: ConversationTurn[];
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => HTML_ENTITIES[character]);
+}
+
 interface WorkbenchPageProps {
   scope: ConversationScope;
   settings: WorkbenchSettings;
   turns: ConversationTurn[];
+  activePromptDomain: PromptDomain;
+  promptStyle: PromptStyle;
+  promptTemplates: PromptTemplates;
+  onPromptStyleChange: (style: PromptStyle) => void;
   isSending: boolean;
   speech: UseSpeechIOResult;
   onSendMessage: (text: string, inputMode: 'text') => void;
+  onRefreshModel: () => Promise<string>;
   onClearConversation: () => void;
+  onDeleteExchange: (exchangeId: string) => void;
   onOpenSettings: () => void;
+}
+
+function buildPrompt(draft: string, template: string): string {
+  const prompt = draft.trim();
+  const normalizedTemplate = template.trim();
+  if (!normalizedTemplate) return prompt;
+  if (normalizedTemplate.includes('{{prompt}}')) {
+    return normalizedTemplate.replace(/\{\{prompt\}\}/g, () => prompt);
+  }
+  return `${normalizedTemplate}\n\n${prompt}`;
 }
 
 function ScopeArtwork({
@@ -137,10 +180,20 @@ function ConversationReplyCard({
     replyTurn.scope === 'private'
       ? 'Private · Ollama'
       : `Public · ${replyTurn.adapterId === 'claude' ? 'Claude' : replyTurn.adapterId === 'fable' ? 'Fable' : 'Gemini'}`;
+  const modelName = replyTurn.model.trim();
+  const modelPrefix = `${replyTurn.adapterId}/`;
+  const qualifiedModelName = modelName
+    ? modelName.toLowerCase().startsWith(modelPrefix.toLowerCase())
+      ? modelName
+      : `${modelPrefix}${modelName}`
+    : replyTurn.adapterId;
   const metrics = [
     replyTurn.durationMs !== undefined
       ? `${(replyTurn.durationMs / 1000).toFixed(2)}s`
       : null,
+    replyTurn.inputTokenCount !== undefined
+      ? `Prompt size: ${replyTurn.inputTokenCount.toLocaleString()} tokens - ${qualifiedModelName}`
+      : `Prompt size unavailable - ${qualifiedModelName}`,
     replyTurn.tokenCount !== undefined ? `${replyTurn.tokenCount} tokens` : null,
     replyTurn.inputTokenCount !== undefined || replyTurn.outputTokenCount !== undefined
       ? `in ${replyTurn.inputTokenCount ?? '—'} / out ${replyTurn.outputTokenCount ?? '—'}`
@@ -194,7 +247,7 @@ function ConversationReplyCard({
           <div className="text-[10px] text-slate-500 dark:text-slate-400">{metrics}</div>
         )}
       </div>
-      <div className="text-sm leading-relaxed break-words">
+      <div className="max-h-[65vh] overflow-y-auto fluent-scroll pr-2 text-sm leading-relaxed break-words">
         <MessageContent text={replyTurn.content} />
       </div>
       <div className="mt-3 flex items-center gap-2 flex-wrap">
@@ -250,21 +303,44 @@ export function WorkbenchPage({
   scope,
   settings,
   turns,
+  activePromptDomain,
+  promptStyle,
+  promptTemplates,
+  onPromptStyleChange,
   isSending,
   speech,
   onSendMessage,
+  onRefreshModel,
   onClearConversation,
+  onDeleteExchange,
   onOpenSettings,
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    threadId: string;
+    message: string;
+    isError: boolean;
+  } | null>(null);
+  const [isRefreshingModel, setIsRefreshingModel] = useState(false);
+  const [refreshModelFeedback, setRefreshModelFeedback] = useState<{
+    message: string;
+    isError: boolean;
+  } | null>(null);
+  const [collapsedThreadIds, setCollapsedThreadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [sourcePromptThreadId, setSourcePromptThreadId] = useState<string | null>(null);
 
   const ladderEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
+  const activeTemplate = promptTemplates[activePromptDomain][promptStyle];
+  const composedPrompt = buildPrompt(draft, activeTemplate);
 
   const exchanges = useMemo<ConversationExchange[]>(() => {
     const grouped: ConversationExchange[] = [];
@@ -299,6 +375,18 @@ export function WorkbenchPage({
 
     return grouped;
   }, [turns]);
+  const latestExchange = exchanges[exchanges.length - 1];
+  const latestExpectedScopes =
+    latestExchange?.questionTurn?.responseScopes ?? [];
+  const hasCompletedDualResponse =
+    scope === 'public' &&
+    latestExpectedScopes.includes('private') &&
+    latestExpectedScopes.includes('public') &&
+    latestExpectedScopes.every((targetScope) =>
+      latestExchange?.replyTurns.some(
+        (turn) => turn.scope === targetScope && turn.role === 'assistant',
+      ),
+    );
 
   useEffect(() => {
     ladderEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -306,10 +394,10 @@ export function WorkbenchPage({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    const cleaned = draft.trim();
-    if (!cleaned || isSending) return;
+    if (!draft.trim() || isSending) return;
+    const promptToSend = composedPrompt;
     setDraft('');
-    onSendMessage(cleaned, 'text');
+    onSendMessage(promptToSend, 'text');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -319,10 +407,198 @@ export function WorkbenchPage({
     }
   };
 
-  const handleCopy = (id: string, text: string) => {
-    void navigator.clipboard?.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 1600);
+  const handleRefreshModel = async () => {
+    setIsRefreshingModel(true);
+    setRefreshModelFeedback(null);
+    try {
+      const message = await onRefreshModel();
+      setRefreshModelFeedback({
+        message,
+        isError: message.startsWith('Could not unload'),
+      });
+    } catch (error) {
+      setRefreshModelFeedback({
+        message: error instanceof Error ? error.message : 'Unable to refresh the Ollama model.',
+        isError: true,
+      });
+    } finally {
+      setIsRefreshingModel(false);
+    }
+  };
+
+  const handleCopy = async (id: string, text: string) => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.');
+      await navigator.clipboard.writeText(text);
+      setCopyError(null);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 1600);
+    } catch (error) {
+      setCopyError(error instanceof Error ? error.message : 'Unable to copy the conversation.');
+    }
+  };
+
+  const handleCopyExchange = (exchange: ConversationExchange) => {
+    const answers = exchange.replyTurns.filter((turn) => turn.role === 'assistant');
+    const content = [
+      exchange.questionTurn ? `Question:\n${exchange.questionTurn.content}` : '',
+      ...answers.map((turn, index) => {
+        const label = answers.length > 1 ? `Answer ${index + 1}` : 'Answer';
+        return `${label}:\n${turn.content}`;
+      }),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    void handleCopy(exchange.id, content);
+  };
+
+  const handleDownloadExchange = (exchange: ConversationExchange, threadNumber: number) => {
+    const question = exchange.questionTurn?.content;
+    const expectedScopes = exchange.questionTurn?.responseScopes ?? [];
+    const answers = exchange.replyTurns
+      .filter((turn) => turn.role === 'assistant')
+      .sort((left, right) => {
+        const leftIndex = expectedScopes.indexOf(left.scope);
+        const rightIndex = expectedScopes.indexOf(right.scope);
+        return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+          (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      });
+    if (!question || answers.length === 0) return;
+
+    try {
+      const answerSections = answers
+        .map((turn) => {
+          const provider =
+            turn.scope === 'private'
+              ? 'Private · Ollama'
+              : `Public · ${turn.adapterId === 'claude' ? 'Claude' : turn.adapterId === 'fable' ? 'Fable' : 'Gemini'}`;
+          const label = `${provider} · ${turn.model}`;
+          return `<section class="answer-card"><h2>${escapeHtml(label)}</h2><div class="markdown-content">${renderMarkdownToHtml(turn.content)}</div></section>`;
+        })
+        .join('\n');
+      const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thread #${threadNumber}</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; max-width: 1600px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
+    .question { margin: 1.5rem 0; padding: 1rem; background: #f1f5f9; border-radius: 0.75rem; }
+    .answer-grid { display: grid; grid-template-columns: repeat(${Math.min(answers.length, 2)}, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+    .answer-card { min-width: 0; margin: 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; background: #f8fafc; }
+    .answer-card h2 { margin-top: 0; }
+    .markdown-content { overflow-wrap: anywhere; }
+    .markdown-content > * + * { margin-top: 0.75rem; }
+    .markdown-content p { margin: 0.75rem 0; white-space: pre-wrap; }
+    .markdown-content h3, .markdown-content h4, .markdown-content h5, .markdown-content h6 { margin: 1rem 0 0.35rem; font-weight: 700; line-height: 1.3; }
+    .markdown-content h3 { font-size: 1.2rem; }
+    .markdown-content h4 { font-size: 1.1rem; }
+    .markdown-content h5 { font-size: 1rem; }
+    .markdown-content h6 { font-size: 0.95rem; }
+    .markdown-content ul, .markdown-content ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+    .markdown-content ul { list-style: disc; }
+    .markdown-content ol { list-style: decimal; }
+    .markdown-content li + li { margin-top: 0.25rem; }
+    .markdown-content code { padding: 0.1rem 0.3rem; border-radius: 0.25rem; background: #e2e8f0; font: 0.9em ui-monospace, monospace; }
+    .markdown-content em { font-style: italic; }
+    .markdown-content del { text-decoration: line-through; }
+    .markdown-content a { color: #0369a1; text-decoration: underline; }
+    .markdown-content blockquote { margin: 0.75rem 0; border-left: 3px solid #94a3b8; padding-left: 0.9rem; color: #475569; }
+    .markdown-content hr { margin: 1rem 0; border: 0; border-top: 1px solid #cbd5e1; }
+    .markdown-content .table-wrap { max-width: 100%; overflow-x: auto; }
+    .markdown-content table { width: 100%; border-collapse: collapse; }
+    .markdown-content th, .markdown-content td { border: 1px solid #cbd5e1; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+    .markdown-content th { background: #e2e8f0; font-weight: 700; }
+    .markdown-content .code-block { overflow: hidden; border-radius: 0.6rem; background: #0f172a; color: #f8fafc; }
+    .markdown-content .code-language { padding: 0.4rem 0.75rem; border-bottom: 1px solid #334155; color: #cbd5e1; font: 0.75rem ui-monospace, monospace; }
+    .markdown-content .code-block pre { overflow-x: auto; margin: 0; padding: 0.8rem; white-space: pre; font: 0.85rem/1.5 ui-monospace, monospace; }
+    .markdown-content .code-block code { padding: 0; background: transparent; color: inherit; }
+    @media (max-width: 760px) { .answer-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Thread #${threadNumber}</h1>
+    <section class="question"><h2>Question</h2><div class="markdown-content">${renderMarkdownToHtml(question)}</div></section>
+    <div class="answer-grid">
+      ${answerSections}
+    </div>
+  </main>
+</body>
+</html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `PersonalAssistant-Thread-${threadNumber}-${new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')}.html`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDownloadFeedback({
+        threadId: exchange.id,
+        message: 'Thread downloaded as HTML.',
+        isError: false,
+      });
+    } catch (error) {
+      setDownloadFeedback({
+        threadId: exchange.id,
+        message: error instanceof Error ? error.message : 'Unable to download this thread.',
+        isError: true,
+      });
+    }
+  };
+
+  const handleCopyMetadata = (exchange: ConversationExchange) => {
+    const question = exchange.questionTurn;
+    if (!question) return;
+    const isDualScope = (question.responseScopes ?? [question.scope]).length > 1;
+    const metadata = [
+      `Thread metadata`,
+      `Domain: ${question.promptDomain ?? activePromptDomain}`,
+      `Style: ${question.promptStyle ?? promptStyle}`,
+      ...(isDualScope
+        ? [
+            `Private system instruction:\n${question.privateSystemInstruction ?? settings.privateLlm.systemInstruction}`,
+            `Private context cache:\n${question.privateCachedContext || '(No context cache configured in the web app)'}`,
+            `Public system instruction:\n${question.publicSystemInstruction ?? settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction}`,
+            `Public context cache:\n${question.publicCachedContext || '(No context cache configured in the web app)'}`,
+          ]
+        : [
+            `System instruction:\n${question.systemInstruction ?? ''}`,
+            `Context cache:\n${question.cachedContext || '(No context cache configured in the web app)'}`,
+          ]),
+      `Question / composed prompt:\n${question.content}`,
+    ].join('\n\n');
+    void handleCopy(`${exchange.id}-metadata`, metadata);
+  };
+
+  const toggleThread = (threadId: string) => {
+    setCollapsedThreadIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(threadId)) next.delete(threadId);
+      else next.add(threadId);
+      return next;
+    });
+  };
+
+  const showSourcePrompt = (threadId: string) => {
+    setSourcePromptThreadId((previous) => (previous === threadId ? null : threadId));
+    setCollapsedThreadIds((previous) => {
+      if (!previous.has(threadId)) return previous;
+      const next = new Set(previous);
+      next.delete(threadId);
+      return next;
+    });
+  };
+
+  const handleDeleteExchange = (exchange: ConversationExchange) => {
+    if (isSending && exchange.id === exchanges[exchanges.length - 1]?.id) return;
+    if (!window.confirm('Delete only this thread from the current session?')) return;
+    onDeleteExchange(exchange.id);
   };
 
   const handleExportPdf = async () => {
@@ -361,7 +637,9 @@ export function WorkbenchPage({
 
       {/* Continual Conversational Bubble Ladder */}
       <div className="relative z-10 flex-1 overflow-y-auto fluent-scroll px-4 sm:px-8 py-6">
-        <div className="max-w-4xl mx-auto min-h-full flex flex-col justify-end gap-5">
+        <div
+          className={`${hasCompletedDualResponse ? 'w-full max-w-none' : 'max-w-4xl'} mx-auto min-h-full flex flex-col justify-end gap-5`}
+        >
           {exchanges.length === 0 ? (
             <div className="my-auto py-8">
               <div className="bg-white/50 dark:bg-slate-900/55 backdrop-blur-xl rounded-[28px] border border-white/85 dark:border-slate-700/60 shadow-[0_10px_36px_rgba(2,132,199,0.06)] p-8 sm:p-10 text-center max-w-2xl mx-auto">
@@ -433,6 +711,15 @@ export function WorkbenchPage({
                     )
                   : [];
               const isDualResponse = expectedScopes.length > 1;
+              const isCompletedDualResponse =
+                scope === 'public' &&
+                expectedScopes.includes('private') &&
+                expectedScopes.includes('public') &&
+                expectedScopes.every((targetScope) =>
+                  orderedReplies.some(
+                    (turn) => turn.scope === targetScope && turn.role === 'assistant',
+                  ),
+                );
 
               return (
                 <motion.div
@@ -443,9 +730,127 @@ export function WorkbenchPage({
                   className="flex justify-start"
                 >
                   <div
-                    className="w-full max-w-3xl cloud-surface rounded-[28px] rounded-bl-lg border border-white/85 dark:border-slate-700/70 shadow-[0_10px_34px_rgba(2,132,199,0.07)] p-4 text-slate-900 dark:text-slate-100 space-y-2.5"
+                    className={`w-full ${isCompletedDualResponse ? 'max-w-none' : 'max-w-3xl'} cloud-surface rounded-[28px] rounded-bl-lg border border-white/85 dark:border-slate-700/70 shadow-[0_10px_34px_rgba(2,132,199,0.07)] p-4 text-slate-900 dark:text-slate-100 space-y-2.5`}
                     style={{ fontFamily: 'var(--pa-font-body)' }}
                   >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-bold tracking-wide text-sky-800 shadow-sm dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-200">
+                        Thread #{idx + 1}
+                      </span>
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {downloadFeedback?.threadId === ex.id && (
+                          <span
+                            role={downloadFeedback.isError ? 'alert' : 'status'}
+                            className={`text-xs ${
+                              downloadFeedback.isError
+                                ? 'text-red-700 dark:text-red-300'
+                                : 'text-emerald-700 dark:text-emerald-300'
+                            }`}
+                          >
+                            {downloadFeedback.message}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadExchange(ex, idx + 1)}
+                          disabled={!ex.questionTurn || !ex.replyTurns.some((turn) => turn.role === 'assistant')}
+                          title="Download only this thread as an HTML file"
+                          aria-label={`Download thread ${idx + 1} as HTML`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>Download</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyMetadata(ex)}
+                          aria-label={`Copy metadata for thread ${idx + 1}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          {copiedId === `${ex.id}-metadata` ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Metadata copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>Copy Metadata</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => showSourcePrompt(ex.id)}
+                          disabled={!ex.questionTurn}
+                          aria-label={`Show source prompt for thread ${idx + 1}`}
+                          aria-pressed={sourcePromptThreadId === ex.id}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          <FileSearch className="h-3.5 w-3.5" />
+                          <span>Source Prompt</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyExchange(ex)}
+                          disabled={!ex.replyTurns.some((turn) => turn.role === 'assistant')}
+                          aria-label={`Copy question and answers for thread ${idx + 1}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          {copiedId === ex.id ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExchange(ex)}
+                          disabled={isSending && isLast}
+                          aria-label={`Delete thread ${idx + 1}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:pointer-events-none disabled:opacity-40 dark:border-red-900/70 dark:bg-slate-800/75 dark:text-red-300 dark:hover:bg-red-950/40"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Delete</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleThread(ex.id)}
+                          aria-label={`${collapsedThreadIds.has(ex.id) ? 'Expand' : 'Collapse'} thread ${idx + 1}`}
+                          aria-expanded={!collapsedThreadIds.has(ex.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/75 text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          {collapsedThreadIds.has(ex.id) ? (
+                            <ChevronRight className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {!collapsedThreadIds.has(ex.id) && (
+                      <div className="space-y-2.5">
+                    {sourcePromptThreadId === ex.id && ex.questionTurn && (
+                      <section
+                        aria-label={`Source prompt for thread ${idx + 1}`}
+                        className="rounded-2xl border border-sky-200/80 bg-sky-50/75 px-4 py-3 dark:border-sky-900/70 dark:bg-sky-950/35"
+                      >
+                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
+                          Source Prompt · {ex.questionTurn.promptDomain ?? activePromptDomain} ·{' '}
+                          {ex.questionTurn.promptStyle ?? promptStyle}
+                        </div>
+                        <pre className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                          {ex.questionTurn.content}
+                        </pre>
+                      </section>
+                    )}
                     {/* User Question Section (Theme Question Color Code) */}
                     {ex.questionTurn && (
                       <div
@@ -497,6 +902,8 @@ export function WorkbenchPage({
                         </div>
                       ))}
                     </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               );
@@ -510,6 +917,15 @@ export function WorkbenchPage({
       {/* Bottom Floating Bubble Input Dock (3x Prompt Space + Save PDF) */}
       <div className="relative z-10 px-4 sm:px-8 pb-5 pt-2">
         <div className="max-w-4xl mx-auto">
+          {copyError && (
+            <div
+              role="alert"
+              className="mb-2.5 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/55 dark:text-red-200"
+            >
+              {copyError}
+            </div>
+          )}
+
           {pdfNotice && (
             <div className="mb-2.5 px-4 py-2 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200">
               {pdfNotice}
@@ -528,6 +944,53 @@ export function WorkbenchPage({
               </button>
             </div>
           )}
+
+          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-300">
+              <span className="h-2 w-2 rounded-full bg-sky-500" />
+              {PROMPT_DOMAIN_LABELS[activePromptDomain]} template
+            </div>
+            <div
+              role="group"
+              aria-label="Prompt style"
+              className="inline-flex items-center rounded-xl border border-slate-200/90 bg-white/75 p-1 dark:border-slate-700/80 dark:bg-slate-900/70"
+            >
+              {(['formal', 'classic'] as const).map((style) => (
+                <button
+                  key={style}
+                  type="button"
+                  onClick={() => onPromptStyleChange(style)}
+                  aria-pressed={promptStyle === style}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                    promptStyle === style
+                      ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {style}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <section
+            aria-label="Composed prompt preview"
+            aria-live="polite"
+            className="mb-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/75 px-4 py-3 dark:border-sky-900/70 dark:bg-sky-950/35"
+          >
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
+              {promptStyle} prompt preview
+            </div>
+            {draft.trim() ? (
+              <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                {composedPrompt}
+              </pre>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Enter a prompt to preview exactly what will be sent.
+              </p>
+            )}
+          </section>
 
           <form
             onSubmit={handleSubmit}
@@ -552,45 +1015,79 @@ export function WorkbenchPage({
               className="relative z-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed"
             />
 
-            <button
-              type="button"
-              onClick={() => void handleExportPdf()}
-              disabled={turns.length === 0}
-              title="Save Conversation as PDF"
-              aria-label="Save Conversation as PDF"
-              className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
-            >
-              <FileDown className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onClearConversation}
-              disabled={turns.length === 0 || isSending}
-              title="New Session"
-              aria-label="New Session"
-              className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-
-            <button
-              type="submit"
-              disabled={!draft.trim() || isSending}
-              className="relative z-10 h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
-            >
-              {isSending ? (
+            <div className="relative z-10 flex shrink-0 flex-col items-center gap-2">
+              {scope === 'private' && (
                 <>
-                  <Hourglass className="w-4 h-4 animate-spin" />
-                  <span>Working</span>
-                </>
-              ) : (
-                <>
-                  <span>Send</span>
-                  <ArrowUp className="w-4 h-4" />
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshModel()}
+                    disabled={privateNeedsModel || isSending || isRefreshingModel}
+                    title="Unload running Ollama models with keep_alive set to 0. They reload on your next prompt."
+                    className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-medium text-sky-800 transition-colors hover:bg-sky-100 disabled:pointer-events-none disabled:opacity-45 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200 dark:hover:bg-sky-900/60"
+                  >
+                    {isRefreshingModel ? (
+                      <Hourglass className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    <span>{isRefreshingModel ? 'Refreshing…' : 'Refresh Model'}</span>
+                  </button>
+                  {refreshModelFeedback && (
+                    <span
+                      role={refreshModelFeedback.isError ? 'alert' : 'status'}
+                      className={`max-w-40 text-center text-[10px] leading-tight ${
+                        refreshModelFeedback.isError
+                          ? 'text-red-700 dark:text-red-300'
+                          : 'text-emerald-700 dark:text-emerald-300'
+                      }`}
+                    >
+                      {refreshModelFeedback.message}
+                    </span>
+                  )}
                 </>
               )}
-            </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => void handleExportPdf()}
+                  disabled={turns.length === 0}
+                  title="Save Conversation as PDF"
+                  aria-label="Save Conversation as PDF"
+                  className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
+                >
+                  <FileDown className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClearConversation}
+                  disabled={turns.length === 0 || isSending}
+                  title="New Session"
+                  aria-label="New Session"
+                  className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={!draft.trim() || isSending}
+                  className="relative z-10 h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+                >
+                  {isSending ? (
+                    <>
+                      <Hourglass className="w-4 h-4 animate-spin" />
+                      <span>Working</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Send</span>
+                      <ArrowUp className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </form>
         </div>
       </div>

@@ -46,7 +46,15 @@ public sealed class WorkbenchCoordinator
                     Id = turn.Id,
                     QuestionContent = turn.Content,
                     QuestionTimestamp = turn.Timestamp,
-                    Scope = turn.Scope
+                    Scope = turn.Scope,
+                    PromptDomain = turn.PromptDomain,
+                    PromptStyle = turn.PromptStyle,
+                    SystemInstruction = turn.SystemInstruction,
+                    CachedContext = turn.CachedContext,
+                    PrivateSystemInstruction = turn.PrivateSystemInstruction,
+                    PublicSystemInstruction = turn.PublicSystemInstruction,
+                    PrivateCachedContext = turn.PrivateCachedContext,
+                    PublicCachedContext = turn.PublicCachedContext
                 };
                 current.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
                 if (turn.ResponseScopes.Distinct().Count() > 1)
@@ -95,7 +103,7 @@ public sealed class WorkbenchCoordinator
                     referenceTokenEstimate: turn.ReferenceTokenEstimate,
                     responseTokenCount: turn.ResponseTokenCount,
                     responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
-                    contextWindowTokenCount: turn.ContextWindowTokenCount);
+                    qualifiedModelName: turn.QualifiedModelName);
             }
             if (string.IsNullOrWhiteSpace(turn.ExchangeId)) current = null;
         }
@@ -103,6 +111,15 @@ public sealed class WorkbenchCoordinator
         foreach (var exchange in Exchanges.Where(exchange => exchange.IsDualResponse && exchange.IsWaitingReply))
         {
             exchange.MarkDualResponseInterrupted();
+        }
+        RefreshThreadNumbers();
+    }
+
+    private void RefreshThreadNumbers()
+    {
+        for (var index = 0; index < Exchanges.Count; index++)
+        {
+            Exchanges[index].ThreadNumber = index + 1;
         }
     }
 
@@ -199,6 +216,24 @@ public sealed class WorkbenchCoordinator
         AddContextLog("info", "Session context cleared (0 history turns).");
     }
 
+    public bool DeleteExchange(string exchangeId)
+    {
+        var exchange = Exchanges.FirstOrDefault(item => item.Id == exchangeId);
+        if (exchange is null || exchange.IsWaitingReply) return false;
+
+        foreach (var turn in Turns
+                     .Where(turn => turn.Id == exchangeId || turn.ExchangeId == exchangeId)
+                     .ToList())
+        {
+            Turns.Remove(turn);
+        }
+        Exchanges.Remove(exchange);
+        RefreshThreadNumbers();
+        ConfigStore.SaveHistory(Turns);
+        AddContextLog("info", "Conversation thread deleted from the current session.");
+        return true;
+    }
+
     public string GetContextCacheText(ConversationScope scope) =>
         Config.ContextCache?.GetText(scope) ?? string.Empty;
 
@@ -260,6 +295,10 @@ public sealed class WorkbenchCoordinator
             };
 
         var trimmedMessage = message.Trim();
+        var cachedContext = GetContextCacheText(activeScope);
+        var systemInstruction = AppendCachedContext(
+            GetBaseSystemInstruction(activeScope),
+            cachedContext);
         var userTurn = new ConversationTurn
         {
             Role = "user",
@@ -268,7 +307,11 @@ public sealed class WorkbenchCoordinator
             Scope = activeScope,
             ResponseScopes = [activeScope],
             AdapterId = adapter.AdapterId,
-            Model = model
+            Model = model,
+            PromptDomain = Config.PromptBuilder.ActiveDomain,
+            PromptStyle = Config.PromptBuilder.ActiveStyle,
+            SystemInstruction = systemInstruction,
+            CachedContext = cachedContext
         };
 
         var exchange = new ConversationExchange
@@ -277,6 +320,10 @@ public sealed class WorkbenchCoordinator
             QuestionContent = trimmedMessage,
             QuestionTimestamp = userTurn.Timestamp,
             Scope = activeScope,
+            PromptDomain = userTurn.PromptDomain,
+            PromptStyle = userTurn.PromptStyle,
+            SystemInstruction = userTurn.SystemInstruction,
+            CachedContext = userTurn.CachedContext,
             IsWaitingReply = true
         };
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
@@ -288,11 +335,6 @@ public sealed class WorkbenchCoordinator
             .Select(t => (t.Role, t.Content))
             .ToList();
 
-        var baseSystemInstruction = GetBaseSystemInstruction(activeScope);
-        var cachedContext = GetContextCacheText(activeScope);
-        var systemInstruction = string.IsNullOrWhiteSpace(cachedContext)
-            ? baseSystemInstruction
-            : $"{baseSystemInstruction.Trim()}\n\n{cachedContext}";
         var promptText = string.Join(
             "\n",
             new[] { systemInstruction }
@@ -307,6 +349,7 @@ public sealed class WorkbenchCoordinator
         int promptChars = trimmedMessage.Length + history.Sum(h => h.Content.Length) + systemInstruction.Length;
         Turns.Add(userTurn);
         Exchanges.Add(exchange);
+        exchange.ThreadNumber = Exchanges.Count;
         ConfigStore.SaveHistory(Turns);
 
         Telemetry.Phase = "Thinking";
@@ -372,7 +415,7 @@ public sealed class WorkbenchCoordinator
                 referenceTokenEstimate: referenceTokenEstimate,
                 responseTokenCount: responseTokenCount,
                 responseTokenCountIsEstimate: responseTokenCountIsEstimate,
-                contextWindowTokenCount: contextWindowTokenCount);
+                qualifiedModelName: assistantTurn.QualifiedModelName);
             ConfigStore.SaveHistory(Turns);
 
             Telemetry.Phase = "Ready";
@@ -524,6 +567,14 @@ public sealed class WorkbenchCoordinator
         var publicAdapter = Adapters.Resolve(Config);
         var privateModel = Config.PrivateLlm.SelectedModel;
         var publicModel = GetPublicModel();
+        var privateContext = GetContextCacheText(ConversationScope.Private);
+        var publicContext = GetContextCacheText(ConversationScope.Public);
+        var privateInstruction = AppendCachedContext(
+            GetBaseSystemInstruction(ConversationScope.Private),
+            privateContext);
+        var publicInstruction = AppendCachedContext(
+            GetBaseSystemInstruction(ConversationScope.Public),
+            publicContext);
         var responseScopes = new List<ConversationScope>
         {
             ConversationScope.Private,
@@ -537,14 +588,26 @@ public sealed class WorkbenchCoordinator
             Scope = ConversationScope.Public,
             ResponseScopes = responseScopes,
             AdapterId = publicAdapter.AdapterId,
-            Model = publicModel
+            Model = publicModel,
+            PromptDomain = Config.PromptBuilder.ActiveDomain,
+            PromptStyle = Config.PromptBuilder.ActiveStyle,
+            PrivateSystemInstruction = privateInstruction,
+            PublicSystemInstruction = publicInstruction,
+            PrivateCachedContext = privateContext,
+            PublicCachedContext = publicContext
         };
         var exchange = new ConversationExchange
         {
             Id = userTurn.Id,
             QuestionContent = trimmedMessage,
             QuestionTimestamp = userTurn.Timestamp,
-            Scope = ConversationScope.Public
+            Scope = ConversationScope.Public,
+            PromptDomain = userTurn.PromptDomain,
+            PromptStyle = userTurn.PromptStyle,
+            PrivateSystemInstruction = userTurn.PrivateSystemInstruction,
+            PublicSystemInstruction = userTurn.PublicSystemInstruction,
+            PrivateCachedContext = userTurn.PrivateCachedContext,
+            PublicCachedContext = userTurn.PublicCachedContext
         };
         exchange.InitializeDualResponse(privateModel, publicModel);
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
@@ -562,14 +625,6 @@ public sealed class WorkbenchCoordinator
             .ToList();
         var privateHistory = historyForScope(ConversationScope.Private);
         var publicHistory = historyForScope(ConversationScope.Public);
-        var privateContext = GetContextCacheText(ConversationScope.Private);
-        var publicContext = GetContextCacheText(ConversationScope.Public);
-        var privateInstruction = AppendCachedContext(
-            GetBaseSystemInstruction(ConversationScope.Private),
-            privateContext);
-        var publicInstruction = AppendCachedContext(
-            GetBaseSystemInstruction(ConversationScope.Public),
-            publicContext);
         var privatePromptTokens = TokenEstimate.Count(string.Join(
             "\n",
             new[] { privateInstruction }
@@ -585,6 +640,7 @@ public sealed class WorkbenchCoordinator
 
         Turns.Add(userTurn);
         Exchanges.Add(exchange);
+        exchange.ThreadNumber = Exchanges.Count;
         ConfigStore.SaveHistory(Turns);
 
         Telemetry.Phase = "Thinking";

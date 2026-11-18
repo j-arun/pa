@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private TrayIconService? _trayIcon;
     private bool _isExiting;
     private bool _isSending;
+    private bool _isRefreshingModel;
     private DispatcherQueueTimer? _telemetryTimer;
     private CancellationTokenSource? _requestCts;
 
@@ -55,7 +56,11 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncMenuBarState);
+        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            SyncMenuBarState();
+            SyncPromptBuilderControls();
+        });
         App.Coordinator.ContextTelemetryChanged += (_, _) => DispatcherQueue.TryEnqueue(SyncContextMonitor);
         App.Coordinator.ResponseArrived += (_, args) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -72,6 +77,7 @@ public sealed partial class MainWindow : Window
         _telemetryTimer.Tick += (_, _) => SyncContextMonitor();
 
         SyncMenuBarState();
+        SyncPromptBuilderControls();
         SyncContextMonitor();
         SyncLeftSplitterPosition();
         _ = App.Coordinator.InitializeProfileAsync();
@@ -194,6 +200,16 @@ public sealed partial class MainWindow : Window
         SetContextCachePageActive(true);
     }
 
+    private void NavigateToPromptBuilder()
+    {
+        NavView.SelectedItem = NavView.MenuItems[3];
+        if (ContentFrame.Content is not PromptBuilderPage)
+        {
+            ContentFrame.Navigate(typeof(PromptBuilderPage));
+        }
+        SetContextCachePageActive(true);
+    }
+
     private void SetContextCachePageActive(bool active)
     {
         PromptComposer.Visibility = active ? Visibility.Collapsed : Visibility.Visible;
@@ -241,6 +257,7 @@ public sealed partial class MainWindow : Window
         SendButton.Background = accentBrush;
         SendButton.BorderBrush = accentBrush;
         SendButton.Foreground = new SolidColorBrush(Colors.White);
+        UpdateRefreshModelButtonState();
 
         PromptModeVoiceIcon.Glyph = isPrivate ? "\uE8BD" : "\uE767";
         PromptTextBox.FontFamily = new FontFamily(WorkbenchThemeHelper.GetFontFamilyName(cfg.FontFamily));
@@ -291,6 +308,62 @@ public sealed partial class MainWindow : Window
             UserAvatarPicture.ProfilePicture = null;
         }
 
+    }
+
+    private void UpdateRefreshModelButtonState()
+    {
+        bool isPrivate = App.Coordinator.Config.EffectiveScope == ConversationScope.Private;
+        RefreshModelButton.Visibility = isPrivate ? Visibility.Visible : Visibility.Collapsed;
+        if (!isPrivate)
+        {
+            RefreshModelStatusText.Visibility = Visibility.Collapsed;
+        }
+        RefreshModelButton.IsEnabled =
+            isPrivate
+            && !_isSending
+            && !_isRefreshingModel
+            && !string.IsNullOrWhiteSpace(App.Coordinator.Config.PrivateLlm.SelectedModel);
+    }
+
+    private async void RefreshModelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isSending || _isRefreshingModel ||
+            App.Coordinator.Config.EffectiveScope != ConversationScope.Private)
+        {
+            return;
+        }
+
+        _isRefreshingModel = true;
+        RefreshModelStatusText.Text = "Unloading Ollama model memory...";
+        RefreshModelStatusText.Foreground =
+            new SolidColorBrush(ColorHelper.FromArgb(255, 100, 116, 139));
+        RefreshModelStatusText.Visibility = Visibility.Visible;
+        UpdateRefreshModelButtonState();
+
+        try
+        {
+            var summary = await App.Coordinator.RelievePrivateLlmAsync();
+            bool failed = summary.StartsWith("Could not unload", StringComparison.OrdinalIgnoreCase);
+            RefreshModelStatusText.Text = summary;
+            RefreshModelStatusText.Foreground = failed
+                ? new SolidColorBrush(ColorHelper.FromArgb(255, 185, 28, 28))
+                : new SolidColorBrush(ColorHelper.FromArgb(255, 5, 150, 105));
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException
+            or TaskCanceledException
+            or UriFormatException
+            or System.Text.Json.JsonException)
+        {
+            RefreshModelStatusText.Text = $"Model refresh failed: {ex.Message}";
+            RefreshModelStatusText.Foreground =
+                new SolidColorBrush(ColorHelper.FromArgb(255, 185, 28, 28));
+        }
+        finally
+        {
+            _isRefreshingModel = false;
+            UpdateRefreshModelButtonState();
+        }
     }
 
     private void SyncContextMonitor()
@@ -554,6 +627,7 @@ public sealed partial class MainWindow : Window
         using var requestCts = new CancellationTokenSource();
         _requestCts = requestCts;
         _isSending = true;
+        UpdateRefreshModelButtonState();
         SendButton.IsEnabled = true;
         SendIcon.Glyph = "\uE71A";
         ToolTipService.SetToolTip(SendButton, "Stop response");
@@ -569,6 +643,7 @@ public sealed partial class MainWindow : Window
         {
             _isSending = false;
             _requestCts = null;
+            UpdateRefreshModelButtonState();
             SendIcon.Glyph = "\uE724";
             ToolTipService.SetToolTip(SendButton, "Send prompt");
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SendButton, "Send prompt");
@@ -590,8 +665,9 @@ public sealed partial class MainWindow : Window
 
         var text = PromptTextBox.Text.Trim();
         if (string.IsNullOrEmpty(text)) return;
+        var prompt = BuildComposedPrompt(text);
         PromptTextBox.Text = string.Empty;
-        await DispatchPromptAsync(text, "Typed");
+        await DispatchPromptAsync(prompt, "Typed");
     }
 
     private async void PromptTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -604,13 +680,69 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
         var text = PromptTextBox.Text.Trim();
         if (string.IsNullOrEmpty(text)) return;
+        var prompt = BuildComposedPrompt(text);
         PromptTextBox.Text = string.Empty;
-        await DispatchPromptAsync(text, "Typed");
+        await DispatchPromptAsync(prompt, "Typed");
     }
 
     private void PromptTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         SyncContextCacheStatus();
+        SyncPromptPreview();
+    }
+
+    private void SyncPromptBuilderControls()
+    {
+        var promptBuilder = App.Coordinator.Config.PromptBuilder;
+        PromptDomainStatusText.Text = $"{promptBuilder.ActiveDomain} · {promptBuilder.ActiveStyle}";
+        FormalPromptStyleButton.IsChecked = promptBuilder.ActiveStyle == PromptStyle.Formal;
+        ClassicPromptStyleButton.IsChecked = promptBuilder.ActiveStyle == PromptStyle.Classic;
+        SyncPromptPreview();
+    }
+
+    private void SyncPromptPreview()
+    {
+        var draft = PromptTextBox.Text.Trim();
+        PromptPreviewText.Text = string.IsNullOrEmpty(draft)
+            ? "Type a prompt to preview the composed request."
+            : BuildComposedPrompt(draft);
+    }
+
+    private string BuildComposedPrompt(string draft)
+    {
+        var builder = App.Coordinator.Config.PromptBuilder;
+        var template = builder.GetTemplate(builder.ActiveDomain, builder.ActiveStyle).Trim();
+        if (string.IsNullOrEmpty(template)) return draft;
+        return template.Contains("{{prompt}}", StringComparison.Ordinal)
+            ? template.Replace("{{prompt}}", draft, StringComparison.Ordinal)
+            : $"{template}\n\n{draft}";
+    }
+
+    private async void PromptStyleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string styleName } ||
+            !Enum.TryParse(styleName, out PromptStyle style))
+        {
+            return;
+        }
+
+        App.Coordinator.Config.PromptBuilder.ActiveStyle = style;
+        SyncPromptBuilderControls();
+        try
+        {
+            App.Coordinator.SaveConfig();
+        }
+        catch (Exception ex)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "Unable to save prompt style",
+                Content = ex.Message,
+                CloseButtonText = "OK"
+            };
+            await dialog.ShowAsync();
+        }
     }
 
     private async void SavePdfToolbarButton_Click(object sender, RoutedEventArgs e)
@@ -673,6 +805,10 @@ public sealed partial class MainWindow : Window
                     ContentFrame.Navigate(typeof(SettingsPage));
                 }
                 SetContextCachePageActive(true);
+            }
+            else if (string.Equals(destination, "prompt-builder", StringComparison.Ordinal))
+            {
+                NavigateToPromptBuilder();
             }
             else
             {

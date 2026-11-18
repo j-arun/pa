@@ -37,6 +37,8 @@ public sealed class LocalConfigStore
 
             var json = File.ReadAllText(ConfigFilePath);
             var config = JsonSerializer.Deserialize<WorkbenchConfig>(json, JsonOptions) ?? new WorkbenchConfig();
+            config.PromptBuilder ??= new PromptBuilderConfig();
+            config.PromptBuilder.Normalize();
             if (config.PrivateLlm.ContextWindow == 8192)
             {
                 config.PrivateLlm.ContextWindow = 32768;

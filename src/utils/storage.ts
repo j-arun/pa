@@ -1,8 +1,115 @@
-import type { ConversationTurn, WorkbenchSettings } from '../types/workbench';
+import type {
+  ConversationTurn,
+  PromptBuilderSettings,
+  PromptDomain,
+  PromptStyle,
+  PromptTemplates,
+  WorkbenchSettings,
+} from '../types/workbench';
+import {
+  DEFAULT_PROMPT_BUILDER_SETTINGS,
+  DEFAULT_PROMPT_TEMPLATES,
+  PROMPT_DOMAINS,
+  PROMPT_STYLES,
+  normalizePromptBuilderSettings,
+} from './promptTemplates';
 
 const SETTINGS_KEY = 'fluent_paw_settings_v1';
 const CONVERSATION_KEY = 'fluent_paw_conversation_v1';
 const SCOPE_KEY = 'fluent_paw_scope_v1';
+function isPromptDomain(raw: unknown): raw is PromptDomain {
+  return typeof raw === 'string' && PROMPT_DOMAINS.includes(raw as PromptDomain);
+}
+
+function isPromptStyle(raw: unknown): raw is PromptStyle {
+  return typeof raw === 'string' && PROMPT_STYLES.includes(raw as PromptStyle);
+}
+
+export function loadPromptTemplates(): PromptTemplates {
+  try {
+    const PROMPT_TEMPLATES_KEY = 'fluent_paw_prompt_templates_v1';
+    const raw = window.localStorage.getItem(PROMPT_TEMPLATES_KEY);
+    if (!raw) return DEFAULT_PROMPT_TEMPLATES;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_PROMPT_TEMPLATES;
+    const saved = parsed as Partial<Record<PromptDomain, Partial<Record<PromptStyle, unknown>>>>;
+
+    return Object.fromEntries(
+      PROMPT_DOMAINS.map((domain) => [
+        domain,
+        Object.fromEntries(
+          PROMPT_STYLES.map((style) => [
+            style,
+            typeof saved[domain]?.[style] === 'string'
+              ? saved[domain][style]
+              : DEFAULT_PROMPT_TEMPLATES[domain][style],
+          ]),
+        ),
+      ]),
+    ) as PromptTemplates;
+  } catch {
+    return DEFAULT_PROMPT_TEMPLATES;
+  }
+}
+
+export function savePromptTemplates(templates: PromptTemplates): void {
+  try {
+    const PROMPT_TEMPLATES_KEY = 'fluent_paw_prompt_templates_v1';
+    window.localStorage.setItem(PROMPT_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadPromptDomain(): PromptDomain {
+  try {
+    const PROMPT_DOMAIN_KEY = 'fluent_paw_prompt_domain_v1';
+    const raw = window.localStorage.getItem(PROMPT_DOMAIN_KEY);
+    return isPromptDomain(raw) ? raw : 'astrology';
+  } catch {
+    return 'astrology';
+  }
+}
+
+export function savePromptDomain(domain: PromptDomain): void {
+  try {
+    const PROMPT_DOMAIN_KEY = 'fluent_paw_prompt_domain_v1';
+    window.localStorage.setItem(PROMPT_DOMAIN_KEY, domain);
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadPromptStyle(): PromptStyle {
+  try {
+    const PROMPT_STYLE_KEY = 'fluent_paw_prompt_style_v1';
+    const raw = window.localStorage.getItem(PROMPT_STYLE_KEY);
+    return isPromptStyle(raw) ? raw : 'formal';
+  } catch {
+    return 'formal';
+  }
+}
+
+export function savePromptStyle(style: PromptStyle): void {
+  try {
+    const PROMPT_STYLE_KEY = 'fluent_paw_prompt_style_v1';
+    window.localStorage.setItem(PROMPT_STYLE_KEY, style);
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function loadLegacyPromptBuilderSettings(): PromptBuilderSettings {
+  return normalizePromptBuilderSettings(
+    undefined,
+    {
+      ...DEFAULT_PROMPT_BUILDER_SETTINGS,
+      activeDomain: loadPromptDomain(),
+      activeStyle: loadPromptStyle(),
+      templates: loadPromptTemplates(),
+    },
+  );
+}
 
 export const DEFAULT_SETTINGS: WorkbenchSettings = {
   theme: 'arctic-sky',
@@ -20,6 +127,10 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
     contextWindow: 8192,
     keepAlive: '10m',
     maxHistoryTurns: 16,
+  },
+  contextCache: {
+    privateText: '',
+    publicText: '',
   },
   publicLlm: {
     activeAdapter: 'gemini',
@@ -57,6 +168,7 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  promptBuilder: DEFAULT_PROMPT_BUILDER_SETTINGS,
   requestTimeoutSeconds: 0,
 };
 
@@ -85,7 +197,12 @@ export function normalizeFontOption(raw?: string): WorkbenchSettings['fontFamily
 export function loadSettings(): WorkbenchSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    if (!raw) {
+      return {
+        ...DEFAULT_SETTINGS,
+        promptBuilder: loadLegacyPromptBuilderSettings(),
+      };
+    }
     const parsed = JSON.parse(raw) as Partial<WorkbenchSettings>;
 
     const theme = normalizeThemeMode(parsed.theme);
@@ -101,6 +218,16 @@ export function loadSettings(): WorkbenchSettings {
       privateLlm: {
         ...DEFAULT_SETTINGS.privateLlm,
         ...(parsed.privateLlm || {}),
+      },
+      contextCache: {
+        privateText:
+          typeof parsed.contextCache?.privateText === 'string'
+            ? parsed.contextCache.privateText
+            : DEFAULT_SETTINGS.contextCache.privateText,
+        publicText:
+          typeof parsed.contextCache?.publicText === 'string'
+            ? parsed.contextCache.publicText
+            : DEFAULT_SETTINGS.contextCache.publicText,
       },
       publicLlm: {
         activeAdapter:
@@ -131,13 +258,20 @@ export function loadSettings(): WorkbenchSettings {
         ...DEFAULT_SETTINGS.notifications,
         ...(parsed.notifications || {}),
       },
+      promptBuilder: normalizePromptBuilderSettings(
+        parsed.promptBuilder,
+        loadLegacyPromptBuilderSettings(),
+      ),
       requestTimeoutSeconds:
         typeof parsed.requestTimeoutSeconds === 'number' && parsed.requestTimeoutSeconds >= 0
           ? Math.round(parsed.requestTimeoutSeconds)
           : 0,
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return {
+      ...DEFAULT_SETTINGS,
+      promptBuilder: loadLegacyPromptBuilderSettings(),
+    };
   }
 }
 

@@ -2,6 +2,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { WorkbenchSettings } from '../src/types/workbench.ts';
+import {
+  DEFAULT_PROMPT_BUILDER_SETTINGS,
+  normalizePromptBuilderSettings,
+} from '../src/utils/promptTemplates.ts';
 
 function detectOsUserName(): string {
   try {
@@ -112,6 +116,10 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
     keepAlive: '10m',
     maxHistoryTurns: 16,
   },
+  contextCache: {
+    privateText: '',
+    publicText: '',
+  },
   publicLlm: {
     activeAdapter: 'gemini',
     adapters: {
@@ -132,8 +140,7 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
       fable: {
         model: 'fable-1-pro',
         maxTokens: 2048,
-        endpointUrl:
-          process.env.FABLE_API_URL || 'https://api.fable.ai/v1/chat/completions',
+        endpointUrl: process.env.FABLE_API_URL?.trim() || '',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Fable Adapter.',
       },
@@ -150,6 +157,7 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  promptBuilder: DEFAULT_PROMPT_BUILDER_SETTINGS,
   requestTimeoutSeconds: 0,
 };
 
@@ -173,6 +181,15 @@ export function mergeConfigWithDefaults(
   raw: Partial<WorkbenchSettings> | null | undefined,
 ): WorkbenchSettings {
   const parsed = raw || {};
+  const legacyContextCache = (
+    parsed as Partial<WorkbenchSettings> & {
+      ContextCache?: { PrivateText?: unknown; PublicText?: unknown };
+    }
+  ).ContextCache;
+  const publicContextCache =
+    parsed.contextCache?.publicText ?? legacyContextCache?.PublicText;
+  const privateContextCache =
+    parsed.contextCache?.privateText ?? legacyContextCache?.PrivateText;
   const theme = normalizeServerTheme(parsed.theme);
   const fontFamily = normalizeServerFont(parsed.fontFamily);
 
@@ -188,6 +205,16 @@ export function mergeConfigWithDefaults(
     privateLlm: {
       ...DEFAULT_WORKBENCH_CONFIG.privateLlm,
       ...(parsed.privateLlm || {}),
+    },
+    contextCache: {
+      privateText:
+        typeof privateContextCache === 'string'
+          ? privateContextCache
+          : DEFAULT_WORKBENCH_CONFIG.contextCache.privateText,
+      publicText:
+        typeof publicContextCache === 'string'
+          ? publicContextCache
+          : DEFAULT_WORKBENCH_CONFIG.contextCache.publicText,
     },
     publicLlm: {
       activeAdapter:
@@ -218,6 +245,10 @@ export function mergeConfigWithDefaults(
       ...DEFAULT_WORKBENCH_CONFIG.notifications,
       ...(parsed.notifications || {}),
     },
+    promptBuilder: normalizePromptBuilderSettings(
+      parsed.promptBuilder,
+      DEFAULT_WORKBENCH_CONFIG.promptBuilder,
+    ),
     requestTimeoutSeconds:
       typeof parsed.requestTimeoutSeconds === 'number' && parsed.requestTimeoutSeconds >= 0
         ? Math.round(parsed.requestTimeoutSeconds)
@@ -229,6 +260,7 @@ export function readLocalConfigFile(): {
   config: WorkbenchSettings;
   filePath: string;
   platform: string;
+  hasPromptBuilderSettings: boolean;
 } {
   const filePath = resolveConfigFilePath();
   const dir = path.dirname(filePath);
@@ -247,6 +279,7 @@ export function readLocalConfigFile(): {
       config: DEFAULT_WORKBENCH_CONFIG,
       filePath,
       platform: process.platform,
+      hasPromptBuilderSettings: true,
     };
   }
 
@@ -257,12 +290,15 @@ export function readLocalConfigFile(): {
       config: mergeConfigWithDefaults(parsed),
       filePath,
       platform: process.platform,
+      hasPromptBuilderSettings:
+        Boolean(parsed.promptBuilder) && typeof parsed.promptBuilder === 'object',
     };
   } catch {
     return {
       config: DEFAULT_WORKBENCH_CONFIG,
       filePath,
       platform: process.platform,
+      hasPromptBuilderSettings: false,
     };
   }
 }
