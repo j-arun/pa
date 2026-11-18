@@ -296,9 +296,16 @@ public sealed class WorkbenchCoordinator
 
         var trimmedMessage = message.Trim();
         var cachedContext = GetContextCacheText(activeScope);
+        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
+        var history = Turns
+            .Where(t => t.Scope == activeScope && (t.IsUser || t.IsAssistant))
+            .TakeLast(maxHistory)
+            .Select(t => (t.Role, t.Content))
+            .ToList();
         var systemInstruction = AppendCachedContext(
             GetBaseSystemInstruction(activeScope),
-            cachedContext);
+            cachedContext,
+            history.Select(turn => turn.Content).Append(trimmedMessage));
         var userTurn = new ConversationTurn
         {
             Role = "user",
@@ -327,13 +334,6 @@ public sealed class WorkbenchCoordinator
             IsWaitingReply = true
         };
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
-
-        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
-        var history = Turns
-            .Where(t => t.Scope == activeScope && (t.IsUser || t.IsAssistant))
-            .TakeLast(maxHistory)
-            .Select(t => (t.Role, t.Content))
-            .ToList();
 
         var promptText = string.Join(
             "\n",
@@ -569,12 +569,27 @@ public sealed class WorkbenchCoordinator
         var publicModel = GetPublicModel();
         var privateContext = GetContextCacheText(ConversationScope.Private);
         var publicContext = GetContextCacheText(ConversationScope.Public);
+        var priorTurns = Turns.ToList();
+        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
+        var historyForScope = (ConversationScope targetScope) => priorTurns
+            .Where(turn => turn.IsUser
+                ? (turn.ResponseScopes.Count == 0
+                    ? turn.Scope == targetScope
+                    : turn.ResponseScopes.Contains(targetScope))
+                : turn.IsAssistant && turn.Scope == targetScope)
+            .TakeLast(maxHistory)
+            .Select(turn => (turn.Role, turn.Content))
+            .ToList();
+        var privateHistory = historyForScope(ConversationScope.Private);
+        var publicHistory = historyForScope(ConversationScope.Public);
         var privateInstruction = AppendCachedContext(
             GetBaseSystemInstruction(ConversationScope.Private),
-            privateContext);
+            privateContext,
+            privateHistory.Select(turn => turn.Content).Append(trimmedMessage));
         var publicInstruction = AppendCachedContext(
             GetBaseSystemInstruction(ConversationScope.Public),
-            publicContext);
+            publicContext,
+            publicHistory.Select(turn => turn.Content).Append(trimmedMessage));
         var responseScopes = new List<ConversationScope>
         {
             ConversationScope.Private,
@@ -612,19 +627,6 @@ public sealed class WorkbenchCoordinator
         exchange.InitializeDualResponse(privateModel, publicModel);
         exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
 
-        var priorTurns = Turns.ToList();
-        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
-        var historyForScope = (ConversationScope targetScope) => priorTurns
-            .Where(turn => turn.IsUser
-                ? (turn.ResponseScopes.Count == 0
-                    ? turn.Scope == targetScope
-                    : turn.ResponseScopes.Contains(targetScope))
-                : turn.IsAssistant && turn.Scope == targetScope)
-            .TakeLast(maxHistory)
-            .Select(turn => (turn.Role, turn.Content))
-            .ToList();
-        var privateHistory = historyForScope(ConversationScope.Private);
-        var publicHistory = historyForScope(ConversationScope.Public);
         var privatePromptTokens = TokenEstimate.Count(string.Join(
             "\n",
             new[] { privateInstruction }
@@ -827,10 +829,22 @@ public sealed class WorkbenchCoordinator
         return publicResponse;
     }
 
-    private static string AppendCachedContext(string instruction, string cachedContext) =>
-        string.IsNullOrWhiteSpace(cachedContext)
-            ? instruction
-            : $"{instruction.Trim()}\n\n{cachedContext}";
+    private static string AppendCachedContext(
+        string instruction,
+        string cachedContext,
+        IEnumerable<string> existingContent)
+    {
+        var context = cachedContext.Trim();
+        if (context.Length == 0 ||
+            instruction.Contains(context, StringComparison.OrdinalIgnoreCase) ||
+            existingContent.Any(content =>
+                content.Contains(context, StringComparison.OrdinalIgnoreCase)))
+        {
+            return instruction;
+        }
+
+        return $"{instruction.Trim()}\n\n{context}";
+    }
 
     private string GetBaseSystemInstruction(ConversationScope scope)
     {

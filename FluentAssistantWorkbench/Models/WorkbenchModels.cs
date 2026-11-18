@@ -233,6 +233,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     }
 
     public bool IsThreadExpanded => _isThreadExpanded;
+    public double BubbleMaxWidth => IsDualResponse ? double.MaxValue : 780;
     public Visibility ThreadContentVisibility =>
         _isThreadExpanded ? Visibility.Visible : Visibility.Collapsed;
     public string ThreadToggleGlyph => _isThreadExpanded ? "\uE70E" : "\uE70D";
@@ -550,6 +551,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWaitingReply)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanDelete)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasSuccessfulAnswer)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BubbleMaxWidth)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DividerVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyVisibility)));

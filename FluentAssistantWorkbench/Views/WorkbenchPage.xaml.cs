@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
+using Markdig;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
@@ -10,6 +12,15 @@ namespace FluentAssistantWorkbench.Views;
 
 public sealed partial class WorkbenchPage : Page
 {
+    private static readonly MarkdownPipeline HtmlExportPipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
+    private static readonly Regex HtmlLinkHrefPattern =
+        new("href=\"(?<url>[^\"]*)\"", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex HtmlImageTagPattern =
+        new("<img\\b(?<attributes>[^>]*)>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex HtmlAttributePattern =
+        new("(?<name>[\\w-]+)=\"(?<value>[^\"]*)\"", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     private bool _isSending;
     private bool _isNearBottom = true;
 
@@ -102,6 +113,7 @@ public sealed partial class WorkbenchPage : Page
         try
         {
             await App.Coordinator.SendMessageAsync(text, inputMode, cancellationToken);
+            HideSidebarForSuccessfulPublicComparison();
         }
         finally
         {
@@ -109,6 +121,23 @@ public sealed partial class WorkbenchPage : Page
             var shouldScrollToBottom = _isNearBottom;
             DispatcherQueue.TryEnqueue(() => OnExchangesChanged(shouldScrollToBottom));
         }
+    }
+
+    private static void HideSidebarForSuccessfulPublicComparison()
+    {
+        var exchange = App.Coordinator.Exchanges.LastOrDefault();
+        if (App.Coordinator.Config.EffectiveScope != ConversationScope.Public ||
+            exchange is null ||
+            !exchange.IsDualResponse ||
+            exchange.PrivateResponse.IsError ||
+            exchange.PublicResponse.IsError ||
+            string.IsNullOrWhiteSpace(exchange.PrivateResponse.Content) ||
+            string.IsNullOrWhiteSpace(exchange.PublicResponse.Content))
+        {
+            return;
+        }
+
+        MainWindow.CurrentWindow?.HideAgentSessionSidebarForDualResponse();
     }
 
     private void ToggleQuestion_Click(object sender, RoutedEventArgs e)
@@ -233,33 +262,35 @@ public sealed partial class WorkbenchPage : Page
 
     private static string BuildThreadHtml(ConversationExchange exchange)
     {
-        var answers = new List<string>();
+        var answers = new List<(string Label, string Content)>();
         if (exchange.IsDualResponse)
         {
             foreach (var response in new[] { exchange.PrivateResponse, exchange.PublicResponse })
             {
                 if (!response.IsError && !string.IsNullOrWhiteSpace(response.Content))
                 {
-                    answers.Add(response.Content);
+                    answers.Add((response.HeaderLabel, response.Content));
                 }
             }
         }
         else if (!exchange.IsReplyError && !exchange.IsReplyCanceled &&
             !string.IsNullOrWhiteSpace(exchange.ReplyContent))
         {
-            answers.Add(exchange.ReplyContent);
+            answers.Add((exchange.ReplyHeaderLabel, exchange.ReplyContent));
         }
 
         var answerSections = string.Join(
             Environment.NewLine,
-            answers.Select((answer, index) =>
+            answers.Select(answer =>
             {
-                var label = answers.Count > 1 ? $"Answer {index + 1}" : "Answer";
-                return $"<section><h2>{label}</h2><pre>{System.Net.WebUtility.HtmlEncode(answer)}</pre></section>";
+                var label = System.Net.WebUtility.HtmlEncode(answer.Label);
+                return
+                    $"<section class=\"answer\"><h2>{label}</h2><div class=\"markdown\">{RenderMarkdownHtml(answer.Content)}</div></section>";
             }));
         var questionSection = string.IsNullOrWhiteSpace(exchange.QuestionContent)
             ? string.Empty
-            : $"<section><h2>Question</h2><pre>{System.Net.WebUtility.HtmlEncode(exchange.QuestionContent)}</pre></section>";
+            : $"<section><h2>Question</h2><div class=\"markdown\">{RenderMarkdownHtml(exchange.QuestionContent)}</div></section>";
+        var answerLayoutClass = answers.Count == 2 ? "answer-grid" : "answer-list";
         return $$"""
             <!doctype html>
             <html lang="en">
@@ -268,21 +299,69 @@ public sealed partial class WorkbenchPage : Page
               <meta name="viewport" content="width=device-width, initial-scale=1">
               <title>Thread #{{exchange.ThreadNumber}}</title>
               <style>
-                body { font: 16px/1.6 system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
-                section { margin: 1.5rem 0; }
-                pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+                body { font: 16px/1.6 system-ui, sans-serif; margin: 2rem auto; padding: 0 1.25rem; color: #172033; }
+                main { max-width: 1440px; margin: 0 auto; }
+                section { min-width: 0; margin: 1.5rem 0; }
+                .answer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
+                .answer-grid section { margin: 0; }
+                .markdown { overflow-wrap: anywhere; }
+                .markdown pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; padding: .8rem; border-radius: .5rem; background: #f1f5f9; }
+                .markdown code { font-family: ui-monospace, Consolas, monospace; }
+                .markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
+                .markdown th, .markdown td { border: 1px solid #cbd5e1; padding: .4rem .65rem; }
+                .markdown blockquote { margin-left: 0; padding-left: 1rem; border-left: 3px solid #0ea5e9; color: #475569; }
+                @media (max-width: 760px) { .answer-grid { grid-template-columns: 1fr; } }
               </style>
             </head>
             <body>
               <main>
                 <h1>Thread #{{exchange.ThreadNumber}}</h1>
                 {{questionSection}}
-                {{answerSections}}
+                <div class="{{answerLayoutClass}}">{{answerSections}}</div>
               </main>
             </body>
             </html>
             """;
     }
+
+    private static string RenderMarkdownHtml(string markdown)
+    {
+        var html = Markdig.Markdown.ToHtml(markdown, HtmlExportPipeline);
+        html = HtmlImageTagPattern.Replace(html, RenderMarkdownImage);
+        return HtmlLinkHrefPattern.Replace(html, match =>
+        {
+            var url = System.Net.WebUtility.HtmlDecode(match.Groups["url"].Value);
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                uri.Scheme is "http" or "https" or "mailto"
+                    ? match.Value
+                    : string.Empty;
+        });
+    }
+
+    private static string RenderMarkdownImage(Match imageTag)
+    {
+        var attributes = HtmlAttributePattern.Matches(imageTag.Groups["attributes"].Value);
+        var source = GetHtmlAttribute(attributes, "src");
+        var decodedSource = System.Net.WebUtility.HtmlDecode(source);
+        var altText = System.Net.WebUtility.HtmlDecode(GetHtmlAttribute(attributes, "alt"));
+        if (Uri.TryCreate(
+                decodedSource,
+                UriKind.Absolute,
+                out var uri) &&
+            uri.Scheme is "http" or "https")
+        {
+            var linkText = string.IsNullOrWhiteSpace(altText) ? decodedSource : altText;
+            return $"<a href=\"{System.Net.WebUtility.HtmlEncode(decodedSource)}\">{System.Net.WebUtility.HtmlEncode(linkText)}</a>";
+        }
+
+        return System.Net.WebUtility.HtmlEncode(altText);
+    }
+
+    private static string GetHtmlAttribute(MatchCollection attributes, string name) =>
+        attributes.Cast<Match>()
+            .FirstOrDefault(match =>
+                string.Equals(match.Groups["name"].Value, name, StringComparison.OrdinalIgnoreCase))
+            ?.Groups["value"].Value ?? string.Empty;
 
     private void CopyMetadata_Click(object sender, RoutedEventArgs e)
     {

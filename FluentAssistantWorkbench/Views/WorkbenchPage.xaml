@@ -97,7 +97,7 @@
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Visible"
             VerticalScrollMode="Enabled">
-            <StackPanel MaxWidth="840" HorizontalAlignment="Stretch" Spacing="16">
+            <StackPanel HorizontalAlignment="Stretch" Spacing="16">
 
                 <!-- Empty State Welcome Bubble -->
                 <Border
@@ -132,7 +132,7 @@
                         <DataTemplate>
                             <Border
                                 Margin="0,0,0,14"
-                                MaxWidth="780"
+                                MaxWidth="{Binding BubbleMaxWidth}"
                                 HorizontalAlignment="Stretch"
                                 Padding="16"
                                 CornerRadius="26,26,26,8"
@@ -364,10 +364,17 @@
                                                         VerticalAlignment="Center"
                                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                                 </StackPanel>
-                                                <controls:MarkdownPresenter
+                                                <ScrollViewer
                                                     Visibility="{Binding ContentVisibility}"
-                                                    Markdown="{Binding Content}"
-                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                    MaxHeight="420"
+                                                    VerticalScrollBarVisibility="Auto"
+                                                    VerticalScrollMode="Enabled"
+                                                    HorizontalScrollBarVisibility="Disabled"
+                                                    HorizontalScrollMode="Disabled">
+                                                    <controls:MarkdownPresenter
+                                                        Markdown="{Binding Content}"
+                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                </ScrollViewer>
                                                 <TextBlock
                                                     Visibility="{Binding ErrorVisibility}"
                                                     Text="{Binding ErrorText}"
@@ -423,10 +430,17 @@
                                                         VerticalAlignment="Center"
                                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                                 </StackPanel>
-                                                <controls:MarkdownPresenter
+                                                <ScrollViewer
                                                     Visibility="{Binding ContentVisibility}"
-                                                    Markdown="{Binding Content}"
-                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                    MaxHeight="420"
+                                                    VerticalScrollBarVisibility="Auto"
+                                                    VerticalScrollMode="Enabled"
+                                                    HorizontalScrollBarVisibility="Disabled"
+                                                    HorizontalScrollMode="Disabled">
+                                                    <controls:MarkdownPresenter
+                                                        Markdown="{Binding Content}"
+                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                </ScrollViewer>
                                                 <TextBlock
                                                     Visibility="{Binding ErrorVisibility}"
                                                     Text="{Binding ErrorText}"
@@ -527,12 +541,19 @@
                                                             FontSize="14" />
                                                     </Button>
                                                 </Grid>
-                                                <controls:MarkdownPresenter
+                                                <ScrollViewer
                                                     Visibility="{Binding ReplyContentVisibility}"
-                                                    Markdown="{Binding ReplyContent}"
-                                                    FontFamily="{Binding BubbleFontFamily}"
-                                                    FontSize="{Binding ReplyFontSize}"
-                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                    MaxHeight="520"
+                                                    VerticalScrollBarVisibility="Auto"
+                                                    VerticalScrollMode="Enabled"
+                                                    HorizontalScrollBarVisibility="Disabled"
+                                                    HorizontalScrollMode="Disabled">
+                                                    <controls:MarkdownPresenter
+                                                        Markdown="{Binding ReplyContent}"
+                                                        FontFamily="{Binding BubbleFontFamily}"
+                                                        FontSize="{Binding ReplyFontSize}"
+                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                </ScrollViewer>
                                                 <StackPanel
                                                     Orientation="Horizontal"
                                                     Spacing="8"

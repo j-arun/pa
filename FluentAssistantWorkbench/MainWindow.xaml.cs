@@ -23,6 +23,8 @@ public sealed partial class MainWindow : Window
     private bool _isExiting;
     private bool _isSending;
     private bool _isRefreshingModel;
+    private bool _contextSidebarAutoHiddenForDualResponse;
+    private bool _contextSidebarWasVisibleBeforeAutoHide;
     private DispatcherQueueTimer? _telemetryTimer;
     private CancellationTokenSource? _requestCts;
 
@@ -253,6 +255,12 @@ public sealed partial class MainWindow : Window
     {
         var cfg = App.Coordinator.Config;
         bool isPrivate = cfg.EffectiveScope == ConversationScope.Private;
+        if (isPrivate && _contextSidebarAutoHiddenForDualResponse)
+        {
+            _contextSidebarAutoHiddenForDualResponse = false;
+            AgentSessionSidebarToggleButton.IsChecked = _contextSidebarWasVisibleBeforeAutoHide;
+            SetContextMonitorVisibility(_contextSidebarWasVisibleBeforeAutoHide);
+        }
         var accentBrush = new SolidColorBrush(GetThemeAccentColor(cfg.Theme));
         SendButton.Background = accentBrush;
         SendButton.BorderBrush = accentBrush;
@@ -579,6 +587,7 @@ public sealed partial class MainWindow : Window
 
     private void AgentSessionSidebarToggleButton_Click(object sender, RoutedEventArgs e)
     {
+        _contextSidebarAutoHiddenForDualResponse = false;
         bool show = AgentSessionSidebarToggleButton.IsChecked == true;
         SetContextMonitorVisibility(show);
     }
@@ -595,6 +604,16 @@ public sealed partial class MainWindow : Window
         RightPaneSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         RightSplitterColumn.Width = show ? new GridLength(6) : new GridLength(0);
         RightRailColumn.Width = show ? new GridLength(_rightRailWidth) : new GridLength(0);
+    }
+
+    internal void HideAgentSessionSidebarForDualResponse()
+    {
+        if (AgentSessionSidebarToggleButton.IsChecked != true) return;
+
+        _contextSidebarWasVisibleBeforeAutoHide = true;
+        _contextSidebarAutoHiddenForDualResponse = true;
+        AgentSessionSidebarToggleButton.IsChecked = false;
+        SetContextMonitorVisibility(show: false);
     }
 
     public async Task SyncWindowsAccountProfileAsync()
