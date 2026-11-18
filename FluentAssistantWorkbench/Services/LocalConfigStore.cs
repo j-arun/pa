@@ -36,7 +36,14 @@ public sealed class LocalConfigStore
             }
 
             var json = File.ReadAllText(ConfigFilePath);
-            return JsonSerializer.Deserialize<WorkbenchConfig>(json, JsonOptions) ?? new WorkbenchConfig();
+            var config = JsonSerializer.Deserialize<WorkbenchConfig>(json, JsonOptions) ?? new WorkbenchConfig();
+            if (config.PrivateLlm.ContextWindow == 8192)
+            {
+                config.PrivateLlm.ContextWindow = 32768;
+                SaveConfig(config);
+            }
+
+            return config;
         }
         catch
         {

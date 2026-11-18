@@ -412,21 +412,15 @@ export function SettingsPage({
   const normalizedDraftTheme = normalizeThemeMode(draft.theme);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-xs"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-modal-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <section
+      className="w-full flex-1 h-full min-h-0 flex flex-col p-4 sm:p-6"
+      aria-labelledby="settings-page-title"
     >
-      <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
-        {/* Compact Modal Header */}
+      <div className="w-full max-w-5xl h-full min-h-0 mx-auto flex flex-col rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
         <header className="shrink-0 px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 bg-slate-50/80 dark:bg-slate-950/60">
           <div>
             <h1
-              id="settings-modal-title"
+              id="settings-page-title"
               className="font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
             >
               Personal Assistant Settings
@@ -438,15 +432,14 @@ export function SettingsPage({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close settings"
-            title="Close"
+            aria-label="Return to Personal Assistant"
+            title="Back to Personal Assistant"
             className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </header>
 
-        {/* Scrollable Modal Body */}
         <div className="flex-1 overflow-y-auto fluent-scroll p-5 space-y-7">
           {/* Section 0: Color-Coded Themes & Account Profile */}
           <section className="space-y-4">
@@ -1737,7 +1730,7 @@ export function SettingsPage({
                 {applyFeedback}
               </span>
             ) : hasUnsavedChanges ? (
-              <span>Pending changes — click Apply or Save &amp; Close</span>
+              <span>Pending changes — click Apply or Save &amp; Return</span>
             ) : (
               <span>All settings saved</span>
             )}
@@ -1749,7 +1742,7 @@ export function SettingsPage({
               onClick={onClose}
               className="px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Close
+              Back to Assistant
             </button>
             <button
               type="button"
@@ -1763,11 +1756,11 @@ export function SettingsPage({
               onClick={handleSaveAndClose}
               className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] transition-colors"
             >
-              Save &amp; Close
+              Save &amp; Return
             </button>
           </div>
         </footer>
       </div>
-    </div>
+    </section>
   );
 }

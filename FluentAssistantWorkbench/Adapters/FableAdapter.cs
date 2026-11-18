@@ -72,7 +72,7 @@ public sealed class FableAdapter : ILlmAdapter
                 "Fable API key is missing. Set it in Settings -> Public LLM (Fable) or via FABLE_API_KEY.");
         }
 
-        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct);
+        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct, request.SystemInstruction);
     }
 
     private async Task<LlmChatResponse> SendInternalAsync(
@@ -80,7 +80,8 @@ public sealed class FableAdapter : ILlmAdapter
         string apiKey,
         IReadOnlyList<(string Role, string Content)> history,
         string userMessage,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? systemInstruction = null)
     {
         var sw = Stopwatch.StartNew();
         var model = string.IsNullOrWhiteSpace(cfg.Model) ? "fable-1-pro" : cfg.Model.Trim();
@@ -89,9 +90,10 @@ public sealed class FableAdapter : ILlmAdapter
             : cfg.EndpointUrl.Trim();
 
         var messages = new List<object>();
-        if (!string.IsNullOrWhiteSpace(cfg.SystemInstruction))
+        var effectiveSystemInstruction = systemInstruction ?? cfg.SystemInstruction;
+        if (!string.IsNullOrWhiteSpace(effectiveSystemInstruction))
         {
-            messages.Add(new { role = "system", content = cfg.SystemInstruction.Trim() });
+            messages.Add(new { role = "system", content = effectiveSystemInstruction.Trim() });
         }
         foreach (var (role, content) in history)
         {

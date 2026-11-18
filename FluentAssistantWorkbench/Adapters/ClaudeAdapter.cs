@@ -71,7 +71,7 @@ public sealed class ClaudeAdapter : ILlmAdapter
                 "Claude API key is missing. Set it in Settings -> Public LLM (Claude) or via ANTHROPIC_API_KEY.");
         }
 
-        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct);
+        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct, request.SystemInstruction);
     }
 
     private async Task<LlmChatResponse> SendInternalAsync(
@@ -79,7 +79,8 @@ public sealed class ClaudeAdapter : ILlmAdapter
         string apiKey,
         IReadOnlyList<(string Role, string Content)> history,
         string userMessage,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? systemInstruction = null)
     {
         var sw = Stopwatch.StartNew();
         var model = string.IsNullOrWhiteSpace(cfg.Model) ? "claude-sonnet-4-20250514" : cfg.Model.Trim();
@@ -90,7 +91,8 @@ public sealed class ClaudeAdapter : ILlmAdapter
         var messages = history.Select(h => new { role = h.Role, content = h.Content }).ToList();
         messages.Add(new { role = "user", content = userMessage });
 
-        object body = string.IsNullOrWhiteSpace(cfg.SystemInstruction)
+        var effectiveSystemInstruction = systemInstruction ?? cfg.SystemInstruction;
+        object body = string.IsNullOrWhiteSpace(effectiveSystemInstruction)
             ? new
             {
                 model,
@@ -101,7 +103,7 @@ public sealed class ClaudeAdapter : ILlmAdapter
             {
                 model,
                 max_tokens = cfg.MaxTokens > 0 ? cfg.MaxTokens : 2048,
-                system = cfg.SystemInstruction.Trim(),
+                system = effectiveSystemInstruction.Trim(),
                 messages
             };
 

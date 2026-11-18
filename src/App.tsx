@@ -2,8 +2,6 @@ import {
   Bell,
   Cloud,
   Lock,
-  Mic,
-  MicOff,
   Palette,
   PanelLeft,
   PanelRight,
@@ -56,7 +54,6 @@ export default function App() {
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
   const [isSending, setIsSending] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [configFileInfo, setConfigFileInfo] = useState<{
     filePath: string;
@@ -167,7 +164,7 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [telemetry.isThinking]);
 
-  const speech = useSpeechIO(settings.voice, isMuted);
+  const speech = useSpeechIO(settings.voice);
 
   const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
     typeof window !== 'undefined'
@@ -297,7 +294,7 @@ export default function App() {
 
   const connectedEngineText =
     scope === 'private'
-      ? `Connected: Private · Windows Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
+      ? `Connected: Private · Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
       : `Connected: Public · ${activePublicAdapterLabel} (${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model})`;
 
   const toggleTopBarSpeak = () => {
@@ -324,7 +321,7 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theme: nextTheme }));
   };
 
-  const handleSendMessage = async (text: string, inputMode: 'text' | 'voice') => {
+  const handleSendMessage = async (text: string, inputMode: 'text') => {
     const adapterId: AnyAdapterId =
       scope === 'private'
         ? settings.privateLlm.activeAdapter
@@ -594,10 +591,28 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsSettingsOpen(false)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70"
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    isSettingsOpen
+                      ? 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                      : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                  }`}
+                  aria-current={!isSettingsOpen ? 'page' : undefined}
                 >
                   <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
                   <span className="truncate">Personal Assistant</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    isSettingsOpen
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                  aria-current={isSettingsOpen ? 'page' : undefined}
+                >
+                  <Settings className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span className="truncate">Settings</span>
                 </button>
               </nav>
             </div>
@@ -730,23 +745,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Icon-Only Mic, Speaker, Theme & Settings Controls */}
+          {/* Zone 3: Speaker, Theme & Agent Session Sidebar Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsMuted((prev) => !prev)}
-              aria-label={isMuted ? 'Microphone muted, click to unmute' : 'Microphone on, click to mute'}
-              title={isMuted ? 'Microphone Muted (click to unmute)' : 'Microphone On (click to mute)'}
-              aria-pressed={isMuted}
-              className={`p-2 rounded-lg border transition-colors shrink-0 ${
-                isMuted
-                  ? 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
-                  : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </button>
-
             <button
               type="button"
               onClick={toggleTopBarSpeak}
@@ -802,70 +802,98 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsContextRailOpen((prev) => !prev)}
-              aria-label={isContextRailOpen ? 'Hide LLM Context Monitor' : 'Show LLM Context Monitor'}
-              title={isContextRailOpen ? 'Hide LLM Context Monitor' : 'Show LLM Context Monitor'}
+              aria-label={isContextRailOpen ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
+              title={isContextRailOpen ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
               aria-pressed={isContextRailOpen}
-              className={`hidden lg:inline-flex p-2 rounded-lg border transition-colors shrink-0 ${
+              className={`hidden lg:inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
                 isContextRailOpen
-                  ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
               style={isContextRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
             >
               <PanelRight className="w-4 h-4" />
             </button>
-
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen((prev) => !prev)}
-              aria-label="Settings"
-              title="Settings"
-              aria-pressed={isSettingsOpen}
-              className={`p-2 rounded-lg border transition-colors shrink-0 ${
-                isSettingsOpen
-                  ? 'text-white border-transparent'
-                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              style={isSettingsOpen ? { backgroundColor: 'var(--pa-accent)' } : undefined}
-            >
-              <Settings className="w-4 h-4" />
-            </button>
           </div>
         </header>
 
-        {/* Main Assistant Surface + Read-Only Right Context Inspector Rail */}
+        {/* Main Assistant Surface + Agent Session Sidebar */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          <WorkbenchPage
-            scope={scope}
-            settings={settings}
-            turns={turns}
-            isSending={isSending}
-            isMuted={isMuted}
-            speech={speech}
-            onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
-            onClearConversation={() => {
-              setTurns([]);
-              setTelemetry({
-                phase: 'Idle',
-                isThinking: false,
-                promptChars: 0,
-                historyTurnsUsed: 0,
-                lastError: '',
-              });
-              pushContextLog('info', 'Session context cleared');
-            }}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onToggleMute={() => setIsMuted((prev) => !prev)}
-          />
+          {isSettingsOpen ? (
+            <SettingsPage
+              settings={settings}
+              onApplySettings={(next) => setSettings(next)}
+              onClose={() => setIsSettingsOpen(false)}
+              speech={speech}
+              messageCount={turns.length}
+              configFileInfo={configFileInfo}
+              onReloadConfigFromFile={() => void reloadConfigFromFile()}
+              onExportHistory={handleExportHistory}
+              onClearConversation={() => {
+                setTurns([]);
+                setTelemetry({
+                  phase: 'Idle',
+                  isThinking: false,
+                  promptChars: 0,
+                  historyTurnsUsed: 0,
+                  lastError: '',
+                });
+                pushContextLog('info', 'Session context cleared');
+              }}
+              onClearAppCache={() => {
+                setTurns([]);
+                setReplyToast(null);
+                setTelemetry({
+                  phase: 'Idle',
+                  isThinking: false,
+                  promptChars: 0,
+                  historyTurnsUsed: 0,
+                  lastError: '',
+                });
+                try {
+                  window.localStorage.removeItem('fluent_paw_conversation_v1');
+                  if ('caches' in window) {
+                    void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)));
+                  }
+                } catch {
+                  // Ignore storage cleanup errors
+                }
+                pushContextLog('info', 'App cache cleared');
+              }}
+              onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
+              onContextLog={pushContextLog}
+            />
+          ) : (
+            <WorkbenchPage
+              scope={scope}
+              settings={settings}
+              turns={turns}
+              isSending={isSending}
+              speech={speech}
+              onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
+              onClearConversation={() => {
+                setTurns([]);
+                setTelemetry({
+                  phase: 'Idle',
+                  isThinking: false,
+                  promptChars: 0,
+                  historyTurnsUsed: 0,
+                  lastError: '',
+                });
+                pushContextLog('info', 'Session context cleared');
+              }}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+            />
+          )}
 
-          {isContextRailOpen && (
+          {!isSettingsOpen && isContextRailOpen && (
             <>
               {/* Right Rail Drag Splitter */}
               <div
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Resize right LLM context monitor"
-                title="Drag to resize right LLM context monitor"
+                aria-label="Resize Agent Session Sidebar"
+                title="Drag to resize Agent Session Sidebar"
                 onPointerDown={(e) => {
                   e.preventDefault();
                   startPaneResize('right', e.clientX, rightRailWidth);
@@ -1028,52 +1056,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Compact Settings Modal Window */}
-      {isSettingsOpen && (
-        <SettingsPage
-          settings={settings}
-          onApplySettings={(next) => setSettings(next)}
-          onClose={() => setIsSettingsOpen(false)}
-          speech={speech}
-          messageCount={turns.length}
-          configFileInfo={configFileInfo}
-          onReloadConfigFromFile={() => void reloadConfigFromFile()}
-          onExportHistory={handleExportHistory}
-          onClearConversation={() => {
-            setTurns([]);
-            setTelemetry({
-              phase: 'Idle',
-              isThinking: false,
-              promptChars: 0,
-              historyTurnsUsed: 0,
-              lastError: '',
-            });
-            pushContextLog('info', 'Session context cleared');
-          }}
-          onClearAppCache={() => {
-            setTurns([]);
-            setReplyToast(null);
-            setTelemetry({
-              phase: 'Idle',
-              isThinking: false,
-              promptChars: 0,
-              historyTurnsUsed: 0,
-              lastError: '',
-            });
-            try {
-              window.localStorage.removeItem('fluent_paw_conversation_v1');
-              if ('caches' in window) {
-                void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)));
-              }
-            } catch {
-              // Ignore storage cleanup errors
-            }
-            pushContextLog('info', 'App cache cleared');
-          }}
-          onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
-          onContextLog={pushContextLog}
-        />
-      )}
     </div>
   );
 }

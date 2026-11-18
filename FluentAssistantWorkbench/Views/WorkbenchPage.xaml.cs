@@ -1,23 +1,16 @@
 using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Windows.Storage.Pickers;
-using Windows.System;
-using Windows.UI.Core;
 using WinRT.Interop;
 
 namespace FluentAssistantWorkbench.Views;
 
 public sealed partial class WorkbenchPage : Page
 {
-    private bool _isListening;
     private bool _isSending;
     private bool _isNearBottom = true;
-    private CancellationTokenSource? _listenCts;
-    private string _pendingSettingsUri = "ms-settings:privacy-speech";
 
     public WorkbenchPage()
     {
@@ -30,11 +23,16 @@ public sealed partial class WorkbenchPage : Page
             _isNearBottom =
                 LadderScrollViewer.ScrollableHeight - LadderScrollViewer.VerticalOffset <= 48;
         };
-        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(ApplyFontFromConfig);
+        App.Coordinator.ConfigChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyFontFromConfig();
+            ApplyModeDescription();
+        });
         Loaded += (_, _) =>
         {
             AmbientMistStoryboard.Begin();
             ApplyFontFromConfig();
+            ApplyModeDescription();
             DispatcherQueue.TryEnqueue(ScrollToBottom);
         };
         ApplyFontFromConfig();
@@ -46,18 +44,25 @@ public sealed partial class WorkbenchPage : Page
         var fontName = WorkbenchThemeHelper.GetFontFamilyName(App.Coordinator.Config.FontFamily);
         var family = new Microsoft.UI.Xaml.Media.FontFamily(fontName);
         FontFamily = family;
-        PromptTextBox.FontFamily = family;
     }
 
-    public void ClearPrompt()
+    private void ApplyModeDescription()
     {
-        PromptTextBox.Text = string.Empty;
+        bool isPrivate = App.Coordinator.Config.EffectiveScope == ConversationScope.Private;
+        EmptySubtitleText.Text = isPrivate
+            ? "Private mode · Type a prompt for your local Ollama model."
+            : $"Public mode · Type a prompt for {GetPublicAdapterLabel(App.Coordinator.Config)}.";
     }
 
-    public void SelectPromptText()
+    private static string GetPublicAdapterLabel(WorkbenchConfig config)
     {
-        PromptTextBox.Focus(FocusState.Programmatic);
-        PromptTextBox.SelectAll();
+        var adapterLabel = config.PublicLlm.ActiveAdapter switch
+        {
+            "claude" => "Claude",
+            "fable" => "Fable",
+            _ => "Gemini"
+        };
+        return $"{adapterLabel} via the cloud";
     }
 
     private void OnExchangesChanged(bool scrollToBottom)
@@ -79,145 +84,40 @@ public sealed partial class WorkbenchPage : Page
         _isNearBottom = true;
     }
 
-    private async Task DispatchPromptAsync(string text, string inputMode)
+    public async Task SendPromptAsync(
+        string text,
+        string inputMode,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text) || _isSending) return;
         _isSending = true;
-        SendButton.IsEnabled = false;
-        SendSpinner.Visibility = Visibility.Visible;
-        SendSpinner.IsActive = true;
-        SendIcon.Visibility = Visibility.Collapsed;
-
         ScrollToBottom();
 
         try
         {
-            await App.Coordinator.SendMessageAsync(text, inputMode);
+            await App.Coordinator.SendMessageAsync(text, inputMode, cancellationToken);
         }
         finally
         {
             _isSending = false;
-            SendSpinner.IsActive = false;
-            SendSpinner.Visibility = Visibility.Collapsed;
-            SendIcon.Visibility = Visibility.Visible;
-            SendButton.IsEnabled = true;
             var shouldScrollToBottom = _isNearBottom;
             DispatcherQueue.TryEnqueue(() => OnExchangesChanged(shouldScrollToBottom));
         }
     }
 
-    private async void SendButton_Click(object sender, RoutedEventArgs e)
+    private void ToggleQuestion_Click(object sender, RoutedEventArgs e)
     {
-        var text = PromptTextBox.Text.Trim();
-        if (string.IsNullOrEmpty(text)) return;
-        PromptTextBox.Text = string.Empty;
-        await DispatchPromptAsync(text, "Typed");
-    }
-
-    private async void PromptTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key == VirtualKey.Enter)
+        if (sender is Button { DataContext: ConversationExchange exchange })
         {
-            var shiftState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
-            if (!shiftState.HasFlag(CoreVirtualKeyStates.Down))
-            {
-                e.Handled = true;
-                var text = PromptTextBox.Text.Trim();
-                if (string.IsNullOrEmpty(text)) return;
-                PromptTextBox.Text = string.Empty;
-                await DispatchPromptAsync(text, "Typed");
-            }
+            exchange.ToggleQuestion();
         }
     }
 
-    private async void MicButton_Click(object sender, RoutedEventArgs e)
+    private void ToggleReply_Click(object sender, RoutedEventArgs e)
     {
-        if (_isListening)
+        if (sender is Button { DataContext: ConversationExchange exchange })
         {
-            _listenCts?.Cancel();
-            return;
-        }
-
-        if (App.Coordinator.IsMuted)
-        {
-            MicErrorInfoBar.Severity = InfoBarSeverity.Informational;
-            MicErrorInfoBar.Title = "Microphone is muted";
-            MicErrorInfoBar.Message = "Unmute the microphone in the top bar to use voice input.";
-            MicFixActionButton.Visibility = Visibility.Collapsed;
-            MicErrorInfoBar.IsOpen = true;
-            return;
-        }
-
-        MicErrorInfoBar.IsOpen = false;
-        _isListening = true;
-        _listenCts?.Dispose();
-        _listenCts = new CancellationTokenSource();
-        MicButtonIcon.Glyph = "\uE71A";
-        PromptTextBox.PlaceholderText = "Listening via Windows microphone...";
-
-        try
-        {
-            var spokenText = await App.Coordinator.Speech.ListenOnceAsync(_listenCts.Token);
-            if (!string.IsNullOrWhiteSpace(spokenText))
-            {
-                await DispatchPromptAsync(spokenText, "Voice");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // User cancelled microphone listening
-        }
-        catch (SpeechSetupException setupEx)
-        {
-            if (setupEx.Issue == SpeechSetupIssue.SpeechPrivacyPolicy)
-            {
-                _pendingSettingsUri = "ms-settings:privacy-speech";
-                MicErrorInfoBar.Severity = InfoBarSeverity.Warning;
-                MicErrorInfoBar.Title = "Windows Speech Privacy needs to be enabled";
-                MicErrorInfoBar.Message =
-                    "Online Speech Recognition is turned off in Windows Settings and no offline speech pack was detected. Turn it on in Privacy & security > Speech, or press Win + H inside the text box for Windows Voice Typing.";
-                MicFixActionButton.Content = "Open Speech Privacy";
-                MicFixActionButton.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                _pendingSettingsUri = "ms-settings:privacy-microphone";
-                MicErrorInfoBar.Severity = InfoBarSeverity.Warning;
-                MicErrorInfoBar.Title = "Microphone permission or device needed";
-                MicErrorInfoBar.Message = setupEx.Message;
-                MicFixActionButton.Content = "Open Mic Privacy";
-                MicFixActionButton.Visibility = Visibility.Visible;
-            }
-
-            MicErrorInfoBar.IsOpen = true;
-        }
-        catch (Exception ex)
-        {
-            MicErrorInfoBar.Severity = InfoBarSeverity.Error;
-            MicErrorInfoBar.Title = "Microphone error";
-            MicErrorInfoBar.Message = ex.Message;
-            MicFixActionButton.Visibility = Visibility.Collapsed;
-            MicErrorInfoBar.IsOpen = true;
-        }
-        finally
-        {
-            _isListening = false;
-            _listenCts?.Dispose();
-            _listenCts = null;
-            MicButtonIcon.Glyph = "\uE720";
-            PromptTextBox.PlaceholderText = "Type or speak your prompt... (Enter to send, Shift+Enter for new line)";
-        }
-    }
-
-    private async void MicFixActionButton_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await Launcher.LaunchUriAsync(new Uri(_pendingSettingsUri));
-        }
-        catch
-        {
-            // Ignore launcher failures
+            exchange.ToggleReply();
         }
     }
 
@@ -235,11 +135,10 @@ public sealed partial class WorkbenchPage : Page
     {
         if (App.Coordinator.Exchanges.Count == 0)
         {
-            MicErrorInfoBar.Severity = InfoBarSeverity.Informational;
-            MicErrorInfoBar.Title = "Nothing to export";
-            MicErrorInfoBar.Message = "Start a conversation first, then click Save PDF.";
-            MicFixActionButton.Visibility = Visibility.Collapsed;
-            MicErrorInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Informational;
+            StatusInfoBar.Title = "Nothing to export";
+            StatusInfoBar.Message = "Start a conversation first, then click Save PDF.";
+            StatusInfoBar.IsOpen = true;
             return;
         }
 
@@ -264,19 +163,17 @@ public sealed partial class WorkbenchPage : Page
             var pdfBytes = ConversationPdfExporter.ExportExchangesToPdf(App.Coordinator.Exchanges);
             await File.WriteAllBytesAsync(file.Path, pdfBytes);
 
-            MicErrorInfoBar.Severity = InfoBarSeverity.Success;
-            MicErrorInfoBar.Title = "Saved as PDF";
-            MicErrorInfoBar.Message = $"Conversation exported to {file.Path}";
-            MicFixActionButton.Visibility = Visibility.Collapsed;
-            MicErrorInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Success;
+            StatusInfoBar.Title = "Saved as PDF";
+            StatusInfoBar.Message = $"Conversation exported to {file.Path}";
+            StatusInfoBar.IsOpen = true;
         }
         catch (Exception ex)
         {
-            MicErrorInfoBar.Severity = InfoBarSeverity.Error;
-            MicErrorInfoBar.Title = "PDF export failed";
-            MicErrorInfoBar.Message = ex.Message;
-            MicFixActionButton.Visibility = Visibility.Collapsed;
-            MicErrorInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "PDF export failed";
+            StatusInfoBar.Message = ex.Message;
+            StatusInfoBar.IsOpen = true;
         }
     }
 

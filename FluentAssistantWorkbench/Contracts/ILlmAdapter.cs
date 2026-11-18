@@ -5,7 +5,8 @@ namespace FluentAssistantWorkbench.Contracts;
 public sealed record LlmChatRequest(
     string Message,
     IReadOnlyList<(string Role, string Content)> History,
-    WorkbenchConfig Config
+    WorkbenchConfig Config,
+    string SystemInstruction
 );
 
 public sealed record LlmChatResponse(

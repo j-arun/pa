@@ -6,6 +6,7 @@
 
     <ScrollViewer Padding="20,16" VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="640" Spacing="16">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
             <!-- Section 0: Appearance & Windows Account Profile -->
             <Border
                 Padding="16"
@@ -18,6 +19,7 @@
 
                     <Grid ColumnSpacing="12" RowSpacing="10">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -48,6 +50,10 @@
                             <ComboBoxItem Content="Calibri (Clean Sans)" Tag="Calibri" />
                             <ComboBoxItem Content="Georgia (Editorial Serif)" Tag="Georgia" />
                             <ComboBoxItem Content="Cascadia Mono (Technical)" Tag="CascadiaMono" />
+                            <ComboBoxItem Content="Arial (Classic Sans)" Tag="Arial" />
+                            <ComboBoxItem Content="Verdana (Wide Sans)" Tag="Verdana" />
+                            <ComboBoxItem Content="Tahoma (Compact Sans)" Tag="Tahoma" />
+                            <ComboBoxItem Content="Times New Roman (Classic Serif)" Tag="TimesNewRoman" />
                         </ComboBox>
                         <TextBox
                             x:Name="DisplayNameBox"
@@ -55,6 +61,16 @@
                             Grid.ColumnSpan="2"
                             Header="Account Display Name"
                             PlaceholderText="Windows logged-in user" />
+                        <ComboBox
+                            x:Name="ChatFontSizeCombo"
+                            Grid.Row="2"
+                            Grid.ColumnSpan="2"
+                            Header="Chat Text Size"
+                            HorizontalAlignment="Stretch">
+                            <ComboBoxItem Content="Small (Default · 12/13)" Tag="Small" />
+                            <ComboBoxItem Content="Medium · 14/15" Tag="Medium" />
+                            <ComboBoxItem Content="Large · 16/17" Tag="Large" />
+                        </ComboBox>
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -146,6 +162,33 @@
                             <ComboBoxItem Content="Last 24 turns" Tag="24" />
                         </ComboBox>
                     </Grid>
+
+                    <ComboBox
+                        x:Name="OllamaPredictCombo"
+                        Header="Maximum Generated Tokens (num_predict)"
+                        HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="1,000 tokens" Tag="1000" />
+                        <ComboBoxItem Content="2,000 tokens (Default)" Tag="2000" />
+                        <ComboBoxItem Content="4,000 tokens" Tag="4000" />
+                        <ComboBoxItem Content="8,000 tokens" Tag="8000" />
+                        <ComboBoxItem Content="16,000 tokens" Tag="16000" />
+                        <ComboBoxItem Content="32,768 tokens" Tag="32768" />
+                        <ComboBoxItem Content="Unlimited (-1)" Tag="-1" />
+                    </ComboBox>
+                    <TextBlock
+                        Text="This is an output ceiling, not a target length. The model's system instruction can still make replies concise."
+                        FontSize="11"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                    <ComboBox
+                        x:Name="OllamaTemperatureCombo"
+                        Header="Temperature"
+                        HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="0.1 (More focused)" Tag="0.1" />
+                        <ComboBoxItem Content="0.2 (Default)" Tag="0.2" />
+                        <ComboBoxItem Content="0.3 (More varied)" Tag="0.3" />
+                    </ComboBox>
 
                     <ComboBox
                         x:Name="RequestTimeoutCombo"
@@ -332,6 +375,12 @@
                         x:Name="SaveFeedbackText"
                         TextWrapping="Wrap"
                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+
+                    <Button
+                        Content="Save Settings"
+                        Click="SaveSettingsPage_Click"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
             </Border>
         </StackPanel>

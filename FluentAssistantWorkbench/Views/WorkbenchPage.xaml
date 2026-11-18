@@ -2,7 +2,8 @@
 <Page
     x:Class="FluentAssistantWorkbench.Views.WorkbenchPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:FluentAssistantWorkbench.Controls">
 
     <Page.Resources>
         <Storyboard x:Name="AmbientMistStoryboard" RepeatBehavior="Forever" AutoReverse="True">
@@ -38,10 +39,9 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.RowSpan="3" IsHitTestVisible="False">
+        <Grid Grid.RowSpan="2" IsHitTestVisible="False">
             <Grid.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0.5,1">
                     <GradientStop Color="#14FFFFFF" Offset="0.0" />
@@ -85,6 +85,7 @@
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
+
         </Grid>
 
         <!-- Continual Conversational Bubble Ladder -->
@@ -118,7 +119,7 @@
                             TextAlignment="Center" />
                         <TextBlock
                             x:Name="EmptySubtitleText"
-                            Text="Type or speak using your Windows microphone. Questions and answers appear together in one clean bubble."
+                            Text="Private mode · Type a prompt for your local Ollama model."
                             TextWrapping="Wrap"
                             TextAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -154,19 +155,55 @@
                                                 CornerRadius="2"
                                                 Background="{Binding QuestionAccentBrush}" />
                                             <StackPanel Grid.Column="1" Spacing="4">
-                                                <TextBlock
-                                                    Text="{Binding QuestionHeaderLabel}"
-                                                    FontSize="11"
-                                                    FontWeight="SemiBold"
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border
+                                                        Width="28"
+                                                        Height="28"
+                                                        CornerRadius="14"
+                                                        Background="{Binding QuestionAccentBrush}">
+                                                        <FontIcon
+                                                            Glyph="&#xE77B;"
+                                                            FontSize="14"
+                                                            Foreground="White"
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <TextBlock
+                                                        Grid.Column="1"
+                                                        Text="{Binding QuestionHeaderLabel}"
+                                                        FontSize="11"
+                                                        FontWeight="SemiBold"
+                                                        FontFamily="{Binding BubbleFontFamily}"
+                                                        Foreground="{Binding QuestionAccentBrush}"
+                                                        VerticalAlignment="Center" />
+                                                    <Button
+                                                        Grid.Column="2"
+                                                        Click="ToggleQuestion_Click"
+                                                        Padding="6"
+                                                        MinWidth="32"
+                                                        MinHeight="32"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        CornerRadius="8"
+                                                        ToolTipService.ToolTip="{Binding QuestionToggleToolTip}"
+                                                        AutomationProperties.Name="{Binding QuestionToggleToolTip}">
+                                                        <FontIcon
+                                                            Glyph="{Binding QuestionToggleGlyph}"
+                                                            FontSize="14" />
+                                                    </Button>
+                                                </Grid>
+                                                <controls:MarkdownPresenter
+                                                    Visibility="{Binding QuestionContentVisibility}"
+                                                    Markdown="{Binding QuestionContent}"
                                                     FontFamily="{Binding BubbleFontFamily}"
-                                                    Foreground="{Binding QuestionAccentBrush}" />
-                                                <TextBlock
-                                                    Text="{Binding QuestionContent}"
-                                                    FontSize="15"
                                                     FontWeight="Medium"
-                                                    FontFamily="{Binding BubbleFontFamily}"
-                                                    TextWrapping="Wrap"
-                                                    IsTextSelectionEnabled="True" />
+                                                    FontSize="{Binding QuestionFontSize}"
+                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -206,28 +243,83 @@
                                                 CornerRadius="2"
                                                 Background="{Binding AnswerAccentBrush}" />
                                             <StackPanel Grid.Column="1" Spacing="8">
-                                                <TextBlock
-                                                    Text="{Binding ReplyHeaderLabel}"
-                                                    FontSize="11"
-                                                    FontWeight="SemiBold"
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border
+                                                        Width="28"
+                                                        Height="28"
+                                                        CornerRadius="14"
+                                                        Background="{Binding AnswerAccentBrush}">
+                                                        <FontIcon
+                                                            Glyph="&#xE8F2;"
+                                                            FontSize="14"
+                                                            Foreground="White"
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                        <TextBlock
+                                                            Text="AI"
+                                                            FontSize="11"
+                                                            FontWeight="SemiBold"
+                                                            FontFamily="{Binding BubbleFontFamily}"
+                                                            Foreground="{Binding AnswerAccentBrush}"
+                                                            VerticalAlignment="Center" />
+                                                        <TextBlock
+                                                            Text="{Binding ReplyHeaderLabel}"
+                                                            FontSize="11"
+                                                            FontFamily="{Binding BubbleFontFamily}"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            VerticalAlignment="Center" />
+                                                        <TextBlock
+                                                            Text="{Binding ReplyMetricsText}"
+                                                            FontSize="10"
+                                                            FontFamily="{Binding BubbleFontFamily}"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            MaxWidth="420"
+                                                            ToolTipService.ToolTip="{Binding ReplyMetricsText}"
+                                                            VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <Button
+                                                        Grid.Column="2"
+                                                        Click="ToggleReply_Click"
+                                                        Padding="6"
+                                                        MinWidth="32"
+                                                        MinHeight="32"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        CornerRadius="8"
+                                                        ToolTipService.ToolTip="{Binding ReplyToggleToolTip}"
+                                                        AutomationProperties.Name="{Binding ReplyToggleToolTip}">
+                                                        <FontIcon
+                                                            Glyph="{Binding ReplyToggleGlyph}"
+                                                            FontSize="14" />
+                                                    </Button>
+                                                </Grid>
+                                                <controls:MarkdownPresenter
+                                                    Visibility="{Binding ReplyContentVisibility}"
+                                                    Markdown="{Binding ReplyContent}"
                                                     FontFamily="{Binding BubbleFontFamily}"
-                                                    Foreground="{Binding AnswerAccentBrush}" />
-                                                <TextBlock
-                                                    Text="{Binding ReplyContent}"
-                                                    FontSize="14"
-                                                    FontFamily="{Binding BubbleFontFamily}"
-                                                    TextWrapping="Wrap"
-                                                    IsTextSelectionEnabled="True" />
-                                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                                    FontSize="{Binding ReplyFontSize}"
+                                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                                                <StackPanel
+                                                    Orientation="Horizontal"
+                                                    Spacing="8"
+                                                    Margin="0,4,0,0"
+                                                    Visibility="{Binding ReplyContentVisibility}">
                                                     <Button
                                                         Click="SpeakTurnButton_Click"
                                                         Tag="{Binding ReplyContent}"
-                                                        CornerRadius="14"
-                                                        Padding="12,5">
-                                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                                            <FontIcon Glyph="&#xE767;" FontSize="13" />
-                                                            <TextBlock Text="Play in Windows Speaker" FontSize="12" />
-                                                        </StackPanel>
+                                                        Padding="8"
+                                                        CornerRadius="10"
+                                                        ToolTipService.ToolTip="Play response in Windows Speaker"
+                                                        AutomationProperties.Name="Play response in Windows Speaker">
+                                                        <FontIcon Glyph="&#xE767;" FontSize="16" />
                                                     </Button>
                                                 </StackPanel>
                                             </StackPanel>
@@ -254,6 +346,33 @@
                                                 Foreground="#DC2626" />
                                         </StackPanel>
                                     </Border>
+
+                                    <Border
+                                        Visibility="{Binding CanceledVisibility}"
+                                        Padding="14,11"
+                                        CornerRadius="18"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock
+                                                    Text="{Binding ReplyHeaderLabel}"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock
+                                                    Text="{Binding ReplyMetricsText}"
+                                                    FontSize="10"
+                                                    FontFamily="{Binding BubbleFontFamily}"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Text="{Binding ReplyContent}"
+                                                FontFamily="{Binding BubbleFontFamily}"
+                                                TextWrapping="Wrap"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -262,87 +381,15 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Microphone / Export Status Banner -->
+        <!-- Export Status Banner -->
         <InfoBar
-            x:Name="MicErrorInfoBar"
+            x:Name="StatusInfoBar"
             Grid.Row="1"
             Margin="24,0,24,4"
             MaxWidth="840"
             IsOpen="False"
             IsClosable="True"
-            Severity="Warning">
-            <InfoBar.ActionButton>
-                <Button
-                    x:Name="MicFixActionButton"
-                    Content="Open Speech Settings"
-                    Click="MicFixActionButton_Click" />
-            </InfoBar.ActionButton>
-        </InfoBar>
+            Severity="Informational" />
 
-        <!-- Prompt Composer -->
-        <Grid
-            Grid.Row="2"
-            Margin="24,8,24,18"
-            MaxWidth="840"
-            HorizontalAlignment="Center"
-            ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBox
-                x:Name="PromptTextBox"
-                Grid.Column="0"
-                AcceptsReturn="True"
-                TextWrapping="Wrap"
-                MinHeight="176"
-                MaxHeight="220"
-                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                PreviewKeyDown="PromptTextBox_PreviewKeyDown"
-                PlaceholderText="Type or speak your prompt... (Enter to send, Shift+Enter for new line)"
-                CornerRadius="16"
-                Padding="14,10"
-                VerticalAlignment="Stretch" />
-
-            <StackPanel
-                Grid.Column="1"
-                VerticalAlignment="Bottom"
-                HorizontalAlignment="Right"
-                Orientation="Horizontal"
-                Spacing="8">
-                <Button
-                    x:Name="MicButton"
-                    Click="MicButton_Click"
-                    ToolTipService.ToolTip="Speak via Windows Microphone (click again to stop)"
-                    Height="62"
-                    Width="62"
-                    CornerRadius="20">
-                    <FontIcon x:Name="MicButtonIcon" Glyph="&#xE720;" FontSize="16" />
-                </Button>
-
-                <Button
-                    x:Name="SendButton"
-                    Click="SendButton_Click"
-                    Style="{StaticResource AccentButtonStyle}"
-                    ToolTipService.ToolTip="Send prompt"
-                    AutomationProperties.Name="Send prompt"
-                    Height="62"
-                    Width="62"
-                    Padding="0"
-                    CornerRadius="20">
-                    <Grid>
-                        <ProgressRing
-                            x:Name="SendSpinner"
-                            Visibility="Collapsed"
-                            IsActive="False"
-                            Width="16"
-                            Height="16"
-                            Foreground="White" />
-                        <FontIcon x:Name="SendIcon" Glyph="&#xE724;" FontSize="14" />
-                    </Grid>
-                </Button>
-            </StackPanel>
-        </Grid>
     </Grid>
 </Page>

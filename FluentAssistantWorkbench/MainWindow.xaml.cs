@@ -3,11 +3,16 @@ using FluentAssistantWorkbench.Services;
 using FluentAssistantWorkbench.Views;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
+using Windows.UI.Core;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace FluentAssistantWorkbench;
 
@@ -16,17 +21,25 @@ public sealed partial class MainWindow : Window
     public static MainWindow? CurrentWindow { get; private set; }
     private TrayIconService? _trayIcon;
     private bool _isExiting;
+    private bool _isSending;
     private DispatcherQueueTimer? _telemetryTimer;
+    private CancellationTokenSource? _requestCts;
 
     private double _leftRailStartWidth = 200;
     private double _rightRailWidth = 280;
     private double _rightRailStartWidth = 280;
-    private double _bottomBarHeight = 30;
-    private double _bottomBarStartHeight = 30;
+    private double _bottomBarHeight = 220;
+    private double _bottomBarStartHeight = 220;
 
     public MainWindow()
     {
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarDragRegion);
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
+        AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+        RootGrid.SizeChanged += (_, _) => UpdateTitleBarInsets();
+        UpdateTitleBarInsets();
         CurrentWindow = this;
         SystemBackdrop = new MicaBackdrop();
         SetWindowIcon();
@@ -65,6 +78,13 @@ public sealed partial class MainWindow : Window
 
         NavView.SelectedItem = NavView.MenuItems[0];
         ContentFrame.Navigate(typeof(WorkbenchPage));
+    }
+
+    private void UpdateTitleBarInsets()
+    {
+        var scale = RootGrid.XamlRoot?.RasterizationScale ?? 1;
+        TitleBarLeftInsetColumn.Width = new GridLength(AppWindow.TitleBar.LeftInset / scale);
+        TitleBarRightInsetColumn.Width = new GridLength(AppWindow.TitleBar.RightInset / scale);
     }
 
     public void TestDesktopNotification()
@@ -146,54 +166,54 @@ public sealed partial class MainWindow : Window
 
     public void NavigateToSettings()
     {
-        SettingsModalFeedbackText.Text = string.Empty;
-        if (SettingsModalFrame.Content is SettingsPage existing)
+        NavView.SelectedItem = NavView.MenuItems[2];
+        if (ContentFrame.Content is SettingsPage existing)
         {
             existing.ReloadFromCoordinator();
         }
-        else
-        {
-            SettingsModalFrame.Navigate(typeof(SettingsPage));
-        }
-        SettingsModalOverlay.Visibility = Visibility.Visible;
-        SyncToolbarSelection();
-    }
-
-    public void CloseSettingsModal()
-    {
-        SettingsModalOverlay.Visibility = Visibility.Collapsed;
-        SyncToolbarSelection();
+        SetContextCachePageActive(true);
     }
 
     public void NavigateToWorkbench()
     {
-        CloseSettingsModal();
         NavView.SelectedItem = NavView.MenuItems[0];
         if (ContentFrame.Content is not WorkbenchPage)
         {
             ContentFrame.Navigate(typeof(WorkbenchPage));
         }
+        SetContextCachePageActive(false);
     }
 
-    private static Brush GetPrimaryTextBrush()
+    private void NavigateToContextCache()
     {
-        if (Application.Current.Resources.TryGetValue("TextFillColorPrimaryBrush", out var res) && res is Brush brush)
+        NavView.SelectedItem = NavView.MenuItems[1];
+        if (ContentFrame.Content is not ContextCachePage)
         {
-            return brush;
+            ContentFrame.Navigate(typeof(ContextCachePage));
         }
-        return new SolidColorBrush(Colors.Gray);
+        SetContextCachePageActive(true);
     }
 
-    private void SyncToolbarSelection()
+    private void SetContextCachePageActive(bool active)
     {
-        bool onSettings = SettingsModalOverlay.Visibility == Visibility.Visible;
-        var accentColor = GetThemeAccentColor(App.Coordinator.Config.Theme);
-        SettingsToolbarButton.Background = onSettings
-            ? new SolidColorBrush(accentColor)
-            : new SolidColorBrush(Colors.Transparent);
-        SettingsToolbarButton.Foreground = onSettings
-            ? new SolidColorBrush(Colors.White)
-            : GetPrimaryTextBrush();
+        PromptComposer.Visibility = active ? Visibility.Collapsed : Visibility.Visible;
+        BottomPaneSplitter.Visibility = active ? Visibility.Collapsed : Visibility.Visible;
+        BottomStatusRow.Height = active
+            ? new GridLength(46)
+            : new GridLength(_bottomBarHeight);
+    }
+
+    private Brush GetPrimaryTextBrush()
+    {
+        var isDark = App.Coordinator.Config.Theme switch
+        {
+            AppThemeMode.MidnightSlate or AppThemeMode.RoyalAmethyst or AppThemeMode.Dark => true,
+            AppThemeMode.ArcticSky or AppThemeMode.EmeraldMist or AppThemeMode.Light => false,
+            _ => RootGrid.ActualTheme == ElementTheme.Dark
+        };
+        return new SolidColorBrush(isDark
+            ? ColorHelper.FromArgb(255, 241, 245, 249)
+            : ColorHelper.FromArgb(255, 31, 41, 55));
     }
 
     private static Color GetThemeAccentColor(AppThemeMode mode) => mode switch
@@ -218,43 +238,34 @@ public sealed partial class MainWindow : Window
         var cfg = App.Coordinator.Config;
         bool isPrivate = cfg.EffectiveScope == ConversationScope.Private;
         var accentBrush = new SolidColorBrush(GetThemeAccentColor(cfg.Theme));
+        SendButton.Background = accentBrush;
+        SendButton.BorderBrush = accentBrush;
+        SendButton.Foreground = new SolidColorBrush(Colors.White);
 
-        bool isMuted = App.Coordinator.IsMuted;
-        MicrophoneMenuItem.IsChecked = isMuted;
-        MicrophoneMenuItem.Text = isMuted ? "Microphone: Muted" : "Microphone: On";
-        ViewContextMonitorMenuItem.IsChecked = ContextMonitorToggleButton.IsChecked == true;
-
-        bool autoSpeak = isPrivate ? cfg.Voice.AutoSpeakPrivate : cfg.Voice.AutoSpeakPublic;
-        AutoSpeakMenuItem.IsChecked = autoSpeak;
-        AutoSpeakMenuItem.Text = autoSpeak ? "Windows Speaker: On" : "Windows Speaker: Off";
+        PromptModeVoiceIcon.Glyph = isPrivate ? "\uE8BD" : "\uE767";
+        PromptTextBox.FontFamily = new FontFamily(WorkbenchThemeHelper.GetFontFamilyName(cfg.FontFamily));
 
         if (isPrivate)
         {
-            var model = string.IsNullOrWhiteSpace(cfg.PrivateLlm.SelectedModel)
+            var modelName = string.IsNullOrWhiteSpace(cfg.PrivateLlm.SelectedModel)
                 ? "No model selected"
                 : cfg.PrivateLlm.SelectedModel;
-            StatusBarEngineText.Text = $"Connected: Private · Windows Ollama ({model})";
+            StatusBarEngineText.Text = $"Connected: Private · Ollama ({modelName})";
             EngineStatusDot.Fill = new SolidColorBrush(ColorHelper.FromArgb(255, 16, 185, 129));
         }
         else
         {
-            var adapter = cfg.PublicLlm.ActiveAdapter;
-            var model = adapter switch
+            var (adapterLabel, modelName) = cfg.PublicLlm.ActiveAdapter switch
             {
-                "claude" => cfg.PublicLlm.Claude.Model,
-                "fable" => cfg.PublicLlm.Fable.Model,
-                _ => cfg.PublicLlm.Gemini.Model
+                "claude" => ("Claude", cfg.PublicLlm.Claude.Model),
+                "fable" => ("Fable", cfg.PublicLlm.Fable.Model),
+                _ => ("Gemini", cfg.PublicLlm.Gemini.Model)
             };
-            var adapterLabel = adapter switch
-            {
-                "claude" => "Claude",
-                "fable" => "Fable",
-                _ => "Gemini"
-            };
-            StatusBarEngineText.Text = $"Connected: Public · {adapterLabel} ({model})";
+            StatusBarEngineText.Text = $"Connected: Public · {adapterLabel} ({modelName})";
             EngineStatusDot.Fill = accentBrush;
         }
 
+        SyncContextCacheStatus();
         _trayIcon?.UpdateTooltip($"Personal Assistant · {StatusBarEngineText.Text}");
 
         RootGrid.RequestedTheme = cfg.Theme switch
@@ -280,7 +291,6 @@ public sealed partial class MainWindow : Window
             UserAvatarPicture.ProfilePicture = null;
         }
 
-        SyncToolbarSelection();
     }
 
     private void SyncContextMonitor()
@@ -330,6 +340,11 @@ public sealed partial class MainWindow : Window
             MonitorProgressText.Text = $"Completed in {elapsedText}";
             MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(40, 16, 185, 129));
         }
+        else if (t.Phase == "Stopped")
+        {
+            MonitorProgressText.Text = $"Stopped after {elapsedText}";
+            MonitorPhaseBadge.Background = new SolidColorBrush(ColorHelper.FromArgb(32, 148, 163, 184));
+        }
         else
         {
             MonitorProgressText.Text = "Waiting for next prompt";
@@ -359,21 +374,78 @@ public sealed partial class MainWindow : Window
         ContextLogsEmptyText.Visibility = App.Coordinator.ContextLogs.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+        var scope = App.Coordinator.Config.EffectiveScope;
+        var config = App.Coordinator.Config;
+        var contextLimit = scope == ConversationScope.Private
+            ? config.PrivateLlm.ContextWindow
+            : 0;
+        MetricReferenceCacheText.Text = $"{TokenEstimate.Count(App.Coordinator.GetContextCacheText(scope)):N0} est. tokens";
+        MetricContextWindowText.Text = contextLimit > 0
+            ? $"{contextLimit:N0} tokens"
+            : "Provider-defined";
+        MetricRemainingContextText.Text = FormatRemainingContext(EstimatePromptContextTokens(), contextLimit);
+        SyncContextCacheStatus();
+    }
 
-        // Bottom status bar live readouts
-        StatusBarLlmStateText.Text = t.IsThinking ? $"Thinking ({elapsedText})" : t.Phase;
-        StatusBarTokensText.Text = t.TotalTokens.HasValue
-            ? $"Tokens: {t.TotalTokens:N0} ({t.InputTokens ?? 0} in / {t.OutputTokens ?? 0} out)"
-            : "Tokens: —";
-        StatusBarSpeedText.Text = t.TokensPerSecond.HasValue
-            ? $"{t.TokensPerSecond:0.0} tok/s"
-            : "— tok/s";
-        StatusBarTimeText.Text = elapsedText;
+    private string GetActiveSystemInstruction()
+    {
+        var config = App.Coordinator.Config;
+        if (config.EffectiveScope == ConversationScope.Private)
+        {
+            return config.PrivateLlm.SystemInstruction;
+        }
 
-        var promptLabel = t.PromptChars > 0 ? $"{t.PromptChars:N0} ch ({t.HistoryTurnsUsed}t)" : "—";
-        var statusDetail = string.IsNullOrWhiteSpace(t.LastError) ? "Healthy" : $"Error: {t.LastError}";
-        BottomExpandedTelemetryText.Text =
-            $"Prompt Size: {promptLabel}  ·  Input: {(t.InputTokens.HasValue ? $"{t.InputTokens:N0}" : "—")}  ·  Output: {(t.OutputTokens.HasValue ? $"{t.OutputTokens:N0}" : "—")}  ·  {statusDetail}";
+        return config.PublicLlm.ActiveAdapter switch
+        {
+            "claude" => config.PublicLlm.Claude.SystemInstruction,
+            "fable" => config.PublicLlm.Fable.SystemInstruction,
+            _ => config.PublicLlm.Gemini.SystemInstruction
+        };
+    }
+
+    private void SyncContextCacheStatus()
+    {
+        if (PromptTextBox is null || StatusBarCacheText is null || PromptContextStatusText is null) return;
+
+        var config = App.Coordinator.Config;
+        var scope = config.EffectiveScope;
+        var contextLimit = scope == ConversationScope.Private ? config.PrivateLlm.ContextWindow : 0;
+        var promptEstimate = EstimatePromptContextTokens();
+        var cacheEstimate = TokenEstimate.Count(App.Coordinator.GetContextCacheText(scope));
+        var contextLimitText = contextLimit > 0 ? $"{contextLimit:N0}" : "provider limit";
+        var remainingText = FormatRemainingContext(promptEstimate, contextLimit);
+        StatusBarCacheText.Text =
+            $"Reference: {cacheEstimate:N0} est. · Used: ~{promptEstimate:N0} / {contextLimitText} · {remainingText}";
+        PromptContextStatusText.Text =
+            $"Reference: {cacheEstimate:N0} est. · Context used: ~{promptEstimate:N0} / {contextLimitText} · {remainingText}";
+    }
+
+    private int EstimatePromptContextTokens()
+    {
+        var config = App.Coordinator.Config;
+        var scope = config.EffectiveScope;
+        var cacheText = App.Coordinator.GetContextCacheText(scope);
+        var recentHistory = App.Coordinator.Turns
+            .Where(turn => turn.Scope == scope && (turn.IsUser || turn.IsAssistant))
+            .TakeLast(Math.Clamp(config.PrivateLlm.MaxHistoryTurns, 2, 32))
+            .Select(turn => turn.Content);
+        return TokenEstimate.Count(string.Join(
+            "\n",
+            new[] { GetActiveSystemInstruction(), cacheText, PromptTextBox.Text }
+                .Concat(recentHistory)));
+    }
+
+    private static string FormatRemainingContext(int usedTokens, int contextLimit)
+    {
+        if (contextLimit <= 0)
+        {
+            return "Remaining: provider-defined";
+        }
+
+        var remaining = contextLimit - usedTokens;
+        return remaining >= 0
+            ? $"Remaining: ~{remaining:N0}"
+            : $"Over by ~{-remaining:N0}";
     }
 
     private void SyncLeftSplitterPosition()
@@ -415,7 +487,7 @@ public sealed partial class MainWindow : Window
     private void RightPaneSplitter_DragDelta(object? sender, double delta)
     {
         _rightRailWidth = Math.Clamp(_rightRailStartWidth - delta, 220, 540);
-        if (ContextMonitorToggleButton.IsChecked == true)
+        if (AgentSessionSidebarToggleButton.IsChecked == true)
         {
             RightRailColumn.Width = new GridLength(_rightRailWidth);
         }
@@ -428,25 +500,20 @@ public sealed partial class MainWindow : Window
 
     private void BottomPaneSplitter_DragDelta(object? sender, double delta)
     {
-        _bottomBarHeight = Math.Clamp(_bottomBarStartHeight - delta, 28, 220);
+        _bottomBarHeight = Math.Clamp(_bottomBarStartHeight - delta, 140, 420);
         BottomStatusRow.Height = new GridLength(_bottomBarHeight);
-        BottomExpandedTelemetryText.Visibility = _bottomBarHeight >= 54
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
-    private void ContextMonitorToggleButton_Click(object sender, RoutedEventArgs e)
+    private void AgentSessionSidebarToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        bool show = ContextMonitorToggleButton.IsChecked == true;
-        ViewContextMonitorMenuItem.IsChecked = show;
+        bool show = AgentSessionSidebarToggleButton.IsChecked == true;
         SetContextMonitorVisibility(show);
     }
 
-    private void ViewContextMonitorMenuItem_Click(object sender, RoutedEventArgs e)
+    private void ToggleNavigationPaneMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        bool show = ViewContextMonitorMenuItem.IsChecked;
-        ContextMonitorToggleButton.IsChecked = show;
-        SetContextMonitorVisibility(show);
+        NavView.IsPaneOpen = !NavView.IsPaneOpen;
+        SyncLeftSplitterPosition();
     }
 
     private void SetContextMonitorVisibility(bool show)
@@ -476,42 +543,74 @@ public sealed partial class MainWindow : Window
         await SyncWindowsAccountProfileAsync();
     }
 
-    private void MicrophoneMenuItem_Click(object sender, RoutedEventArgs e)
+    private async Task DispatchPromptAsync(string text, string inputMode)
     {
-        App.Coordinator.IsMuted = MicrophoneMenuItem.IsChecked;
-        SyncMenuBarState();
+        if (string.IsNullOrWhiteSpace(text) || _isSending ||
+            ContentFrame.Content is not WorkbenchPage page)
+        {
+            return;
+        }
+
+        using var requestCts = new CancellationTokenSource();
+        _requestCts = requestCts;
+        _isSending = true;
+        SendButton.IsEnabled = true;
+        SendIcon.Glyph = "\uE71A";
+        ToolTipService.SetToolTip(SendButton, "Stop response");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SendButton, "Stop response");
+
+        try
+        {
+            var sendTask = page.SendPromptAsync(text, inputMode, requestCts.Token);
+            SyncContextMonitor();
+            await sendTask;
+        }
+        finally
+        {
+            _isSending = false;
+            _requestCts = null;
+            SendIcon.Glyph = "\uE724";
+            ToolTipService.SetToolTip(SendButton, "Send prompt");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SendButton, "Send prompt");
+            SendButton.IsEnabled = true;
+            SyncContextMonitor();
+        }
     }
 
-    private void AutoSpeakMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void SendButton_Click(object sender, RoutedEventArgs e)
     {
-        var cfg = App.Coordinator.Config;
-        bool enabled = AutoSpeakMenuItem.IsChecked;
-        if (cfg.EffectiveScope == ConversationScope.Private)
+        if (_isSending)
         {
-            cfg.Voice.AutoSpeakPrivate = enabled;
+            if (App.Coordinator.Telemetry.IsThinking)
+            {
+                _requestCts?.Cancel();
+            }
+            return;
         }
-        else
-        {
-            cfg.Voice.AutoSpeakPublic = enabled;
-        }
-        App.Coordinator.SaveConfig();
+
+        var text = PromptTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(text)) return;
+        PromptTextBox.Text = string.Empty;
+        await DispatchPromptAsync(text, "Typed");
     }
 
-    private void StopSpeakerMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void PromptTextBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        App.Coordinator.Speech.StopSpeaking();
+        if (e.Key != VirtualKey.Enter) return;
+
+        var shiftState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+        if (shiftState.HasFlag(CoreVirtualKeyStates.Down)) return;
+
+        e.Handled = true;
+        var text = PromptTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(text)) return;
+        PromptTextBox.Text = string.Empty;
+        await DispatchPromptAsync(text, "Typed");
     }
 
-    private void SettingsToolbarButton_Click(object sender, RoutedEventArgs e)
+    private void PromptTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (SettingsModalOverlay.Visibility == Visibility.Visible)
-        {
-            CloseSettingsModal();
-        }
-        else
-        {
-            NavigateToSettings();
-        }
+        SyncContextCacheStatus();
     }
 
     private async void SavePdfToolbarButton_Click(object sender, RoutedEventArgs e)
@@ -539,58 +638,49 @@ public sealed partial class MainWindow : Window
 
     private void ClearPromptMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (ContentFrame.Content is WorkbenchPage page)
-        {
-            page.ClearPrompt();
-        }
+        PromptTextBox.Text = string.Empty;
     }
 
     private void SelectPromptMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (ContentFrame.Content is WorkbenchPage page)
-        {
-            page.SelectPromptText();
-        }
-    }
-
-    private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        SettingsToolbarButton_Click(sender, e);
-    }
-
-    private void ApplySettings_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsModalFrame.Content is SettingsPage page)
-        {
-            page.ApplyAndSave();
-            SettingsModalFeedbackText.Text = string.Empty;
-        }
-    }
-
-    private void SaveAndCloseSettings_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsModalFrame.Content is SettingsPage page)
-        {
-            page.ApplyAndSave();
-        }
-        CloseSettingsModal();
-    }
-
-    private void CloseSettings_Click(object sender, RoutedEventArgs e)
-    {
-        CloseSettingsModal();
+        PromptTextBox.Focus(FocusState.Programmatic);
+        PromptTextBox.SelectAll();
     }
 
     private void NavView_SelectionChanged(
         NavigationView sender,
         NavigationViewSelectionChangedEventArgs args)
     {
-        if (args.SelectedItem is NavigationViewItem)
+        if (args.SelectedItem is NavigationViewItem item)
         {
-            CloseSettingsModal();
-            if (ContentFrame.Content is not WorkbenchPage)
+            var destination = item.Tag?.ToString();
+            if (string.Equals(destination, "context-cache", StringComparison.Ordinal))
             {
-                ContentFrame.Navigate(typeof(WorkbenchPage));
+                if (ContentFrame.Content is not ContextCachePage)
+                {
+                    ContentFrame.Navigate(typeof(ContextCachePage));
+                }
+                SetContextCachePageActive(true);
+            }
+            else if (string.Equals(destination, "settings", StringComparison.Ordinal))
+            {
+                if (ContentFrame.Content is SettingsPage existing)
+                {
+                    existing.ReloadFromCoordinator();
+                }
+                else
+                {
+                    ContentFrame.Navigate(typeof(SettingsPage));
+                }
+                SetContextCachePageActive(true);
+            }
+            else
+            {
+                if (ContentFrame.Content is not WorkbenchPage)
+                {
+                    ContentFrame.Navigate(typeof(WorkbenchPage));
+                }
+                SetContextCachePageActive(false);
             }
         }
     }

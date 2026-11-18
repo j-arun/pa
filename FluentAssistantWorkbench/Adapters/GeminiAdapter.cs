@@ -76,7 +76,7 @@ public sealed class GeminiAdapter : ILlmAdapter
                 "Gemini API key is missing. Set it in Settings -> Public LLM (Gemini) or via GEMINI_API_KEY.");
         }
 
-        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct);
+        return SendInternalAsync(cfg, apiKey, request.History, request.Message, ct, request.SystemInstruction);
     }
 
     private async Task<LlmChatResponse> SendInternalAsync(
@@ -84,7 +84,8 @@ public sealed class GeminiAdapter : ILlmAdapter
         string apiKey,
         IReadOnlyList<(string Role, string Content)> history,
         string userMessage,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? systemInstruction = null)
     {
         var sw = Stopwatch.StartNew();
         var model = string.IsNullOrWhiteSpace(cfg.Model) ? "gemini-2.5-pro" : cfg.Model.Trim();
@@ -107,11 +108,12 @@ public sealed class GeminiAdapter : ILlmAdapter
             parts = new[] { new { text = userMessage } }
         });
 
-        object body = string.IsNullOrWhiteSpace(cfg.SystemInstruction)
+        var effectiveSystemInstruction = systemInstruction ?? cfg.SystemInstruction;
+        object body = string.IsNullOrWhiteSpace(effectiveSystemInstruction)
             ? new { contents }
             : new
             {
-                systemInstruction = new { parts = new[] { new { text = cfg.SystemInstruction.Trim() } } },
+                systemInstruction = new { parts = new[] { new { text = effectiveSystemInstruction.Trim() } } },
                 contents
             };
 

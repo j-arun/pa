@@ -7,8 +7,6 @@ import {
   FileDown,
   Hourglass,
   Lock,
-  Mic,
-  MicOff,
   RotateCcw,
   Settings as SettingsIcon,
   Square,
@@ -49,12 +47,74 @@ interface WorkbenchPageProps {
   settings: WorkbenchSettings;
   turns: ConversationTurn[];
   isSending: boolean;
-  isMuted: boolean;
   speech: UseSpeechIOResult;
-  onSendMessage: (text: string, inputMode: 'text' | 'voice') => void;
+  onSendMessage: (text: string, inputMode: 'text') => void;
   onClearConversation: () => void;
   onOpenSettings: () => void;
-  onToggleMute: () => void;
+}
+
+function ScopeArtwork({
+  scope,
+  className,
+}: {
+  scope: ConversationScope;
+  className: string;
+}) {
+  const isPrivate = scope === 'private';
+
+  return (
+    <div
+      className={`pointer-events-none absolute ${className}`}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 360 260" className="h-auto w-full">
+        <circle cx="158" cy="130" r="115" fill="#dbeafe" />
+        <path d="M66 248c5-49 37-77 86-77s81 28 86 77" fill="#2563eb" />
+        <path
+          d="M119 88c0-32 19-53 47-53 30 0 51 24 48 57l-4 38c-3 27-21 45-46 45-27 0-45-20-45-48z"
+          fill="#f3c6a5"
+        />
+        <path
+          d="M118 91c-5-40 18-68 53-68 29 0 48 19 49 48-15-5-26-16-31-30-13 18-39 30-71 30z"
+          fill="#334155"
+        />
+        <circle cx="176" cy="105" r="3" fill="#334155" />
+        <path d="M181 128c5 3 10 3 14 0" fill="none" stroke="#9a5d4a" strokeWidth="3" strokeLinecap="round" />
+        {isPrivate ? (
+          <g>
+            <path
+              d="M201 62h94a17 17 0 0 1 17 17v29a17 17 0 0 1-17 17h-38l-17 16v-16h-39a17 17 0 0 1-17-17V79a17 17 0 0 1 17-17z"
+              fill="#fff"
+              stroke="#60a5fa"
+              strokeWidth="4"
+            />
+            <circle cx="228" cy="94" r="4" fill="#60a5fa" />
+            <circle cx="247" cy="94" r="4" fill="#60a5fa" />
+            <circle cx="266" cy="94" r="4" fill="#60a5fa" />
+            <path d="M201 143c-10 5-15 13-16 22" fill="none" stroke="#60a5fa" strokeWidth="4" strokeLinecap="round" />
+          </g>
+        ) : (
+          <g>
+            <path
+              d="M197 91h28l47-27v81l-47-27h-28z"
+              fill="#f59e0b"
+              stroke="#b45309"
+              strokeWidth="4"
+              strokeLinejoin="round"
+            />
+            <path d="M213 118l10 34h19l-13-41" fill="#d97706" />
+            <path
+              d="M282 79c15 12 15 36 0 48M296 66c24 20 24 54 0 74"
+              fill="none"
+              stroke="#2563eb"
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+          </g>
+        )}
+      </svg>
+    </div>
+  );
 }
 
 export function WorkbenchPage({
@@ -62,12 +122,10 @@ export function WorkbenchPage({
   settings,
   turns,
   isSending,
-  isMuted,
   speech,
   onSendMessage,
   onClearConversation,
   onOpenSettings,
-  onToggleMute,
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -119,22 +177,6 @@ export function WorkbenchPage({
     }
   };
 
-  const handleMicToggle = () => {
-    if (speech.isListening) {
-      speech.stopListening();
-      return;
-    }
-    if (isMuted) {
-      onToggleMute();
-      return;
-    }
-    void speech.startListening((finalText) => {
-      if (finalText.trim()) {
-        onSendMessage(finalText.trim(), 'voice');
-      }
-    });
-  };
-
   const handleCopy = (id: string, text: string) => {
     void navigator.clipboard?.writeText(text);
     setCopiedId(id);
@@ -180,7 +222,7 @@ export function WorkbenchPage({
         <div className="max-w-4xl mx-auto min-h-full flex flex-col justify-end gap-5">
           {exchanges.length === 0 ? (
             <div className="my-auto py-8">
-              <div className="cloud-surface rounded-[28px] border border-white/85 dark:border-slate-700/60 shadow-[0_10px_36px_rgba(2,132,199,0.06)] p-8 sm:p-10 text-center max-w-2xl mx-auto">
+              <div className="bg-white/50 dark:bg-slate-900/55 backdrop-blur-xl rounded-[28px] border border-white/85 dark:border-slate-700/60 shadow-[0_10px_36px_rgba(2,132,199,0.06)] p-8 sm:p-10 text-center max-w-2xl mx-auto">
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-sky-500/10 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400 mb-5">
                   {scope === 'private' ? (
                     <Lock className="w-7 h-7" />
@@ -195,14 +237,14 @@ export function WorkbenchPage({
 
                 <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
                   {scope === 'private'
-                    ? 'Speak or type below. Each question and answer appears together in a single clean bubble.'
-                    : `Speak or type below. Each question and answer from ${
+                    ? 'Private mode · Your prompt stays with your local Ollama model. Type below to begin.'
+                    : `Public mode · Your prompt goes to ${
                         settings.publicLlm.activeAdapter === 'gemini'
                           ? 'Gemini'
                           : settings.publicLlm.activeAdapter === 'claude'
                             ? 'Claude'
                             : 'Fable'
-                      } appears together in one bubble.`}
+                      } through the cloud. Type below to begin.`}
                 </p>
 
                 <div className="mt-5 flex justify-center">
@@ -405,84 +447,14 @@ export function WorkbenchPage({
             </div>
           )}
 
-          {speech.micError && (
-            <div className="mb-2.5 flex items-center justify-between gap-3 px-4 py-2.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
-              <span>{speech.micError}</span>
-              <button
-                type="button"
-                onClick={speech.clearMicError}
-                className="font-medium underline whitespace-nowrap shrink-0"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {speech.isListening && (
-            <div className="mb-2.5 flex items-center justify-between gap-4 px-4 py-2.5 rounded-2xl cloud-surface border border-sky-300/80 dark:border-sky-700/70 text-xs text-slate-700 dark:text-slate-200">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex items-end gap-0.5 h-4 shrink-0" aria-hidden="true">
-                  {[0.35, 0.65, 1, 0.75, 0.45].map((weight, i) => (
-                    <span
-                      key={i}
-                      className="w-1 rounded-full transition-transform duration-75"
-                      style={{
-                        backgroundColor: 'var(--pa-accent)',
-                        height: `${Math.max(4, Math.round((0.25 + speech.micLevel * 0.75) * 16 * weight))}px`,
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="truncate">
-                  {speech.interimTranscript || 'Listening via microphone... speak your query.'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={speech.stopListening}
-                className="px-2.5 py-1 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-medium whitespace-nowrap shrink-0"
-              >
-                Stop
-              </button>
-            </div>
-          )}
-
           <form
             onSubmit={handleSubmit}
-            className="cloud-surface rounded-[26px] border border-white/90 dark:border-slate-700/75 shadow-[0_12px_36px_rgba(15,23,42,0.08)] p-3 flex items-end gap-2.5"
+            className="relative overflow-hidden cloud-surface rounded-[26px] border border-white/90 dark:border-slate-700/75 shadow-[0_12px_36px_rgba(15,23,42,0.08)] p-3 flex items-end gap-2.5"
           >
-            <button
-              type="button"
-              onClick={handleMicToggle}
-              title={
-                isMuted
-                  ? 'Microphone muted (click to unmute)'
-                  : speech.isListening
-                    ? 'Stop listening'
-                    : 'Speak using microphone'
-              }
-              aria-label={
-                isMuted
-                  ? 'Unmute microphone'
-                  : speech.isListening
-                    ? 'Stop voice input'
-                    : 'Start voice input'
-              }
-              className={`h-11 w-11 rounded-2xl flex items-center justify-center transition-colors shrink-0 ${
-                isMuted
-                  ? 'bg-slate-100/90 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200'
-                  : speech.isListening
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-slate-100/90 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-slate-700'
-              }`}
-            >
-              {isMuted ? (
-                <MicOff className="w-5 h-5" />
-              ) : (
-                <Mic className="w-5 h-5" />
-              )}
-            </button>
-
+            <ScopeArtwork
+              scope={scope}
+              className="right-16 top-1/2 z-0 w-36 sm:w-44 -translate-y-1/2 opacity-20"
+            />
             <textarea
               ref={textareaRef}
               rows={4}
@@ -491,11 +463,11 @@ export function WorkbenchPage({
               onKeyDown={handleKeyDown}
               placeholder={
                 scope === 'private'
-                  ? 'Type or speak a private prompt... (Enter to send, Shift+Enter for new line)'
-                  : `Type or speak a public prompt... (Enter to send, Shift+Enter for new line)`
+                  ? 'Type a private prompt... (Enter to send, Shift+Enter for new line)'
+                  : 'Type a public prompt... (Enter to send, Shift+Enter for new line)'
               }
               style={{ fontFamily: 'var(--pa-font-body)' }}
-              className="flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed"
+              className="relative z-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed"
             />
 
             <button
@@ -504,7 +476,7 @@ export function WorkbenchPage({
               disabled={turns.length === 0}
               title="Save Conversation as PDF"
               aria-label="Save Conversation as PDF"
-              className="h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
+              className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
             >
               <FileDown className="w-4 h-4" />
             </button>
@@ -515,7 +487,7 @@ export function WorkbenchPage({
               disabled={turns.length === 0 || isSending}
               title="New Session"
               aria-label="New Session"
-              className="h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
+              className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -523,7 +495,7 @@ export function WorkbenchPage({
             <button
               type="submit"
               disabled={!draft.trim() || isSending}
-              className="h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
+              className="relative z-10 h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
             >
               {isSending ? (
                 <>

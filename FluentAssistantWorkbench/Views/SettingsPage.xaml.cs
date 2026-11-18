@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentAssistantWorkbench.Models;
 using FluentAssistantWorkbench.Services;
 using Microsoft.UI.Xaml;
@@ -26,6 +27,12 @@ public sealed partial class SettingsPage : Page
         ApplyUiToConfig();
         App.Coordinator.SaveConfig();
         SaveFeedbackText.Text = string.Empty;
+    }
+
+    private void SaveSettingsPage_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyAndSave();
+        SaveFeedbackText.Text = "Settings saved.";
     }
 
     private void LoadFromCoordinator()
@@ -57,12 +64,18 @@ public sealed partial class SettingsPage : Page
                     break;
                 }
             }
+            SelectComboByTag(ChatFontSizeCombo, cfg.ChatFontSize.ToString(), "Small");
             DisplayNameBox.Text = cfg.UserProfile.DisplayName;
 
             OllamaUrlBox.Text = cfg.PrivateLlm.OllamaBaseUrl;
             OllamaModelBox.Text = cfg.PrivateLlm.SelectedModel;
             PrivateSystemBox.Text = cfg.PrivateLlm.SystemInstruction;
-            SelectComboByTag(OllamaContextCombo, cfg.PrivateLlm.ContextWindow.ToString(), "8192");
+            SelectComboByTag(OllamaContextCombo, cfg.PrivateLlm.ContextWindow.ToString(), "32768");
+            SelectComboByTag(OllamaPredictCombo, cfg.PrivateLlm.MaxOutputTokens.ToString(), "2000");
+            SelectComboByTag(
+                OllamaTemperatureCombo,
+                cfg.PrivateLlm.Temperature.ToString("0.0", CultureInfo.InvariantCulture),
+                "0.2");
             SelectComboByTag(OllamaKeepAliveCombo, cfg.PrivateLlm.KeepAlive, "10m");
             SelectComboByTag(OllamaHistoryCombo, cfg.PrivateLlm.MaxHistoryTurns.ToString(), "16");
             SelectComboByTag(RequestTimeoutCombo, cfg.RequestTimeoutSeconds.ToString(), "0");
@@ -127,6 +140,11 @@ public sealed partial class SettingsPage : Page
         {
             cfg.FontFamily = parsedFont;
         }
+        if (ChatFontSizeCombo.SelectedItem is ComboBoxItem fontSizeItem &&
+            Enum.TryParse<AppChatFontSize>(fontSizeItem.Tag?.ToString(), out var parsedFontSize))
+        {
+            cfg.ChatFontSize = parsedFontSize;
+        }
         cfg.UserProfile.DisplayName = DisplayNameBox.Text.Trim();
 
         cfg.PrivateLlm.OllamaBaseUrl = OllamaUrlBox.Text.Trim();
@@ -136,6 +154,20 @@ public sealed partial class SettingsPage : Page
             int.TryParse(ctxItem.Tag?.ToString(), out var parsedCtx))
         {
             cfg.PrivateLlm.ContextWindow = parsedCtx;
+        }
+        if (OllamaPredictCombo.SelectedItem is ComboBoxItem predictItem &&
+            int.TryParse(predictItem.Tag?.ToString(), out var parsedPredict))
+        {
+            cfg.PrivateLlm.MaxOutputTokens = parsedPredict == 0 ? 2000 : parsedPredict;
+        }
+        if (OllamaTemperatureCombo.SelectedItem is ComboBoxItem temperatureItem &&
+            double.TryParse(
+                temperatureItem.Tag?.ToString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsedTemperature))
+        {
+            cfg.PrivateLlm.Temperature = parsedTemperature;
         }
         if (OllamaKeepAliveCombo.SelectedItem is ComboBoxItem keepItem &&
             keepItem.Tag is string keepVal)
@@ -316,7 +348,7 @@ public sealed partial class SettingsPage : Page
     private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isLoading) return;
-        SaveFeedbackText.Text = "Click Apply or Save & Close to apply theme changes.";
+        SaveFeedbackText.Text = "Click Save Settings to apply theme changes.";
     }
 
     private async void DetectWindowsProfile_Click(object sender, RoutedEventArgs e)

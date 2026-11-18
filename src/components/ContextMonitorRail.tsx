@@ -50,7 +50,7 @@ export function ContextMonitorRail({
 
   return (
     <aside
-      aria-label="LLM Context Monitor (Read-only)"
+      aria-label="Agent Session Sidebar"
       style={{ width }}
       className="hidden lg:flex shrink-0 flex-col border-l border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 gap-2.5 select-text overflow-hidden"
     >
@@ -60,11 +60,11 @@ export function ContextMonitorRail({
           <div className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--pa-accent)' }} />
             <h2 className="text-xs font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-              LLM Context Monitor
+              Agent Session Sidebar
             </h2>
           </div>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Read-only live runtime inspector
+            Session status, context &amp; activity
           </p>
         </div>
 

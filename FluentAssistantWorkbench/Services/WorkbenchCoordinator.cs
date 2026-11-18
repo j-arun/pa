@@ -16,7 +16,6 @@ public sealed class WorkbenchCoordinator
     public ObservableCollection<ConversationExchange> Exchanges { get; } = [];
     public ObservableCollection<LlmContextLogEntry> ContextLogs { get; } = [];
     public LlmContextTelemetry Telemetry { get; } = new();
-    public bool IsMuted { get; set; }
 
     public event EventHandler? ConfigChanged;
     public event EventHandler? ContextTelemetryChanged;
@@ -48,16 +47,47 @@ public sealed class WorkbenchCoordinator
                     QuestionTimestamp = turn.Timestamp,
                     Scope = turn.Scope
                 };
-                current.ApplyAppearance(Config.Theme, Config.FontFamily);
-                if (!turn.IsUser)
+                current.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
+                if (turn.IsCanceled)
                 {
-                    current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
+                    current.SetCanceled(turn.Timestamp, turn.DurationMs);
+                }
+                else if (!turn.IsUser)
+                {
+                    current.SetReply(
+                        turn.Content,
+                        turn.Timestamp,
+                        turn.IsError,
+                        responseDurationMs: turn.DurationMs,
+                        promptTokenCount: turn.PromptTokenCount,
+                        promptTokenCountIsEstimate: turn.PromptTokenCountIsEstimate,
+                        referenceTokenEstimate: turn.ReferenceTokenEstimate,
+                        responseTokenCount: turn.ResponseTokenCount,
+                        responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
+                        contextWindowTokenCount: turn.ContextWindowTokenCount);
                 }
                 Exchanges.Add(current);
             }
             else
             {
-                current.SetReply(turn.Content, turn.Timestamp, turn.IsError);
+                if (turn.IsCanceled)
+                {
+                    current.SetCanceled(turn.Timestamp, turn.DurationMs);
+                }
+                else
+                {
+                    current.SetReply(
+                        turn.Content,
+                        turn.Timestamp,
+                        turn.IsError,
+                        responseDurationMs: turn.DurationMs,
+                        promptTokenCount: turn.PromptTokenCount,
+                        promptTokenCountIsEstimate: turn.PromptTokenCountIsEstimate,
+                        referenceTokenEstimate: turn.ReferenceTokenEstimate,
+                        responseTokenCount: turn.ResponseTokenCount,
+                        responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
+                        contextWindowTokenCount: turn.ContextWindowTokenCount);
+                }
                 current = null;
             }
         }
@@ -67,7 +97,7 @@ public sealed class WorkbenchCoordinator
     {
         foreach (var ex in Exchanges)
         {
-            ex.ApplyAppearance(Config.Theme, Config.FontFamily);
+            ex.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
         }
     }
 
@@ -149,6 +179,17 @@ public sealed class WorkbenchCoordinator
         AddContextLog("info", "Session context cleared (0 history turns).");
     }
 
+    public string GetContextCacheText(ConversationScope scope) =>
+        Config.ContextCache?.GetText(scope) ?? string.Empty;
+
+    public void SetContextCacheText(ConversationScope scope, string text)
+    {
+        Config.ContextCache ??= new ContextCacheConfig();
+        Config.ContextCache.SetText(scope, text);
+        SaveConfig();
+        AddContextLog("success", $"Applied {TokenEstimate.Count(text):N0} estimated reference tokens to {scope}.");
+    }
+
     public string ClearAppCache()
     {
         Turns.Clear();
@@ -212,16 +253,32 @@ public sealed class WorkbenchCoordinator
             Scope = activeScope,
             IsWaitingReply = true
         };
-        exchange.ApplyAppearance(Config.Theme, Config.FontFamily);
+        exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
 
         var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
         var history = Turns
-            .Where(t => t.IsUser || t.IsAssistant)
+            .Where(t => t.Scope == activeScope && (t.IsUser || t.IsAssistant))
             .TakeLast(maxHistory)
             .Select(t => (t.Role, t.Content))
             .ToList();
 
-        int promptChars = trimmedMessage.Length + history.Sum(h => h.Content.Length);
+        var baseSystemInstruction = GetBaseSystemInstruction(activeScope);
+        var cachedContext = GetContextCacheText(activeScope);
+        var systemInstruction = string.IsNullOrWhiteSpace(cachedContext)
+            ? baseSystemInstruction
+            : $"{baseSystemInstruction.Trim()}\n\n{cachedContext}";
+        var promptText = string.Join(
+            "\n",
+            new[] { systemInstruction }
+                .Concat(history.Select(turn => turn.Content))
+                .Append(trimmedMessage));
+        var estimatedPromptTokens = TokenEstimate.Count(promptText);
+        var referenceTokenEstimate = TokenEstimate.Count(cachedContext);
+        int? contextWindowTokenCount = activeScope == ConversationScope.Private
+            && Config.PrivateLlm.ContextWindow > 0
+                ? Config.PrivateLlm.ContextWindow
+                : null;
+        int promptChars = trimmedMessage.Length + history.Sum(h => h.Content.Length) + systemInstruction.Length;
         Turns.Add(userTurn);
         Exchanges.Add(exchange);
         ConfigStore.SaveHistory(Turns);
@@ -240,7 +297,7 @@ public sealed class WorkbenchCoordinator
         var timeoutSec = Config.RequestTimeoutSeconds;
         var timeoutLabel = timeoutSec > 0 ? $"{timeoutSec}s" : "Unlimited";
         var modelDisplay = string.IsNullOrWhiteSpace(model) ? adapter.AdapterId : model;
-        AddContextLog("info", $"Prompt sent · {promptChars:N0} chars · {history.Count} turns · {modelDisplay} · timeout: {timeoutLabel}");
+        AddContextLog("info", $"Prompt sent · {promptChars:N0} chars · {history.Count} turns · {TokenEstimate.Count(cachedContext):N0} cache tokens est. · {modelDisplay} · timeout: {timeoutLabel}");
 
         using var timeoutCts = timeoutSec > 0
             ? CancellationTokenSource.CreateLinkedTokenSource(ct)
@@ -254,8 +311,12 @@ public sealed class WorkbenchCoordinator
         try
         {
             var reply = await adapter.SendMessageAsync(
-                new LlmChatRequest(trimmedMessage, history, Config),
+                new LlmChatRequest(trimmedMessage, history, Config, systemInstruction),
                 effectiveCt);
+            var promptTokenCount = reply.InputTokens ?? estimatedPromptTokens;
+            var promptTokenCountIsEstimate = !reply.InputTokens.HasValue;
+            var responseTokenCount = reply.OutputTokens ?? TokenEstimate.Count(reply.Text);
+            var responseTokenCountIsEstimate = !reply.OutputTokens.HasValue;
 
             var assistantTurn = new ConversationTurn
             {
@@ -264,11 +325,27 @@ public sealed class WorkbenchCoordinator
                 Scope = reply.Scope,
                 AdapterId = reply.AdapterId,
                 Model = reply.Model,
-                DurationMs = reply.DurationMs
+                DurationMs = reply.DurationMs,
+                PromptTokenCount = promptTokenCount,
+                PromptTokenCountIsEstimate = promptTokenCountIsEstimate,
+                ReferenceTokenEstimate = referenceTokenEstimate,
+                ResponseTokenCount = responseTokenCount,
+                ResponseTokenCountIsEstimate = responseTokenCountIsEstimate,
+                ContextWindowTokenCount = contextWindowTokenCount
             };
 
             Turns.Add(assistantTurn);
-            exchange.SetReply(assistantTurn.Content, assistantTurn.Timestamp, isError: false);
+            exchange.SetReply(
+                assistantTurn.Content,
+                assistantTurn.Timestamp,
+                isError: false,
+                responseDurationMs: reply.DurationMs,
+                promptTokenCount: promptTokenCount,
+                promptTokenCountIsEstimate: promptTokenCountIsEstimate,
+                referenceTokenEstimate: referenceTokenEstimate,
+                responseTokenCount: responseTokenCount,
+                responseTokenCountIsEstimate: responseTokenCountIsEstimate,
+                contextWindowTokenCount: contextWindowTokenCount);
             ConfigStore.SaveHistory(Turns);
 
             Telemetry.Phase = "Ready";
@@ -312,7 +389,34 @@ public sealed class WorkbenchCoordinator
 
             return assistantTurn;
         }
-        catch (OperationCanceledException) when (timeoutCts is not null && timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            long? durationMs = Telemetry.ThinkingStartedAt.HasValue
+                ? (long)(DateTimeOffset.UtcNow - Telemetry.ThinkingStartedAt.Value).TotalMilliseconds
+                : null;
+            var canceledTurn = new ConversationTurn
+            {
+                Role = "canceled",
+                Content = "Response stopped by user.",
+                Scope = activeScope,
+                AdapterId = adapter.AdapterId,
+                Model = model,
+                DurationMs = durationMs
+            };
+            Turns.Add(canceledTurn);
+            exchange.SetCanceled(canceledTurn.Timestamp, durationMs);
+            ConfigStore.SaveHistory(Turns);
+
+            Telemetry.Phase = "Stopped";
+            Telemetry.IsThinking = false;
+            Telemetry.DurationMs = durationMs;
+            Telemetry.ThinkingStartedAt = null;
+            Telemetry.LastError = string.Empty;
+            AddContextLog("info", "Response stopped by user.");
+
+            return canceledTurn;
+        }
+        catch (OperationCanceledException) when (timeoutCts is not null && timeoutCts.IsCancellationRequested)
         {
             var errMsg = $"Configured query timeout of {timeoutSec}s elapsed. Set Request Timeout to 'No Timeout (Unlimited)' in Settings to run full-throttle queries.";
             var errTurn = new ConversationTurn
@@ -375,6 +479,21 @@ public sealed class WorkbenchCoordinator
 
             return errTurn;
         }
+    }
+
+    private string GetBaseSystemInstruction(ConversationScope scope)
+    {
+        if (scope == ConversationScope.Private)
+        {
+            return Config.PrivateLlm.SystemInstruction;
+        }
+
+        return Config.PublicLlm.ActiveAdapter switch
+        {
+            "claude" => Config.PublicLlm.Claude.SystemInstruction,
+            "fable" => Config.PublicLlm.Fable.SystemInstruction,
+            _ => Config.PublicLlm.Gemini.SystemInstruction
+        };
     }
 }
 

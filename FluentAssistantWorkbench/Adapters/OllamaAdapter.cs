@@ -83,9 +83,9 @@ public sealed class OllamaAdapter : ILlmAdapter
         var normalized = NormalizeUrl(cfg.OllamaBaseUrl);
         var messages = new List<object>();
 
-        if (!string.IsNullOrWhiteSpace(cfg.SystemInstruction))
+        if (!string.IsNullOrWhiteSpace(request.SystemInstruction))
         {
-            messages.Add(new { role = "system", content = cfg.SystemInstruction.Trim() });
+            messages.Add(new { role = "system", content = request.SystemInstruction.Trim() });
         }
 
         foreach (var (role, content) in request.History)
@@ -106,7 +106,12 @@ public sealed class OllamaAdapter : ILlmAdapter
             model,
             stream = true,
             keep_alive = keepAliveValue,
-            options = new { num_ctx = cfg.ContextWindow > 0 ? cfg.ContextWindow : 8192 },
+            options = new
+            {
+                num_ctx = cfg.ContextWindow > 0 ? cfg.ContextWindow : 32768,
+                num_predict = cfg.MaxOutputTokens == 0 ? 2000 : cfg.MaxOutputTokens,
+                temperature = cfg.Temperature
+            },
             messages
         };
 
