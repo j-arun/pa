@@ -797,18 +797,6 @@ export default function App() {
     }
   };
 
-  const handleExportHistory = () => {
-    const blob = new Blob([JSON.stringify(turns, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `personal-assistant-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="h-screen w-screen overflow-hidden flex mica-canvas text-slate-900 dark:text-slate-100 select-none sm:select-auto">
       {/* Left WinUI 3 NavigationView Rail (Adjustable & Resizable) */}
@@ -1183,41 +1171,6 @@ export default function App() {
               speech={speech}
               messageCount={turns.length}
               configFileInfo={configFileInfo}
-              onReloadConfigFromFile={() => void reloadConfigFromFile()}
-              onExportHistory={handleExportHistory}
-              onClearConversation={() => {
-                setTurns([]);
-                setTelemetry({
-                  phase: 'Idle',
-                  isThinking: false,
-                  promptChars: 0,
-                  historyTurnsUsed: 0,
-                  lastError: '',
-                });
-                pushContextLog('info', 'Session context cleared');
-              }}
-              onClearAppCache={() => {
-                setTurns([]);
-                setRatedThreads([]);
-                setReplyToast(null);
-                setTelemetry({
-                  phase: 'Idle',
-                  isThinking: false,
-                  promptChars: 0,
-                  historyTurnsUsed: 0,
-                  lastError: '',
-                });
-                try {
-                  window.localStorage.removeItem('fluent_paw_conversation_v1');
-                  window.localStorage.removeItem('fluent_paw_rated_threads_v1');
-                  if ('caches' in window) {
-                    void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)));
-                  }
-                } catch {
-                  // Ignore storage cleanup errors
-                }
-                pushContextLog('info', 'App cache cleared');
-              }}
               onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
               onContextLog={pushContextLog}
             />

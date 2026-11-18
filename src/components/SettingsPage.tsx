@@ -1,24 +1,21 @@
 import {
+  ArrowLeft,
   Bell,
   Check,
   ChevronDown,
   ChevronRight,
   Copy,
-  Download,
-  FolderOpen,
   HardDrive,
   Lock,
   Palette,
   Play,
   RefreshCw,
-  Save,
   Server,
-  Trash2,
   User,
   Volume2,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -84,10 +81,6 @@ interface SettingsPageProps {
   speech: UseSpeechIOResult;
   messageCount: number;
   configFileInfo: ConfigFileInfo;
-  onReloadConfigFromFile: () => void;
-  onExportHistory: () => void;
-  onClearConversation: () => void;
-  onClearAppCache: () => void;
   onResetSettings: () => void;
   onContextLog?: (level: 'info' | 'success' | 'error', message: string) => void;
 }
@@ -143,19 +136,13 @@ export function SettingsPage({
   speech,
   messageCount,
   configFileInfo,
-  onReloadConfigFromFile,
-  onExportHistory,
-  onClearConversation,
-  onClearAppCache,
   onResetSettings,
   onContextLog,
 }: SettingsPageProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<WorkbenchSettings>(settings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [applyFeedback, setApplyFeedback] = useState<string | null>(null);
   const [profileSyncNote, setProfileSyncNote] = useState<string | null>(null);
-  const [configFeedback, setConfigFeedback] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<OllamaModelInfo[]>([]);
   const [ollamaLoading, setOllamaLoading] = useState(false);
   const [ollamaRefreshing, setOllamaRefreshing] = useState(false);
@@ -325,28 +312,9 @@ export function SettingsPage({
     }
   };
 
-  const handleClearCache = () => {
-    onClearAppCache();
-    setOllamaModels([]);
-    setHealthByAdapter({});
-    setOllamaError(null);
-    setOllamaSuccessNote(null);
-    setMaintenanceFeedback('Cleared cached conversation, model list, and browser cache.');
-  };
-
-  const handleUnloadOllamaMemory = async (alsoClearCache: boolean) => {
+  const handleUnloadOllamaMemory = async () => {
     setMaintenanceLoading(true);
-    setMaintenanceFeedback(
-      alsoClearCache
-        ? 'Clearing cache and unloading Private Ollama memory...'
-        : 'Unloading Private Ollama model memory...',
-    );
-
-    if (alsoClearCache) {
-      onClearAppCache();
-      setOllamaModels([]);
-      setHealthByAdapter({});
-    }
+    setMaintenanceFeedback('Unloading Private Ollama model memory...');
 
     try {
       const res = await fetch('/api/ollama/unload', {
@@ -364,9 +332,7 @@ export function SettingsPage({
       if (!res.ok || payload.error) {
         throw new Error(payload.error || 'Failed to unload Ollama model memory.');
       }
-      const summary = alsoClearCache
-        ? `Cache cleared. ${payload.message || 'Ollama memory unloaded.'}`
-        : payload.message || 'Unloaded Ollama model memory.';
+      const summary = payload.message || 'Unloaded Ollama model memory.';
       setMaintenanceFeedback(summary);
       onContextLog?.('success', summary);
     } catch (err) {
@@ -1537,199 +1503,48 @@ export function SettingsPage({
           </div>
 
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 divide-y divide-slate-200 dark:divide-slate-800">
-            <div className="p-5 space-y-3">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Active Config File Path ({configFileInfo.platform === 'win32' ? 'Windows LocalAppData' : 'Local Host Storage'})
-                  </div>
-                  <div className="mt-1 font-mono text-xs text-slate-900 dark:text-slate-100 break-all">
-                    {configFileInfo.filePath}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    {configFileInfo.platform === 'win32'
-                      ? 'Stored natively in %LOCALAPPDATA%\\FluentAssistantWorkbench\\workbench.config.json'
-                      : 'When run locally on Windows, saves automatically to %LOCALAPPDATA%\\FluentAssistantWorkbench\\workbench.config.json'}
-                    {configFileInfo.lastSavedAt
-                      ? ` · Synced at ${new Date(configFileInfo.lastSavedAt).toLocaleTimeString()}`
-                      : ''}
-                  </div>
-                  {configFileInfo.syncError && (
-                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                      {configFileInfo.syncError}
-                    </div>
-                  )}
-                  {configFeedback && (
-                    <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
-                      {configFeedback}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onReloadConfigFromFile();
-                      setConfigFeedback('Reloaded settings from workbench.config.json.');
-                      setTimeout(() => setConfigFeedback(null), 2500);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Reload from Disk</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const jsonText = JSON.stringify(draft, null, 2);
-                      const win = window as unknown as {
-                        showSaveFilePicker?: (opts: unknown) => Promise<{
-                          createWritable: () => Promise<{
-                            write: (data: string) => Promise<void>;
-                            close: () => Promise<void>;
-                          }>;
-                        }>;
-                      };
-                      if (win.showSaveFilePicker) {
-                        try {
-                          const handle = await win.showSaveFilePicker({
-                            suggestedName: 'workbench.config.json',
-                            types: [
-                              {
-                                description: 'JSON Configuration',
-                                accept: { 'application/json': ['.json'] },
-                              },
-                            ],
-                          });
-                          const writable = await handle.createWritable();
-                          await writable.write(jsonText);
-                          await writable.close();
-                          setConfigFeedback('Saved workbench.config.json to your chosen Windows folder.');
-                          setTimeout(() => setConfigFeedback(null), 3000);
-                          return;
-                        } catch {
-                          return;
-                        }
-                      }
-                      const blob = new Blob([jsonText], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'workbench.config.json';
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save Config to Laptop</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                    <span>Load Config File</span>
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/json,.json"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        try {
-                          const parsed = JSON.parse(String(reader.result || '{}')) as Partial<WorkbenchSettings>;
-                          updateDraft((prev) => ({
-                            ...prev,
-                            ...parsed,
-                            privateLlm: {
-                              ...prev.privateLlm,
-                              ...(parsed.privateLlm || {}),
-                            },
-                            publicLlm: {
-                              activeAdapter:
-                                parsed.publicLlm?.activeAdapter || prev.publicLlm.activeAdapter,
-                              adapters: {
-                                gemini: {
-                                  ...prev.publicLlm.adapters.gemini,
-                                  ...(parsed.publicLlm?.adapters?.gemini || {}),
-                                },
-                                claude: {
-                                  ...prev.publicLlm.adapters.claude,
-                                  ...(parsed.publicLlm?.adapters?.claude || {}),
-                                },
-                                fable: {
-                                  ...prev.publicLlm.adapters.fable,
-                                  ...(parsed.publicLlm?.adapters?.fable || {}),
-                                },
-                              },
-                            },
-                            voice: {
-                              ...prev.voice,
-                              ...(parsed.voice || {}),
-                            },
-                          }));
-                          setConfigFeedback(`Loaded configuration from ${file.name}.`);
-                          setTimeout(() => setConfigFeedback(null), 3000);
-                        } catch {
-                          setConfigFeedback('Selected file is not valid JSON configuration.');
-                        }
-                      };
-                      reader.readAsText(file);
-                      e.target.value = '';
-                    }}
-                  />
-                </div>
+            <div className="p-5 space-y-2">
+              <div className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                Active application configurations are stored automatically in <code className="font-mono">workbench.config.json</code> ({configFileInfo.platform === 'win32' ? 'Windows LocalAppData' : 'Local Host Storage'})
               </div>
+              <div className="font-mono text-xs text-slate-900 dark:text-slate-100 break-all">
+                {configFileInfo.filePath}
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                {configFileInfo.platform === 'win32'
+                  ? 'Persisted and reloaded automatically from %LOCALAPPDATA%\\FluentAssistantWorkbench\\workbench.config.json'
+                  : 'Persisted and reloaded automatically from disk whenever settings change'}
+                {configFileInfo.lastSavedAt
+                  ? ` · Synced at ${new Date(configFileInfo.lastSavedAt).toLocaleTimeString()}`
+                  : ''}
+              </div>
+              {configFileInfo.syncError && (
+                <div className="text-xs text-amber-700 dark:text-amber-400">
+                  {configFileInfo.syncError}
+                </div>
+              )}
             </div>
 
             <div className="p-5 space-y-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                    Cache &amp; Private LLM Memory Relief
+                    Private LLM Memory Relief
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Clear local caches or unload Ollama RAM/VRAM models after prolonged sessions to prevent slowdown.
+                    Unload active Ollama model weights from RAM/VRAM (<code className="font-mono">keep_alive: 0</code>) so your machine returns to normal idle memory.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handleClearCache}
-                    disabled={maintenanceLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear App Cache</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleUnloadOllamaMemory(false)}
-                    disabled={maintenanceLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${maintenanceLoading ? 'animate-spin' : ''}`} />
-                    <span>Unload Ollama Memory</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleUnloadOllamaMemory(true)}
-                    disabled={maintenanceLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-50 transition-colors"
-                  >
-                    <span>Reset Cache &amp; LLM</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleUnloadOllamaMemory()}
+                  disabled={maintenanceLoading}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${maintenanceLoading ? 'animate-spin' : ''}`} />
+                  <span>Unload Ollama Memory</span>
+                </button>
               </div>
 
               {maintenanceFeedback && (
@@ -1742,31 +1557,13 @@ export function SettingsPage({
                 <div className="text-sm text-slate-700 dark:text-slate-300 tabular-nums">
                   Local conversation turns stored: <strong className="font-semibold">{messageCount}</strong>
                 </div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={onExportHistory}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Export Conversation JSON</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClearConversation}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear History</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onResetSettings}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/70 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                  >
-                    <span>Reset Defaults</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={onResetSettings}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-200 dark:border-red-900/70 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                >
+                  <span>Reset Defaults</span>
+                </button>
               </div>
             </div>
 
@@ -1830,7 +1627,7 @@ export function SettingsPage({
         </section>
       </div>
 
-        {/* Sticky Modal Footer: Close, Apply, Save & Close */}
+        {/* Sticky Modal Footer: Back Arrow, Apply, Save */}
         <footer className="shrink-0 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/80 flex items-center justify-between gap-3 flex-wrap">
           <div className="text-xs text-slate-500 dark:text-slate-400">
             {applyFeedback ? (
@@ -1838,7 +1635,7 @@ export function SettingsPage({
                 {applyFeedback}
               </span>
             ) : hasUnsavedChanges ? (
-              <span>Pending changes — click Apply or Save &amp; Return</span>
+              <span>Pending changes — click Apply or Save</span>
             ) : (
               <span>All settings saved</span>
             )}
@@ -1848,23 +1645,25 @@ export function SettingsPage({
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="Back to Assistant"
+              title="Back to Assistant"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Back to Assistant
+              <ArrowLeft className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={handleApply}
-              className="px-3.5 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               Apply
             </button>
             <button
               type="button"
               onClick={handleSaveAndClose}
-              className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] transition-colors"
+              className="px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] transition-colors"
             >
-              Save &amp; Return
+              Save
             </button>
           </div>
         </footer>

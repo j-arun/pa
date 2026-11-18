@@ -40,14 +40,14 @@ import { MessageContent } from './MessageContent';
 
 const STARTER_PROMPTS: Record<ConversationScope, string[]> = {
   private: [
-    'Summarize my morning priorities and draft a clean checklist for today.',
-    'Explain how to inspect running Ollama models and GPU memory on Windows.',
-    'Write a concise PowerShell script to archive log files older than 14 days.',
+    'Summarize my current dasha period.',
+    'Analyze upcoming antardasha transitions for career, family, love, and health.',
+    'Highlight key planetary strengths, cautions, and important dates in this period.',
   ],
   public: [
-    'Compare local-first AI privacy trade-offs against cloud reasoning models.',
-    'Draft a clear project update email for a cross-functional engineering review.',
-    'Break down a clean WinUI 3 MVVM adapter architecture for multiple LLM backends.',
+    'Summarize my current dasha period and key planetary influences.',
+    'Compare the outlook for career, family, love, and health during this dasha.',
+    'Outline major timeline shifts and practical focus areas for this period.',
   ],
 };
 
