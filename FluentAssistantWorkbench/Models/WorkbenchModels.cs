@@ -154,6 +154,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     private string _replyContent = string.Empty;
     private DateTimeOffset? _replyTimestamp;
     private bool _isReplyCanceled;
+    private bool _isReplySpeaking;
     private long? _responseDurationMs;
     private int? _promptTokenCount;
     private bool _promptTokenCountIsEstimate;
@@ -288,6 +289,13 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     public string ReplyToggleToolTip =>
         _isReplyExpanded ? "Collapse AI response" : "Expand AI response";
 
+    public string ReplySpeakerGlyph => _isReplySpeaking ? "\uE74F" : "\uE767";
+
+    public string ReplySpeakerButtonText => _isReplySpeaking ? "Mute" : "Play";
+
+    public string ReplySpeakerToolTip =>
+        _isReplySpeaking ? "Mute Windows Speaker" : "Play response in Windows Speaker";
+
     public Visibility ReplyVisibility =>
         !IsReplyError && !_isReplyCanceled && !string.IsNullOrWhiteSpace(ReplyContent)
             ? Visibility.Visible
@@ -360,6 +368,15 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyContentVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyToggleGlyph)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyToggleToolTip)));
+    }
+
+    public void SetReplySpeaking(bool isSpeaking)
+    {
+        if (_isReplySpeaking == isSpeaking) return;
+        _isReplySpeaking = isSpeaking;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplySpeakerGlyph)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplySpeakerButtonText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplySpeakerToolTip)));
     }
 
     public void SetReply(

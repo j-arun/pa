@@ -8,6 +8,7 @@ public sealed class WindowsSpeechService : IDisposable
 {
     private SpeechSynthesizer? _synthesizer;
     private MediaPlayer? _player;
+    private int _playbackGeneration;
 
     public IReadOnlyList<VoiceInformation> InstalledVoices
     {
@@ -24,7 +25,9 @@ public sealed class WindowsSpeechService : IDisposable
         }
     }
 
-    public event EventHandler? PlaybackEnded;
+    public bool IsSpeaking { get; private set; }
+    public string? CurrentTurnId { get; private set; }
+    public event EventHandler? PlaybackStateChanged;
 
     private SpeechSynthesizer EnsureSynthesizer()
     {
@@ -36,49 +39,83 @@ public sealed class WindowsSpeechService : IDisposable
         if (_player is null)
         {
             _player = new MediaPlayer();
-            _player.MediaEnded += (_, _) => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+            _player.MediaEnded += (_, _) =>
+            {
+                if (_player.PlaybackSession.PlaybackState != MediaPlaybackState.Playing)
+                {
+                    SetPlaybackState(false, null);
+                }
+            };
         }
         return _player;
     }
 
-    public async Task SpeakAsync(string text, string? voiceId = null)
+    public async Task SpeakAsync(string text, string? voiceId = null, string? turnId = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
 
         StopSpeaking();
+        var playbackGeneration = _playbackGeneration;
+        SetPlaybackState(true, turnId);
 
-        var synthesizer = EnsureSynthesizer();
-        if (!string.IsNullOrWhiteSpace(voiceId))
+        try
         {
-            var matched = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId);
-            if (matched is not null)
+            var synthesizer = EnsureSynthesizer();
+            if (!string.IsNullOrWhiteSpace(voiceId))
             {
-                synthesizer.Voice = matched;
+                var matched = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == voiceId);
+                if (matched is not null)
+                {
+                    synthesizer.Voice = matched;
+                }
             }
-        }
 
-        var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
-        var player = EnsurePlayer();
-        player.Source = MediaSource.CreateFromStream(stream, stream.ContentType);
-        player.Play();
+            var stream = await synthesizer.SynthesizeTextToStreamAsync(text);
+            if (playbackGeneration != _playbackGeneration) return;
+
+            var player = EnsurePlayer();
+            player.Source = MediaSource.CreateFromStream(stream, stream.ContentType);
+            player.Play();
+        }
+        catch
+        {
+            if (playbackGeneration == _playbackGeneration)
+            {
+                SetPlaybackState(false, null);
+            }
+            throw;
+        }
     }
 
     public void StopSpeaking()
     {
-        if (_player is null) return;
-        try
+        _playbackGeneration++;
+        if (_player is not null)
         {
-            _player.Pause();
-            _player.Source = null;
+            try
+            {
+                _player.Pause();
+                _player.Source = null;
+            }
+            catch
+            {
+                // Ignore player reset errors
+            }
         }
-        catch
-        {
-            // Ignore player reset errors
-        }
+        SetPlaybackState(false, null);
+    }
+
+    private void SetPlaybackState(bool isSpeaking, string? turnId)
+    {
+        if (IsSpeaking == isSpeaking && CurrentTurnId == turnId) return;
+        IsSpeaking = isSpeaking;
+        CurrentTurnId = turnId;
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()
     {
+        StopSpeaking();
         _player?.Dispose();
         _synthesizer?.Dispose();
     }

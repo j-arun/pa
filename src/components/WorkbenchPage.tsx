@@ -9,8 +9,8 @@ import {
   Lock,
   RotateCcw,
   Settings as SettingsIcon,
-  Square,
   Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -367,6 +367,16 @@ export function WorkbenchPage({
                           {speech.speechSynthesisSupported && (
                             <button
                               type="button"
+                              aria-label={
+                                isSpeakingThisTurn
+                                  ? 'Mute response playback'
+                                  : 'Play response in Windows Speaker'
+                              }
+                              title={
+                                isSpeakingThisTurn
+                                  ? 'Mute response playback'
+                                  : 'Play response in Windows Speaker'
+                              }
                               onClick={() =>
                                 speech.speakText(replyTurn.id, replyTurn.content)
                               }
@@ -383,8 +393,8 @@ export function WorkbenchPage({
                             >
                               {isSpeakingThisTurn ? (
                                 <>
-                                  <Square className="w-3.5 h-3.5 fill-current" />
-                                  <span>Stop Speaker</span>
+                                  <VolumeX className="w-3.5 h-3.5" />
+                                  <span>Mute Speaker</span>
                                 </>
                               ) : (
                                 <>

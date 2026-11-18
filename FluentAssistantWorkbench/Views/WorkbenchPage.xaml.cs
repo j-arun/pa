@@ -33,8 +33,13 @@ public sealed partial class WorkbenchPage : Page
             AmbientMistStoryboard.Begin();
             ApplyFontFromConfig();
             ApplyModeDescription();
+            App.Coordinator.Speech.PlaybackStateChanged -= Speech_PlaybackStateChanged;
+            App.Coordinator.Speech.PlaybackStateChanged += Speech_PlaybackStateChanged;
+            SyncSpeakerPlaybackState();
             DispatcherQueue.TryEnqueue(ScrollToBottom);
         };
+        Unloaded += (_, _) =>
+            App.Coordinator.Speech.PlaybackStateChanged -= Speech_PlaybackStateChanged;
         ApplyFontFromConfig();
         OnExchangesChanged(scrollToBottom: false);
     }
@@ -121,14 +126,37 @@ public sealed partial class WorkbenchPage : Page
         }
     }
 
+    private void Speech_PlaybackStateChanged(object? sender, EventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(SyncSpeakerPlaybackState);
+    }
+
+    private void SyncSpeakerPlaybackState()
+    {
+        var activeTurnId = App.Coordinator.Speech.IsSpeaking
+            ? App.Coordinator.Speech.CurrentTurnId
+            : null;
+        foreach (var exchange in App.Coordinator.Exchanges)
+        {
+            exchange.SetReplySpeaking(activeTurnId == exchange.Id);
+        }
+    }
+
     private async void SpeakTurnButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string text)
+        if (sender is not Button { DataContext: ConversationExchange exchange }) return;
+
+        var speech = App.Coordinator.Speech;
+        if (speech.IsSpeaking && speech.CurrentTurnId == exchange.Id)
         {
-            await App.Coordinator.Speech.SpeakAsync(
-                text,
-                App.Coordinator.Config.Voice.SelectedVoiceId);
+            speech.StopSpeaking();
+            return;
         }
+
+        await speech.SpeakAsync(
+            exchange.ReplyContent,
+            App.Coordinator.Config.Voice.SelectedVoiceId,
+            exchange.Id);
     }
 
     public async Task SaveConversationPdfAsync()

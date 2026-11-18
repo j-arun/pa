@@ -6,7 +6,6 @@ import {
   PanelLeft,
   PanelRight,
   Settings,
-  Square,
   Volume2,
   VolumeX,
   X,
@@ -752,14 +751,14 @@ export default function App() {
               onClick={toggleTopBarSpeak}
               aria-label={
                 speech.speakingTurnId
-                  ? 'Stop Windows Speaker'
+                  ? 'Mute Windows Speaker'
                   : activeAutoSpeak
                     ? 'Auto-speak on, click to disable'
                     : 'Speaker off, click to enable auto-speak'
               }
               title={
                 speech.speakingTurnId
-                  ? 'Stop Windows Speaker'
+                  ? 'Mute Windows Speaker'
                   : activeAutoSpeak
                     ? 'Windows Speaker Auto-Speak On'
                     : 'Windows Speaker Off'
@@ -781,7 +780,7 @@ export default function App() {
               }
             >
               {speech.speakingTurnId ? (
-                <Square className="w-4 h-4 fill-current" />
+                <VolumeX className="w-4 h-4" />
               ) : activeAutoSpeak ? (
                 <Volume2 className="w-4 h-4" />
               ) : (

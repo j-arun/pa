@@ -384,7 +384,10 @@ public sealed class WorkbenchCoordinator
                 {
                     await Task.Delay(220, ct);
                 }
-                await Speech.SpeakAsync(assistantTurn.Content, Config.Voice.SelectedVoiceId);
+                await Speech.SpeakAsync(
+                    assistantTurn.Content,
+                    Config.Voice.SelectedVoiceId,
+                    exchange.Id);
             }
 
             return assistantTurn;

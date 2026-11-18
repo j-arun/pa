@@ -314,12 +314,19 @@
                                                     Visibility="{Binding ReplyContentVisibility}">
                                                     <Button
                                                         Click="SpeakTurnButton_Click"
-                                                        Tag="{Binding ReplyContent}"
                                                         Padding="8"
                                                         CornerRadius="10"
-                                                        ToolTipService.ToolTip="Play response in Windows Speaker"
-                                                        AutomationProperties.Name="Play response in Windows Speaker">
-                                                        <FontIcon Glyph="&#xE767;" FontSize="16" />
+                                                        ToolTipService.ToolTip="{Binding ReplySpeakerToolTip}"
+                                                        AutomationProperties.Name="{Binding ReplySpeakerToolTip}">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <FontIcon
+                                                                Glyph="{Binding ReplySpeakerGlyph}"
+                                                                FontSize="16" />
+                                                            <TextBlock
+                                                                Text="{Binding ReplySpeakerButtonText}"
+                                                                FontSize="12"
+                                                                VerticalAlignment="Center" />
+                                                        </StackPanel>
                                                     </Button>
                                                 </StackPanel>
                                             </StackPanel>
