@@ -12,7 +12,7 @@ For example:
 
 `C:\Users\<username>\AppData\Local\FluentAssistantWorkbench\workbench.config.json`
 
-The `promptBuilder` section stores the selected domain and style, plus Formal and Classic templates for Astrology, Health, Finance, and General. The file also stores other workbench settings, including appearance, model configuration, and context-cache text. Treat it as private and do not commit or share it.
+The `promptBuilder` section stores the selected domain and style, plus Formal and Classic templates for Astrology (tab label “Astrology - Career & Profession”), Health, Finance, and General (tab label “General - Family & Love”). The file also stores other workbench settings, including appearance, model configuration, and context-cache text. Treat it as private and do not commit or share it.
 
 The native app stores conversation history separately in:
 

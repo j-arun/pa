@@ -34,7 +34,8 @@ public sealed partial class PromptBuilderPage : Page
             HealthActiveCheckBox.IsChecked = promptBuilder.ActiveDomain == PromptDomain.Health;
             FinanceActiveCheckBox.IsChecked = promptBuilder.ActiveDomain == PromptDomain.Finance;
             GeneralActiveCheckBox.IsChecked = promptBuilder.ActiveDomain == PromptDomain.General;
-            ActiveDomainStatusText.Text = $"Active domain for this session: {promptBuilder.ActiveDomain}";
+            ActiveDomainStatusText.Text =
+                $"Active domain for this session: {GetDomainDisplayName(promptBuilder.ActiveDomain)}";
             FormalTemplateTextBox.Text = promptBuilder.GetTemplate(
                 promptBuilder.ActiveDomain,
                 PromptStyle.Formal);
@@ -47,6 +48,13 @@ public sealed partial class PromptBuilderPage : Page
             _updatingControls = false;
         }
     }
+
+    private static string GetDomainDisplayName(PromptDomain domain) => domain switch
+    {
+        PromptDomain.Astrology => "Astrology - Career & Profession",
+        PromptDomain.General => "General - Family & Love",
+        _ => domain.ToString()
+    };
 
     private void DomainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

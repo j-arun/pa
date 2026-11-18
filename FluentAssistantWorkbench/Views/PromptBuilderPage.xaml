@@ -34,8 +34,8 @@
                 <TabViewItem x:Name="AstrologyTab" Tag="Astrology">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="Astrology" VerticalAlignment="Center" />
-                            <CheckBox x:Name="AstrologyActiveCheckBox" Tag="Astrology" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Astrology as the active prompt domain" />
+                            <TextBlock Text="Astrology - Career &amp; Profession" VerticalAlignment="Center" />
+                            <CheckBox x:Name="AstrologyActiveCheckBox" Tag="Astrology" Click="DomainCheckBox_Click" AutomationProperties.Name="Set Astrology - Career &amp; Profession as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>
@@ -58,8 +58,8 @@
                 <TabViewItem x:Name="GeneralTab" Tag="General">
                     <TabViewItem.Header>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="General" VerticalAlignment="Center" />
-                            <CheckBox x:Name="GeneralActiveCheckBox" Tag="General" Click="DomainCheckBox_Click" AutomationProperties.Name="Set General as the active prompt domain" />
+                            <TextBlock Text="General - Family &amp; Love" VerticalAlignment="Center" />
+                            <CheckBox x:Name="GeneralActiveCheckBox" Tag="General" Click="DomainCheckBox_Click" AutomationProperties.Name="Set General - Family &amp; Love as the active prompt domain" />
                         </StackPanel>
                     </TabViewItem.Header>
                 </TabViewItem>

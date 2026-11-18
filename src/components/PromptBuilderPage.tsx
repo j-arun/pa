@@ -20,7 +20,7 @@ const DOMAIN_OPTIONS: Array<{
 }> = [
   {
     id: 'astrology',
-    label: 'Astrology',
+    label: 'Astrology - Career & Profession',
     description: 'Astrological readings, charts, and timing',
     icon: Sparkles,
   },
@@ -38,7 +38,7 @@ const DOMAIN_OPTIONS: Array<{
   },
   {
     id: 'general',
-    label: 'General',
+    label: 'General - Family & Love',
     description: 'Everyday questions and tasks',
     icon: Brain,
   },
