@@ -12,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings as SettingsIcon,
+  SlidersHorizontal,
   Trash2,
   Volume2,
   VolumeX,
@@ -24,11 +25,20 @@ import type {
   PromptDomain,
   PromptStyle,
   PromptTemplates,
+  ThreadRating,
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
 import { renderMarkdownToHtml } from '../utils/markdownExport';
 import { exportConversationToPdf } from '../utils/pdfExport';
+import {
+  PROMPT_DOMAINS,
+  THREAD_MONTHS,
+  THREAD_RATING_OPTIONS,
+  THREAD_YEARS,
+  formatThreadDisplayTitle,
+  getPromptDomainShortLabel,
+} from '../utils/promptTemplates';
 import { MessageContent } from './MessageContent';
 
 const STARTER_PROMPTS: Record<ConversationScope, string[]> = {
@@ -44,11 +54,28 @@ const STARTER_PROMPTS: Record<ConversationScope, string[]> = {
   ],
 };
 
-const PROMPT_DOMAIN_LABELS: Record<PromptDomain, string> = {
-  astrology: 'Astrology',
-  health: 'Health',
-  finance: 'Finance',
-  general: 'General',
+const RATING_STYLES: Record<
+  ThreadRating,
+  { dotClass: string; activeClass: string; textClass: string }
+> = {
+  green: {
+    dotClass: 'bg-emerald-600 dark:bg-emerald-400',
+    activeClass:
+      'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-200',
+    textClass: 'text-emerald-700 dark:text-emerald-300',
+  },
+  yellow: {
+    dotClass: 'bg-yellow-500 dark:bg-yellow-400',
+    activeClass:
+      'border-yellow-500 bg-yellow-50 text-yellow-800 dark:border-yellow-500 dark:bg-yellow-950/60 dark:text-yellow-200',
+    textClass: 'text-yellow-700 dark:text-yellow-300',
+  },
+  red: {
+    dotClass: 'bg-red-600 dark:bg-red-400',
+    activeClass:
+      'border-red-500 bg-red-50 text-red-800 dark:border-red-500 dark:bg-red-950/60 dark:text-red-200',
+    textClass: 'text-red-700 dark:text-red-300',
+  },
 };
 
 interface ConversationExchange {
@@ -69,6 +96,23 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (character) => HTML_ENTITIES[character]);
 }
 
+export interface SendThreadMessagePayload {
+  text: string;
+  inputMode: 'text';
+  threadName: string;
+  threadMonth: string;
+  threadYear: number;
+  promptDomain: PromptDomain;
+}
+
+export interface ThreadMetadataPatch {
+  threadName?: string;
+  threadMonth?: string;
+  threadYear?: number;
+  promptDomain?: PromptDomain;
+  threadRating?: ThreadRating | undefined;
+}
+
 interface WorkbenchPageProps {
   scope: ConversationScope;
   settings: WorkbenchSettings;
@@ -79,7 +123,8 @@ interface WorkbenchPageProps {
   onPromptStyleChange: (style: PromptStyle) => void;
   isSending: boolean;
   speech: UseSpeechIOResult;
-  onSendMessage: (text: string, inputMode: 'text') => void;
+  onSendMessage: (payload: SendThreadMessagePayload) => void;
+  onUpdateExchangeMetadata: (exchangeId: string, patch: ThreadMetadataPatch) => void;
   onRefreshModel: () => Promise<string>;
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
@@ -310,12 +355,17 @@ export function WorkbenchPage({
   isSending,
   speech,
   onSendMessage,
+  onUpdateExchangeMetadata,
   onRefreshModel,
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
+  const [threadName, setThreadName] = useState('');
+  const [threadMonth, setThreadMonth] = useState('');
+  const [threadYear, setThreadYear] = useState('');
+  const [metadataNotice, setMetadataNotice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -333,14 +383,27 @@ export function WorkbenchPage({
     () => new Set(),
   );
   const [sourcePromptThreadId, setSourcePromptThreadId] = useState<string | null>(null);
+  const [settingsThreadId, setSettingsThreadId] = useState<string | null>(null);
 
   const ladderEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const threadNameInputRef = useRef<HTMLInputElement | null>(null);
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
   const activeTemplate = promptTemplates[activePromptDomain][promptStyle];
   const composedPrompt = buildPrompt(draft, activeTemplate);
+  const activeDomainShortLabel = getPromptDomainShortLabel(activePromptDomain);
+  const parsedThreadYear = threadYear ? Number(threadYear) : undefined;
+  const isComposerMetadataReady =
+    threadName.trim().length > 0 &&
+    threadMonth.trim().length > 0 &&
+    typeof parsedThreadYear === 'number' &&
+    Number.isFinite(parsedThreadYear);
+  const composerCombinedPreview =
+    threadMonth && parsedThreadYear
+      ? `${activeDomainShortLabel} of ${threadMonth} ${parsedThreadYear}`
+      : null;
 
   const exchanges = useMemo<ConversationExchange[]>(() => {
     const grouped: ConversationExchange[] = [];
@@ -394,10 +457,50 @@ export function WorkbenchPage({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!draft.trim() || isSending) return;
+    if (!isComposerMetadataReady) {
+      setMetadataNotice(
+        'Enter Thread Name, Month, and Year before typing and sending in chat.',
+      );
+      threadNameInputRef.current?.focus();
+      return;
+    }
+    if (!draft.trim() || isSending || parsedThreadYear === undefined) return;
     const promptToSend = composedPrompt;
+    const submittedThreadName = threadName.trim();
     setDraft('');
-    onSendMessage(promptToSend, 'text');
+    setThreadName('');
+    setMetadataNotice(null);
+    onSendMessage({
+      text: promptToSend,
+      inputMode: 'text',
+      threadName: submittedThreadName,
+      threadMonth,
+      threadYear: parsedThreadYear,
+      promptDomain: activePromptDomain,
+    });
+  };
+
+  const handleStarterPromptClick = (promptText: string) => {
+    if (!isComposerMetadataReady || parsedThreadYear === undefined) {
+      setDraft(promptText);
+      setMetadataNotice(
+        'Starter prompt loaded. Enter Thread Name, Month, and Year below to send.',
+      );
+      threadNameInputRef.current?.focus();
+      return;
+    }
+    const promptToSend = buildPrompt(promptText, activeTemplate);
+    const submittedThreadName = threadName.trim();
+    setThreadName('');
+    setMetadataNotice(null);
+    onSendMessage({
+      text: promptToSend,
+      inputMode: 'text',
+      threadName: submittedThreadName,
+      threadMonth,
+      threadYear: parsedThreadYear,
+      promptDomain: activePromptDomain,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -453,8 +556,9 @@ export function WorkbenchPage({
   };
 
   const handleDownloadExchange = (exchange: ConversationExchange, threadNumber: number) => {
-    const question = exchange.questionTurn?.content;
-    const expectedScopes = exchange.questionTurn?.responseScopes ?? [];
+    const questionTurn = exchange.questionTurn;
+    const question = questionTurn?.content;
+    const expectedScopes = questionTurn?.responseScopes ?? [];
     const answers = exchange.replyTurns
       .filter((turn) => turn.role === 'assistant')
       .sort((left, right) => {
@@ -464,6 +568,21 @@ export function WorkbenchPage({
           (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
       });
     if (!question || answers.length === 0) return;
+
+    const combinedTitle = formatThreadDisplayTitle({
+      domain: questionTurn?.promptDomain,
+      month: questionTurn?.threadMonth,
+      year: questionTurn?.threadYear,
+      fallbackNumber: threadNumber,
+    });
+    const customThreadName = questionTurn?.threadName?.trim();
+    const ratingMeta = questionTurn?.threadRating
+      ? THREAD_RATING_OPTIONS.find((item) => item.id === questionTurn.threadRating)
+      : undefined;
+    const safeSlug = `${combinedTitle}${customThreadName ? `-${customThreadName}` : ''}`
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
 
     try {
       const answerSections = answers
@@ -476,14 +595,25 @@ export function WorkbenchPage({
           return `<section class="answer-card"><h2>${escapeHtml(label)}</h2><div class="markdown-content">${renderMarkdownToHtml(turn.content)}</div></section>`;
         })
         .join('\n');
+      const metadataItems = [
+        customThreadName ? `Thread Name: ${customThreadName}` : '',
+        questionTurn?.promptDomain
+          ? `Domain: ${getPromptDomainShortLabel(questionTurn.promptDomain)}`
+          : '',
+        questionTurn?.threadMonth && questionTurn?.threadYear
+          ? `Period: ${questionTurn.threadMonth} ${questionTurn.threadYear}`
+          : '',
+        ratingMeta ? `Rating: ${ratingMeta.label} (${ratingMeta.description})` : '',
+      ].filter(Boolean);
       const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Thread #${threadNumber}</title>
+  <title>${escapeHtml(combinedTitle)}${customThreadName ? ` — ${escapeHtml(customThreadName)}` : ''}</title>
   <style>
     body { font: 16px/1.6 system-ui, sans-serif; max-width: 1600px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
+    .meta { color: #475569; font-size: 0.9rem; margin-top: 0.25rem; }
     .question { margin: 1.5rem 0; padding: 1rem; background: #f1f5f9; border-radius: 0.75rem; }
     .answer-grid { display: grid; grid-template-columns: repeat(${Math.min(answers.length, 2)}, minmax(0, 1fr)); gap: 1rem; align-items: start; }
     .answer-card { min-width: 0; margin: 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; background: #f8fafc; }
@@ -519,7 +649,8 @@ export function WorkbenchPage({
 </head>
 <body>
   <main>
-    <h1>Thread #${threadNumber}</h1>
+    <h1>${escapeHtml(combinedTitle)}</h1>
+    ${metadataItems.length > 0 ? `<p class="meta">${escapeHtml(metadataItems.join(' · '))}</p>` : ''}
     <section class="question"><h2>Question</h2><div class="markdown-content">${renderMarkdownToHtml(question)}</div></section>
     <div class="answer-grid">
       ${answerSections}
@@ -531,7 +662,7 @@ export function WorkbenchPage({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `PersonalAssistant-Thread-${threadNumber}-${new Date()
+      anchor.download = `PersonalAssistant-${safeSlug || `Thread-${threadNumber}`}-${new Date()
         .toISOString()
         .replace(/[:.]/g, '-')}.html`;
       document.body.appendChild(anchor);
@@ -552,24 +683,37 @@ export function WorkbenchPage({
     }
   };
 
-  const handleCopyMetadata = (exchange: ConversationExchange) => {
+  const handleCopyMetadata = (exchange: ConversationExchange, threadNumber: number) => {
     const question = exchange.questionTurn;
     if (!question) return;
     const isDualScope = (question.responseScopes ?? [question.scope]).length > 1;
+    const combinedTitle = formatThreadDisplayTitle({
+      domain: question.promptDomain,
+      month: question.threadMonth,
+      year: question.threadYear,
+      fallbackNumber: threadNumber,
+    });
+    const ratingMeta = question.threadRating
+      ? THREAD_RATING_OPTIONS.find((item) => item.id === question.threadRating)
+      : undefined;
     const metadata = [
       `Thread metadata`,
-      `Domain: ${question.promptDomain ?? activePromptDomain}`,
+      `Combined title: ${combinedTitle}`,
+      `Thread name: ${question.threadName?.trim() || '(Not specified)'}`,
+      `Domain: ${getPromptDomainShortLabel(question.promptDomain ?? activePromptDomain)}`,
+      `Period: ${question.threadMonth && question.threadYear ? `${question.threadMonth} ${question.threadYear}` : '(Not specified)'}`,
+      `Period rating: ${ratingMeta ? `${ratingMeta.label} (${ratingMeta.description})` : 'Unrated'}`,
       `Style: ${question.promptStyle ?? promptStyle}`,
       ...(isDualScope
         ? [
             `Private system instruction:\n${question.privateSystemInstruction ?? settings.privateLlm.systemInstruction}`,
-            `Private context cache:\n${question.privateCachedContext || '(No context cache configured in the web app)'}`,
+            `Private reference context:\n${question.privateCachedContext || '(No reference context configured)'}`,
             `Public system instruction:\n${question.publicSystemInstruction ?? settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction}`,
-            `Public context cache:\n${question.publicCachedContext || '(No context cache configured in the web app)'}`,
+            `Public reference context:\n${question.publicCachedContext || '(No reference context configured)'}`,
           ]
         : [
             `System instruction:\n${question.systemInstruction ?? ''}`,
-            `Context cache:\n${question.cachedContext || '(No context cache configured in the web app)'}`,
+            `Reference context:\n${question.cachedContext || '(No reference context configured)'}`,
           ]),
       `Question / composed prompt:\n${question.content}`,
     ].join('\n\n');
@@ -683,7 +827,7 @@ export function WorkbenchPage({
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => onSendMessage(promptText, 'text')}
+                      onClick={() => handleStarterPromptClick(promptText)}
                       className="w-full px-4 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 bg-white/70 dark:bg-slate-800/60 hover:bg-sky-50/75 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-between gap-3"
                     >
                       <span className="truncate">{promptText}</span>
@@ -720,6 +864,21 @@ export function WorkbenchPage({
                     (turn) => turn.scope === targetScope && turn.role === 'assistant',
                   ),
                 );
+              const qTurn = ex.questionTurn;
+              const combinedTitle = formatThreadDisplayTitle({
+                domain: qTurn?.promptDomain,
+                month: qTurn?.threadMonth,
+                year: qTurn?.threadYear,
+                fallbackNumber: idx + 1,
+              });
+              const hasAssistantReply = orderedReplies.some(
+                (turn) => turn.role === 'assistant',
+              );
+              const currentRating = qTurn?.threadRating;
+              const currentRatingMeta = currentRating
+                ? THREAD_RATING_OPTIONS.find((item) => item.id === currentRating)
+                : undefined;
+              const isSettingsExpanded = settingsThreadId === ex.id;
 
               return (
                 <motion.div
@@ -734,9 +893,52 @@ export function WorkbenchPage({
                     style={{ fontFamily: 'var(--pa-font-body)' }}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span className="inline-flex items-center rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-bold tracking-wide text-sky-800 shadow-sm dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-200">
-                        Thread #{idx + 1}
-                      </span>
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">
+                            {combinedTitle}
+                          </h2>
+                          {qTurn?.threadName?.trim() && (
+                            <>
+                              <span aria-hidden="true" className="text-slate-400">
+                                ·
+                              </span>
+                              <span className="text-sm font-medium text-sky-700 dark:text-sky-300">
+                                {qTurn.threadName.trim()}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                          <span>#{idx + 1}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{getPromptDomainShortLabel(qTurn?.promptDomain)}</span>
+                          {qTurn?.threadMonth && qTurn?.threadYear && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span>
+                                {qTurn.threadMonth} {qTurn.threadYear}
+                              </span>
+                            </>
+                          )}
+                          {currentRating && currentRatingMeta && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <span
+                                className={`inline-flex items-center gap-1.5 font-medium ${RATING_STYLES[currentRating].textClass}`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`h-2 w-2 rounded-full ${RATING_STYLES[currentRating].dotClass}`}
+                                />
+                                <span>
+                                  {currentRatingMeta.label} — {currentRatingMeta.description}
+                                </span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                       <div className="flex flex-wrap items-center justify-end gap-1.5">
                         {downloadFeedback?.threadId === ex.id && (
                           <span
@@ -753,19 +955,19 @@ export function WorkbenchPage({
                         <button
                           type="button"
                           onClick={() => handleDownloadExchange(ex, idx + 1)}
-                          disabled={!ex.questionTurn || !ex.replyTurns.some((turn) => turn.role === 'assistant')}
+                          disabled={!ex.questionTurn || !hasAssistantReply}
                           title="Download only this thread as an HTML file"
-                          aria-label={`Download thread ${idx + 1} as HTML`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                          aria-label={`Download ${combinedTitle} as HTML`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
                         >
                           <FileDown className="h-3.5 w-3.5" />
                           <span>Download</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleCopyMetadata(ex)}
-                          aria-label={`Copy metadata for thread ${idx + 1}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                          onClick={() => handleCopyMetadata(ex, idx + 1)}
+                          aria-label={`Copy metadata for ${combinedTitle}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
                         >
                           {copiedId === `${ex.id}-metadata` ? (
                             <>
@@ -783,19 +985,36 @@ export function WorkbenchPage({
                           type="button"
                           onClick={() => showSourcePrompt(ex.id)}
                           disabled={!ex.questionTurn}
-                          aria-label={`Show source prompt for thread ${idx + 1}`}
+                          aria-label={`Show source prompt for ${combinedTitle}`}
                           aria-pressed={sourcePromptThreadId === ex.id}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
                         >
                           <FileSearch className="h-3.5 w-3.5" />
                           <span>Source Prompt</span>
                         </button>
                         <button
                           type="button"
+                          onClick={() =>
+                            setSettingsThreadId((prev) => (prev === ex.id ? null : ex.id))
+                          }
+                          disabled={!ex.questionTurn}
+                          aria-label={`Edit thread details for ${combinedTitle}`}
+                          aria-expanded={isSettingsExpanded}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-40 whitespace-nowrap shrink-0 ${
+                            isSettingsExpanded
+                              ? 'border-sky-400 bg-sky-50 text-sky-800 dark:border-sky-600 dark:bg-sky-950/60 dark:text-sky-200'
+                              : 'border-slate-200/80 bg-white/75 text-slate-600 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <SlidersHorizontal className="h-3.5 w-3.5" />
+                          <span>Thread Settings</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleCopyExchange(ex)}
-                          disabled={!ex.replyTurns.some((turn) => turn.role === 'assistant')}
-                          aria-label={`Copy question and answers for thread ${idx + 1}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                          disabled={!hasAssistantReply}
+                          aria-label={`Copy question and answers for ${combinedTitle}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
                         >
                           {copiedId === ex.id ? (
                             <>
@@ -813,8 +1032,8 @@ export function WorkbenchPage({
                           type="button"
                           onClick={() => handleDeleteExchange(ex)}
                           disabled={isSending && isLast}
-                          aria-label={`Delete thread ${idx + 1}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:pointer-events-none disabled:opacity-40 dark:border-red-900/70 dark:bg-slate-800/75 dark:text-red-300 dark:hover:bg-red-950/40"
+                          aria-label={`Delete ${combinedTitle}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200/80 bg-white/75 px-2.5 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:pointer-events-none disabled:opacity-40 dark:border-red-900/70 dark:bg-slate-800/75 dark:text-red-300 dark:hover:bg-red-950/40 whitespace-nowrap shrink-0"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           <span>Delete</span>
@@ -822,9 +1041,9 @@ export function WorkbenchPage({
                         <button
                           type="button"
                           onClick={() => toggleThread(ex.id)}
-                          aria-label={`${collapsedThreadIds.has(ex.id) ? 'Expand' : 'Collapse'} thread ${idx + 1}`}
+                          aria-label={`${collapsedThreadIds.has(ex.id) ? 'Expand' : 'Collapse'} ${combinedTitle}`}
                           aria-expanded={!collapsedThreadIds.has(ex.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/75 text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white/75 text-slate-600 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700 shrink-0"
                         >
                           {collapsedThreadIds.has(ex.id) ? (
                             <ChevronRight className="h-4 w-4" />
@@ -837,14 +1056,157 @@ export function WorkbenchPage({
 
                     {!collapsedThreadIds.has(ex.id) && (
                       <div className="space-y-2.5">
+                    {isSettingsExpanded && qTurn && (
+                      <section
+                        aria-label={`Thread settings for ${combinedTitle}`}
+                        className="rounded-2xl border border-slate-200/90 bg-white/85 px-4 py-3 dark:border-slate-700/80 dark:bg-slate-900/75 space-y-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                            Thread Settings · Name, Period, Domain &amp; Rating
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSettingsThreadId(null)}
+                            className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                          >
+                            Done
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                          <label className="block space-y-1">
+                            <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                              Thread Name
+                            </span>
+                            <input
+                              type="text"
+                              value={qTurn.threadName ?? ''}
+                              onChange={(event) =>
+                                onUpdateExchangeMetadata(ex.id, {
+                                  threadName: event.target.value,
+                                })
+                              }
+                              placeholder="e.g. First Time Checkup"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                            />
+                          </label>
+
+                          <label className="block space-y-1">
+                            <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                              Domain
+                            </span>
+                            <select
+                              value={qTurn.promptDomain ?? activePromptDomain}
+                              onChange={(event) =>
+                                onUpdateExchangeMetadata(ex.id, {
+                                  promptDomain: event.target.value as PromptDomain,
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                            >
+                              {PROMPT_DOMAINS.map((domainId) => (
+                                <option key={domainId} value={domainId}>
+                                  {getPromptDomainShortLabel(domainId)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block space-y-1">
+                            <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                              Month
+                            </span>
+                            <select
+                              value={qTurn.threadMonth ?? ''}
+                              onChange={(event) =>
+                                onUpdateExchangeMetadata(ex.id, {
+                                  threadMonth: event.target.value,
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                            >
+                              <option value="">Select month...</option>
+                              {THREAD_MONTHS.map((monthName) => (
+                                <option key={monthName} value={monthName}>
+                                  {monthName}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block space-y-1">
+                            <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                              Year
+                            </span>
+                            <select
+                              value={qTurn.threadYear ?? ''}
+                              onChange={(event) =>
+                                onUpdateExchangeMetadata(ex.id, {
+                                  threadYear: event.target.value
+                                    ? Number(event.target.value)
+                                    : undefined,
+                                })
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs tabular-nums text-slate-900 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                            >
+                              <option value="">Select year...</option>
+                              {THREAD_YEARS.map((yr) => (
+                                <option key={yr} value={yr}>
+                                  {yr}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                            Period Rating:
+                          </span>
+                          {THREAD_RATING_OPTIONS.map((opt) => {
+                            const selected = currentRating === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateExchangeMetadata(ex.id, {
+                                    threadRating: selected ? undefined : opt.id,
+                                  })
+                                }
+                                aria-pressed={selected}
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                                  selected
+                                    ? RATING_STYLES[opt.id].activeClass
+                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`h-2 w-2 rounded-full ${RATING_STYLES[opt.id].dotClass}`}
+                                />
+                                <span>
+                                  {opt.label} · {opt.description}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+
                     {sourcePromptThreadId === ex.id && ex.questionTurn && (
                       <section
-                        aria-label={`Source prompt for thread ${idx + 1}`}
+                        aria-label={`Source prompt for ${combinedTitle}`}
                         className="rounded-2xl border border-sky-200/80 bg-sky-50/75 px-4 py-3 dark:border-sky-900/70 dark:bg-sky-950/35"
                       >
-                        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
-                          Source Prompt · {ex.questionTurn.promptDomain ?? activePromptDomain} ·{' '}
-                          {ex.questionTurn.promptStyle ?? promptStyle}
+                        <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-sky-800 dark:text-sky-200">
+                          Source Prompt · {combinedTitle}
+                          {ex.questionTurn.threadName?.trim()
+                            ? ` · ${ex.questionTurn.threadName.trim()}`
+                            : ''}{' '}
+                          · {ex.questionTurn.promptStyle ?? promptStyle}
                         </div>
                         <pre className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-200">
                           {ex.questionTurn.content}
@@ -902,6 +1264,49 @@ export function WorkbenchPage({
                         </div>
                       ))}
                     </div>
+
+                    {hasAssistantReply && qTurn && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/70 dark:border-slate-800/70">
+                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                          Rate this period:
+                        </span>
+                        <div
+                          role="group"
+                          aria-label={`Period rating for ${combinedTitle}`}
+                          className="flex flex-wrap items-center gap-1.5"
+                        >
+                          {THREAD_RATING_OPTIONS.map((opt) => {
+                            const selected = currentRating === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() =>
+                                  onUpdateExchangeMetadata(ex.id, {
+                                    threadRating: selected ? undefined : opt.id,
+                                  })
+                                }
+                                aria-pressed={selected}
+                                title={`${opt.label} — ${opt.description}`}
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                                  selected
+                                    ? RATING_STYLES[opt.id].activeClass
+                                    : 'border-slate-200/85 bg-white/75 text-slate-600 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`h-2 w-2 rounded-full ${RATING_STYLES[opt.id].dotClass}`}
+                                />
+                                <span>
+                                  {opt.label} · {opt.description}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                       </div>
                     )}
                   </div>
@@ -946,9 +1351,24 @@ export function WorkbenchPage({
           )}
 
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-300">
-              <span className="h-2 w-2 rounded-full bg-sky-500" />
-              {PROMPT_DOMAIN_LABELS[activePromptDomain]} template
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <span className="font-semibold text-slate-800 dark:text-slate-100">
+                Domain: {activeDomainShortLabel}
+              </span>
+              <span aria-hidden="true" className="text-slate-400">
+                ·
+              </span>
+              <span className="capitalize">{promptStyle} style</span>
+              {composerCombinedPreview && (
+                <>
+                  <span aria-hidden="true" className="text-slate-400">
+                    ·
+                  </span>
+                  <span className="font-medium text-sky-700 dark:text-sky-300">
+                    {composerCombinedPreview}
+                  </span>
+                </>
+              )}
             </div>
             <div
               role="group"
@@ -961,7 +1381,7 @@ export function WorkbenchPage({
                   type="button"
                   onClick={() => onPromptStyleChange(style)}
                   aria-pressed={promptStyle === style}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors whitespace-nowrap shrink-0 ${
                     promptStyle === style
                       ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -974,20 +1394,81 @@ export function WorkbenchPage({
           </div>
 
           <section
-            aria-label="Composed prompt preview"
-            aria-live="polite"
-            className="mb-2.5 rounded-2xl border border-sky-200/80 bg-sky-50/75 px-4 py-3 dark:border-sky-900/70 dark:bg-sky-950/35"
+            aria-label="Thread naming and period"
+            className="mb-2.5 rounded-2xl border border-slate-200/85 bg-white/80 px-3.5 py-2.5 dark:border-slate-700/80 dark:bg-slate-900/70"
           >
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
-              {promptStyle} prompt preview
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 items-end">
+              <label className="sm:col-span-6 block space-y-1">
+                <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Thread Name (required before chatting)
+                </span>
+                <input
+                  ref={threadNameInputRef}
+                  type="text"
+                  value={threadName}
+                  onChange={(e) => {
+                    setThreadName(e.target.value);
+                    if (metadataNotice) setMetadataNotice(null);
+                  }}
+                  placeholder="e.g., First Time Checkup, 2027 Health Revisit"
+                  aria-label="Thread Name"
+                  required
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                />
+              </label>
+
+              <label className="sm:col-span-3 block space-y-1">
+                <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Month
+                </span>
+                <select
+                  aria-label="Thread Month"
+                  value={threadMonth}
+                  onChange={(e) => {
+                    setThreadMonth(e.target.value);
+                    if (metadataNotice) setMetadataNotice(null);
+                  }}
+                  required
+                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  <option value="">Select month...</option>
+                  {THREAD_MONTHS.map((monthName) => (
+                    <option key={monthName} value={monthName}>
+                      {monthName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="sm:col-span-3 block space-y-1">
+                <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Year (1993–2090)
+                </span>
+                <select
+                  aria-label="Thread Year"
+                  value={threadYear}
+                  onChange={(e) => {
+                    setThreadYear(e.target.value);
+                    if (metadataNotice) setMetadataNotice(null);
+                  }}
+                  required
+                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-xs tabular-nums text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  <option value="">Select year...</option>
+                  {THREAD_YEARS.map((yr) => (
+                    <option key={yr} value={yr}>
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            {draft.trim() ? (
-              <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-200">
-                {composedPrompt}
-              </pre>
-            ) : (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Enter a prompt to preview exactly what will be sent.
+            {metadataNotice && (
+              <p
+                role="status"
+                className="mt-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+              >
+                {metadataNotice}
               </p>
             )}
           </section>
@@ -1004,15 +1485,18 @@ export function WorkbenchPage({
               ref={textareaRef}
               rows={4}
               value={draft}
+              disabled={!isComposerMetadataReady}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                scope === 'private'
-                  ? 'Type a private prompt... (Enter to send, Shift+Enter for new line)'
-                  : 'Type a public prompt... (Enter to send, Shift+Enter for new line)'
+                !isComposerMetadataReady
+                  ? 'Enter Thread Name, Month, and Year above before typing in chat...'
+                  : scope === 'private'
+                    ? 'Type a private prompt... (Enter to send, Shift+Enter for new line)'
+                    : 'Type a public prompt... (Enter to send, Shift+Enter for new line)'
               }
               style={{ fontFamily: 'var(--pa-font-body)' }}
-              className="relative z-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed"
+              className="relative z-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[116px] max-h-56 leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
             />
 
             <div className="relative z-10 flex shrink-0 flex-col items-center gap-2">
@@ -1071,7 +1555,7 @@ export function WorkbenchPage({
 
                 <button
                   type="submit"
-                  disabled={!draft.trim() || isSending}
+                  disabled={!isComposerMetadataReady || !draft.trim() || isSending}
                   className="relative z-10 h-11 px-4 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0"
                 >
                   {isSending ? (

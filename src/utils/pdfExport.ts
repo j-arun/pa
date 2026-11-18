@@ -1,4 +1,9 @@
 import type { ConversationTurn } from '../types/workbench';
+import {
+  THREAD_RATING_OPTIONS,
+  formatThreadDisplayTitle,
+  getPromptDomainShortLabel,
+} from './promptTemplates';
 
 interface PdfLine {
   text: string;
@@ -25,6 +30,7 @@ export interface ConversationExchangeExport {
 export function groupTurnsForExport(turns: ConversationTurn[]): ConversationExchangeExport[] {
   const result: ConversationExchangeExport[] = [];
   let current: ConversationExchangeExport | null = null;
+  let threadCounter = 0;
 
   for (const turn of turns) {
     const timeLabel = new Date(turn.timestamp).toLocaleTimeString([], {
@@ -33,8 +39,31 @@ export function groupTurnsForExport(turns: ConversationTurn[]): ConversationExch
     });
 
     if (turn.role === 'user' || !current) {
+      if (turn.role === 'user') {
+        threadCounter += 1;
+      }
+      const combinedTitle = formatThreadDisplayTitle({
+        domain: turn.promptDomain,
+        month: turn.threadMonth,
+        year: turn.threadYear,
+        fallbackNumber: Math.max(1, threadCounter),
+      });
+      const ratingMeta = turn.threadRating
+        ? THREAD_RATING_OPTIONS.find((item) => item.id === turn.threadRating)
+        : undefined;
+      const metaParts = [
+        combinedTitle,
+        turn.threadName?.trim() || '',
+        turn.promptDomain ? `Domain: ${getPromptDomainShortLabel(turn.promptDomain)}` : '',
+        ratingMeta ? `Rating: ${ratingMeta.label} (${ratingMeta.description})` : '',
+      ].filter(Boolean);
+      const baseHeader =
+        turn.role === 'user' ? `You | ${timeLabel}` : `Prompt | ${timeLabel}`;
       current = {
-        questionHeader: turn.role === 'user' ? `You | ${timeLabel}` : `Prompt | ${timeLabel}`,
+        questionHeader:
+          turn.role === 'user' && metaParts.length > 0
+            ? `${metaParts.join(' | ')} -- ${baseHeader}`
+            : baseHeader,
         questionText: turn.role === 'user' ? turn.content : '',
       };
       if (turn.role !== 'user') {

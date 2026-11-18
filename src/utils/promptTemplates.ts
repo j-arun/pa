@@ -3,6 +3,7 @@ import type {
   PromptDomain,
   PromptStyle,
   PromptTemplates,
+  ThreadRating,
 } from '../types/workbench';
 
 export const PROMPT_DOMAINS: PromptDomain[] = [
@@ -12,7 +13,83 @@ export const PROMPT_DOMAINS: PromptDomain[] = [
   'general',
 ];
 
+export const PROMPT_DOMAIN_SHORT_LABELS: Record<PromptDomain, string> = {
+  astrology: 'Career',
+  health: 'Health',
+  finance: 'Family',
+  general: 'Love',
+};
+
 export const PROMPT_STYLES: PromptStyle[] = ['formal', 'classic'];
+
+export const THREAD_MONTHS: readonly string[] = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+export const THREAD_YEAR_START = 1993;
+export const THREAD_YEAR_END = 2090;
+export const THREAD_YEARS: readonly number[] = Array.from(
+  { length: THREAD_YEAR_END - THREAD_YEAR_START + 1 },
+  (_, index) => THREAD_YEAR_START + index,
+);
+
+export const THREAD_RATING_OPTIONS: ReadonlyArray<{
+  id: ThreadRating;
+  label: string;
+  description: string;
+}> = [
+  { id: 'green', label: 'Green', description: 'Very good period' },
+  { id: 'yellow', label: 'Yellow', description: 'Here and there' },
+  { id: 'red', label: 'Red', description: 'Period of difficulties' },
+];
+
+export function getPromptDomainShortLabel(domain?: PromptDomain): string {
+  if (!domain) return 'General';
+  return PROMPT_DOMAIN_SHORT_LABELS[domain] ?? 'General';
+}
+
+export function formatThreadDisplayTitle({
+  domain,
+  month,
+  year,
+  fallbackNumber,
+}: {
+  domain?: PromptDomain;
+  month?: string;
+  year?: number;
+  fallbackNumber: number;
+}): string {
+  const domainLabel = domain ? getPromptDomainShortLabel(domain) : '';
+  const hasMonth = Boolean(month && month.trim());
+  const hasYear = typeof year === 'number' && Number.isFinite(year);
+
+  if (domainLabel && hasMonth && hasYear) {
+    return `${domainLabel} of ${month!.trim()} ${year}`;
+  }
+  if (hasMonth && hasYear) {
+    return `${month!.trim()} ${year}`;
+  }
+  if (domainLabel) {
+    return `${domainLabel} · Thread #${fallbackNumber}`;
+  }
+  return `Thread #${fallbackNumber}`;
+}
+
+export function estimateTokens(text?: string | null): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
 
 export const DEFAULT_PROMPT_TEMPLATES: PromptTemplates = {
   astrology: {

@@ -1,5 +1,6 @@
 import {
   Bell,
+  BookOpen,
   Cloud,
   Lock,
   Palette,
@@ -14,8 +15,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
+import { ReferenceContextPage } from './components/ReferenceContextPage';
 import { SettingsPage } from './components/SettingsPage';
-import { WorkbenchPage } from './components/WorkbenchPage';
+import {
+  WorkbenchPage,
+  type SendThreadMessagePayload,
+  type ThreadMetadataPatch,
+} from './components/WorkbenchPage';
 import { useSpeechIO } from './hooks/useSpeechIO';
 import type {
   AnyAdapterId,
@@ -69,6 +75,7 @@ function appendCachedContext(
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
+  const [isReferenceContextOpen, setIsReferenceContextOpen] = useState(false);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
@@ -398,7 +405,42 @@ export default function App() {
     return message;
   };
 
-  const handleSendMessage = async (text: string, inputMode: 'text') => {
+  const handleSaveReferenceContext = async (
+    targetScope: ConversationScope,
+    text: string,
+  ): Promise<boolean> => {
+    const nextSettings: WorkbenchSettings = {
+      ...settings,
+      contextCache: {
+        ...settings.contextCache,
+        [targetScope === 'private' ? 'privateText' : 'publicText']: text,
+      },
+    };
+    setSettings(nextSettings);
+    return persistSettingsToFile(nextSettings);
+  };
+
+  const handleUpdateExchangeMetadata = useCallback(
+    (exchangeId: string, patch: ThreadMetadataPatch) => {
+      setTurns((previous) =>
+        previous.map((turn) =>
+          turn.id === exchangeId && turn.role === 'user'
+            ? { ...turn, ...patch }
+            : turn,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleSendMessage = async ({
+    text,
+    inputMode,
+    threadName,
+    threadMonth,
+    threadYear,
+    promptDomain,
+  }: SendThreadMessagePayload) => {
     const responseScopes: ConversationScope[] =
       scope === 'public' ? ['private', 'public'] : ['private'];
     const selectedAdapterId: AnyAdapterId =
@@ -453,8 +495,11 @@ export default function App() {
       scope,
       adapterId: selectedAdapterId,
       model: selectedModelName,
-      promptDomain: activePromptDomain,
+      promptDomain,
       promptStyle,
+      threadName,
+      threadMonth,
+      threadYear,
       systemInstruction: systemInstructionByScope[scope],
       cachedContext: scope === 'private' ? privateCachedContext : publicCachedContext,
       privateSystemInstruction: systemInstructionByScope.private,
@@ -736,13 +781,18 @@ export default function App() {
                   onClick={() => {
                     setIsSettingsOpen(false);
                     setIsPromptBuilderOpen(false);
+                    setIsReferenceContextOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isSettingsOpen || isPromptBuilderOpen
+                    isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen
                       ? 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                       : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
                   }`}
-                  aria-current={!isSettingsOpen && !isPromptBuilderOpen ? 'page' : undefined}
+                  aria-current={
+                    !isSettingsOpen && !isPromptBuilderOpen && !isReferenceContextOpen
+                      ? 'page'
+                      : undefined
+                  }
                 >
                   <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
                   <span className="truncate">Personal Assistant</span>
@@ -750,8 +800,26 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsPromptBuilderOpen(false);
+                    setIsReferenceContextOpen(true);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    isReferenceContextOpen
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                  }`}
+                  aria-current={isReferenceContextOpen ? 'page' : undefined}
+                >
+                  <BookOpen className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span className="truncate">Reference Context</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setIsSettingsOpen(true);
                     setIsPromptBuilderOpen(false);
+                    setIsReferenceContextOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isSettingsOpen
@@ -768,6 +836,7 @@ export default function App() {
                   onClick={() => {
                     setIsSettingsOpen(false);
                     setIsPromptBuilderOpen(true);
+                    setIsReferenceContextOpen(false);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isPromptBuilderOpen
@@ -789,6 +858,7 @@ export default function App() {
                 onClick={() => {
                   setIsSettingsOpen(true);
                   setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen(false);
                 }}
                 title="View account profile in Settings"
                 className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left"
@@ -880,7 +950,9 @@ export default function App() {
                 ? 'Settings'
                 : isPromptBuilderOpen
                   ? 'Prompt Builder'
-                  : 'Personal Assistant'}
+                  : isReferenceContextOpen
+                    ? 'Reference Context'
+                    : 'Personal Assistant'}
             </span>
           </div>
 
@@ -1068,6 +1140,15 @@ export default function App() {
                 }))
               }
             />
+          ) : isReferenceContextOpen ? (
+            <ReferenceContextPage
+              scope={scope}
+              onChangeScope={setScope}
+              settings={settings}
+              turns={turns}
+              onSaveReferenceContext={handleSaveReferenceContext}
+              onContextLog={pushContextLog}
+            />
           ) : (
             <WorkbenchPage
               scope={scope}
@@ -1087,7 +1168,8 @@ export default function App() {
               }
               isSending={isSending}
               speech={speech}
-              onSendMessage={(text, inputMode) => void handleSendMessage(text, inputMode)}
+              onSendMessage={(payload) => void handleSendMessage(payload)}
+              onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
               onRefreshModel={handleRefreshPrivateModel}
               onClearConversation={() => {
                 setTurns([]);
@@ -1108,11 +1190,18 @@ export default function App() {
                 );
                 pushContextLog('info', 'Conversation thread deleted from session');
               }}
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => {
+                setIsReferenceContextOpen(false);
+                setIsPromptBuilderOpen(false);
+                setIsSettingsOpen(true);
+              }}
             />
           )}
 
-          {!isSettingsOpen && !isPromptBuilderOpen && isContextRailVisible && (
+          {!isSettingsOpen &&
+            !isPromptBuilderOpen &&
+            !isReferenceContextOpen &&
+            isContextRailVisible && (
             <>
               {/* Right Rail Drag Splitter */}
               <div

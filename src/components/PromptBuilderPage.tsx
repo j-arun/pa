@@ -20,26 +20,26 @@ const DOMAIN_OPTIONS: Array<{
 }> = [
   {
     id: 'astrology',
-    label: 'Career & Profession',
-    description: 'Astrological readings, charts, and timing',
+    label: 'Career',
+    description: 'Career trajectory, profession, and timing',
     icon: Sparkles,
   },
   {
     id: 'health',
-    label: 'Health & Vitality',
-    description: 'Health information and wellness questions',
+    label: 'Health',
+    description: 'Health information, vitality, and wellness questions',
     icon: HeartPulse,
   },
   {
     id: 'finance',
-    label: 'Family & Domestic Life',
-    description: 'Financial planning and analysis',
+    label: 'Family',
+    description: 'Family, domestic life, and financial planning',
     icon: Landmark,
   },
   {
     id: 'general',
-    label: 'Love & Relationships',
-    description: 'Everyday questions and tasks',
+    label: 'Love',
+    description: 'Love, relationships, and everyday guidance',
     icon: Brain,
   },
 ];
