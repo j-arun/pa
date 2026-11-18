@@ -110,9 +110,12 @@ public sealed class ConversationTurn
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.Now;
     public string InputMode { get; set; } = "Typed";
     public ConversationScope Scope { get; set; } = ConversationScope.Private;
+    public string? ExchangeId { get; set; }
+    public List<ConversationScope> ResponseScopes { get; set; } = [];
     public string AdapterId { get; set; } = "ollama";
     public string Model { get; set; } = string.Empty;
     public long? DurationMs { get; set; }
+    public double? TokensPerSecond { get; set; }
     public int? PromptTokenCount { get; set; }
     public bool PromptTokenCountIsEstimate { get; set; }
     public int? ReferenceTokenEstimate { get; set; }
@@ -164,6 +167,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     private int? _contextWindowTokenCount;
     private bool _isReplyError;
     private bool _isWaitingReply;
+    private bool _isDualResponse;
     private bool _isQuestionExpanded = true;
     private bool _isReplyExpanded = true;
     private AppThemeMode _themeMode = AppThemeMode.ArcticSky;
@@ -174,6 +178,8 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     public string QuestionContent { get; init; } = string.Empty;
     public DateTimeOffset QuestionTimestamp { get; init; } = DateTimeOffset.Now;
     public ConversationScope Scope { get; init; } = ConversationScope.Private;
+    public ConversationResponse PrivateResponse { get; } = new(ConversationScope.Private);
+    public ConversationResponse PublicResponse { get; } = new(ConversationScope.Public);
 
     public string QuestionHeaderLabel => $"U · {QuestionTimestamp:t}";
 
@@ -209,6 +215,20 @@ public sealed class ConversationExchange : INotifyPropertyChanged
             NotifyAllReplyProperties();
         }
     }
+
+    public bool IsDualResponse
+    {
+        get => _isDualResponse;
+        private set
+        {
+            if (_isDualResponse == value) return;
+            _isDualResponse = value;
+            NotifyAllReplyProperties();
+        }
+    }
+
+    public Visibility DualResponseVisibility =>
+        IsDualResponse ? Visibility.Visible : Visibility.Collapsed;
 
     public string ReplyHeaderLabel
     {
@@ -266,7 +286,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
     }
 
     public Visibility WaitingVisibility =>
-        IsWaitingReply ? Visibility.Visible : Visibility.Collapsed;
+        IsWaitingReply && !IsDualResponse ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility QuestionContentVisibility =>
         _isQuestionExpanded ? Visibility.Visible : Visibility.Collapsed;
@@ -297,7 +317,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         _isReplySpeaking ? "Mute Windows Speaker" : "Play response in Windows Speaker";
 
     public Visibility ReplyVisibility =>
-        !IsReplyError && !_isReplyCanceled && !string.IsNullOrWhiteSpace(ReplyContent)
+        !IsDualResponse && !IsReplyError && !_isReplyCanceled && !string.IsNullOrWhiteSpace(ReplyContent)
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -379,6 +399,37 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplySpeakerToolTip)));
     }
 
+    public void InitializeDualResponse(string privateModel, string publicModel)
+    {
+        IsDualResponse = true;
+        IsWaitingReply = true;
+        PrivateResponse.SetPending(privateModel);
+        PublicResponse.SetPending(publicModel);
+    }
+
+    public void SetDualResponse(ConversationTurn turn)
+    {
+        IsDualResponse = true;
+        var response = turn.Scope == ConversationScope.Private
+            ? PrivateResponse
+            : PublicResponse;
+        response.SetTurn(turn);
+        IsWaitingReply = PrivateResponse.IsWaiting || PublicResponse.IsWaiting;
+    }
+
+    public void MarkDualResponseInterrupted()
+    {
+        if (PrivateResponse.IsWaiting)
+        {
+            PrivateResponse.SetUnavailable();
+        }
+        if (PublicResponse.IsWaiting)
+        {
+            PublicResponse.SetUnavailable();
+        }
+        IsWaitingReply = false;
+    }
+
     public void SetReply(
         string content,
         DateTimeOffset timestamp,
@@ -430,6 +481,7 @@ public sealed class ConversationExchange : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DividerVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ReplyVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DualResponseVisibility)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorVisibility)));
     }
 
@@ -442,6 +494,142 @@ public sealed class ConversationExchange : INotifyPropertyChanged
 
     private static string FormatTokenCount(int count, bool isEstimate) =>
         $"{(isEstimate ? "~" : string.Empty)}{count:N0}";
+}
+
+public sealed class ConversationResponse : INotifyPropertyChanged
+{
+    private string _content = string.Empty;
+    private string _headerLabel = string.Empty;
+    private string _metricsText = string.Empty;
+    private string _errorText = string.Empty;
+    private string _turnId = string.Empty;
+    private bool _isWaiting;
+    private bool _hasResponse;
+    private bool _isError;
+    private bool _isSpeaking;
+
+    public ConversationScope Scope { get; }
+    public string Content => _content;
+    public string HeaderLabel => _headerLabel;
+    public string MetricsText => _metricsText;
+    public string ErrorText => _errorText;
+    public string TurnId => _turnId;
+    public bool IsWaiting => _isWaiting;
+
+    public Visibility WaitingVisibility =>
+        _isWaiting ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility ContentVisibility =>
+        _hasResponse && !_isError ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility ErrorVisibility =>
+        _hasResponse && _isError ? Visibility.Visible : Visibility.Collapsed;
+
+    public string SpeakerGlyph => _isSpeaking ? "\uE74F" : "\uE767";
+    public string SpeakerButtonText => _isSpeaking ? "Mute" : "Play";
+    public string SpeakerToolTip =>
+        _isSpeaking ? "Mute Windows Speaker" : "Play response in Windows Speaker";
+
+    public ConversationResponse(ConversationScope scope)
+    {
+        Scope = scope;
+        _headerLabel = scope == ConversationScope.Private ? "Private · Ollama" : "Public";
+    }
+
+    public void SetPending(string model)
+    {
+        _isWaiting = true;
+        _hasResponse = false;
+        _isError = false;
+        _headerLabel = $"{GetScopeLabel()} · {model}";
+        _content = string.Empty;
+        _errorText = string.Empty;
+        _turnId = string.Empty;
+        _metricsText = string.Empty;
+        NotifyAll();
+    }
+
+    public void SetTurn(ConversationTurn turn)
+    {
+        _isWaiting = false;
+        _hasResponse = true;
+        _isError = turn.IsError || turn.IsCanceled;
+        _content = turn.Content;
+        _errorText = turn.Content;
+        _turnId = turn.Id;
+        var provider = Scope == ConversationScope.Private
+            ? "Ollama"
+            : turn.AdapterId switch
+            {
+                "claude" => "Claude",
+                "fable" => "Fable",
+                _ => "Gemini"
+            };
+        var status = turn.IsError ? " · Error" : turn.IsCanceled ? " · Stopped" : string.Empty;
+        _headerLabel = $"{GetScopeLabel()} · {provider} · {turn.Model}{status} · {turn.Timestamp:t}";
+        _metricsText = FormatMetrics(turn);
+        NotifyAll();
+    }
+
+    public void SetUnavailable()
+    {
+        _isWaiting = false;
+        _hasResponse = true;
+        _isError = true;
+        _content = string.Empty;
+        _errorText = "No response was saved before the session ended.";
+        _turnId = string.Empty;
+        NotifyAll();
+    }
+
+    public void SetSpeaking(bool isSpeaking)
+    {
+        if (_isSpeaking == isSpeaking) return;
+        _isSpeaking = isSpeaking;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakerGlyph)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakerButtonText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SpeakerToolTip)));
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private string GetScopeLabel() =>
+        Scope == ConversationScope.Private ? "Private" : "Public";
+
+    private static string FormatMetrics(ConversationTurn turn)
+    {
+        var parts = new List<string>();
+        if (turn.DurationMs.HasValue)
+        {
+            parts.Add($"{turn.DurationMs.Value / 1000d:0.00}s");
+        }
+        if (turn.PromptTokenCount.HasValue)
+        {
+            parts.Add($"{(turn.PromptTokenCountIsEstimate ? "~" : string.Empty)}{turn.PromptTokenCount.Value:N0} prompt");
+        }
+        if (turn.ResponseTokenCount.HasValue)
+        {
+            parts.Add($"{(turn.ResponseTokenCountIsEstimate ? "~" : string.Empty)}{turn.ResponseTokenCount.Value:N0} response");
+        }
+        if (turn.TokensPerSecond.HasValue)
+        {
+            parts.Add($"{turn.TokensPerSecond.Value:0.0} tok/s");
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private void NotifyAll()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Content)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HeaderLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MetricsText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorText)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TurnId)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsWaiting)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WaitingVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ContentVisibility)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorVisibility)));
+    }
 }
 
 public sealed class OllamaModelInfo

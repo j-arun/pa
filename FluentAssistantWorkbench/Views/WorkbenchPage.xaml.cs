@@ -56,7 +56,7 @@ public sealed partial class WorkbenchPage : Page
         bool isPrivate = App.Coordinator.Config.EffectiveScope == ConversationScope.Private;
         EmptySubtitleText.Text = isPrivate
             ? "Private mode · Type a prompt for your local Ollama model."
-            : $"Public mode · Type a prompt for {GetPublicAdapterLabel(App.Coordinator.Config)}.";
+            : $"Public mode · Compare local Ollama with {GetPublicAdapterLabel(App.Coordinator.Config)}. Both responses appear side by side.";
     }
 
     private static string GetPublicAdapterLabel(WorkbenchConfig config)
@@ -139,24 +139,34 @@ public sealed partial class WorkbenchPage : Page
         foreach (var exchange in App.Coordinator.Exchanges)
         {
             exchange.SetReplySpeaking(activeTurnId == exchange.Id);
+            exchange.PrivateResponse.SetSpeaking(activeTurnId == exchange.PrivateResponse.TurnId);
+            exchange.PublicResponse.SetSpeaking(activeTurnId == exchange.PublicResponse.TurnId);
         }
     }
 
     private async void SpeakTurnButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { DataContext: ConversationExchange exchange }) return;
+        if (sender is not Button button) return;
+        var (turnId, content) = button.DataContext switch
+        {
+            ConversationExchange exchange => (exchange.Id, exchange.ReplyContent),
+            ConversationResponse response when !string.IsNullOrWhiteSpace(response.TurnId) =>
+                (response.TurnId, response.Content),
+            _ => (string.Empty, string.Empty)
+        };
+        if (string.IsNullOrWhiteSpace(turnId) || string.IsNullOrWhiteSpace(content)) return;
 
         var speech = App.Coordinator.Speech;
-        if (speech.IsSpeaking && speech.CurrentTurnId == exchange.Id)
+        if (speech.IsSpeaking && speech.CurrentTurnId == turnId)
         {
             speech.StopSpeaking();
             return;
         }
 
         await speech.SpeakAsync(
-            exchange.ReplyContent,
+            content,
             App.Coordinator.Config.Voice.SelectedVoiceId,
-            exchange.Id);
+            turnId);
     }
 
     public async Task SaveConversationPdfAsync()

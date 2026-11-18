@@ -8,6 +8,8 @@ export type GeminiThinkingPreset = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface ConversationTurn {
   id: string;
+  exchangeId?: string;
+  responseScopes?: ConversationScope[];
   role: 'user' | 'assistant' | 'error';
   content: string;
   timestamp: string;
@@ -17,6 +19,9 @@ export interface ConversationTurn {
   model: string;
   durationMs?: number;
   tokenCount?: number;
+  inputTokenCount?: number;
+  outputTokenCount?: number;
+  tokensPerSecond?: number;
   adapterProtocol?: string;
 }
 

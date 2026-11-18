@@ -39,7 +39,7 @@ const STARTER_PROMPTS: Record<ConversationScope, string[]> = {
 interface ConversationExchange {
   id: string;
   questionTurn: ConversationTurn | null;
-  replyTurn: ConversationTurn | null;
+  replyTurns: ConversationTurn[];
 }
 
 interface WorkbenchPageProps {
@@ -117,6 +117,135 @@ function ScopeArtwork({
   );
 }
 
+function ConversationReplyCard({
+  replyTurn,
+  copiedId,
+  speech,
+  onCopy,
+  onOpenSettings,
+  formatTime,
+}: {
+  replyTurn: ConversationTurn;
+  copiedId: string | null;
+  speech: UseSpeechIOResult;
+  onCopy: (turn: ConversationTurn) => void;
+  onOpenSettings: () => void;
+  formatTime: (iso: string) => string;
+}) {
+  const isSpeaking = speech.speakingTurnId === replyTurn.id;
+  const providerLabel =
+    replyTurn.scope === 'private'
+      ? 'Private · Ollama'
+      : `Public · ${replyTurn.adapterId === 'claude' ? 'Claude' : replyTurn.adapterId === 'fable' ? 'Fable' : 'Gemini'}`;
+  const metrics = [
+    replyTurn.durationMs !== undefined
+      ? `${(replyTurn.durationMs / 1000).toFixed(2)}s`
+      : null,
+    replyTurn.tokenCount !== undefined ? `${replyTurn.tokenCount} tokens` : null,
+    replyTurn.inputTokenCount !== undefined || replyTurn.outputTokenCount !== undefined
+      ? `in ${replyTurn.inputTokenCount ?? '—'} / out ${replyTurn.outputTokenCount ?? '—'}`
+      : null,
+    replyTurn.tokensPerSecond !== undefined
+      ? `${replyTurn.tokensPerSecond.toFixed(1)} tok/s`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  if (replyTurn.role === 'error') {
+    return (
+      <div className="min-w-0 rounded-2xl bg-red-50/80 dark:bg-red-950/35 border border-red-200/80 dark:border-red-900/60 px-4 py-3 text-red-800 dark:text-red-200">
+        <div className="flex items-center justify-between gap-2 text-xs font-semibold mb-1 tabular-nums">
+          <span>
+            {providerLabel} · Error · {formatTime(replyTurn.timestamp)}
+          </span>
+          {replyTurn.durationMs !== undefined && (
+            <span>{(replyTurn.durationMs / 1000).toFixed(2)}s</span>
+          )}
+        </div>
+        <p className="text-sm leading-relaxed break-words">{replyTurn.content}</p>
+        {replyTurn.scope === 'private' && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
+          >
+            <SettingsIcon className="w-3.5 h-3.5" />
+            <span>Configure in Settings</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="min-w-0 rounded-2xl px-4 py-3.5 border-l-4"
+      style={{
+        backgroundColor: 'var(--pa-a-bg)',
+        borderLeftColor: 'var(--pa-a-accent)',
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 mb-2">
+        <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'var(--pa-a-accent)' }}>
+          {providerLabel} · {replyTurn.model} · {formatTime(replyTurn.timestamp)}
+        </div>
+        {metrics && (
+          <div className="text-[10px] text-slate-500 dark:text-slate-400">{metrics}</div>
+        )}
+      </div>
+      <div className="text-sm leading-relaxed break-words">
+        <MessageContent text={replyTurn.content} />
+      </div>
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        {speech.speechSynthesisSupported && (
+          <button
+            type="button"
+            aria-label={isSpeaking ? 'Mute response playback' : 'Play response'}
+            title={isSpeaking ? 'Mute response playback' : 'Play response'}
+            onClick={() => speech.speakText(replyTurn.id, replyTurn.content)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+              isSpeaking
+                ? 'text-white'
+                : 'bg-white/80 dark:bg-slate-800/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
+            }`}
+            style={isSpeaking ? { backgroundColor: 'var(--pa-a-accent)' } : undefined}
+          >
+            {isSpeaking ? (
+              <>
+                <VolumeX className="w-3.5 h-3.5" />
+                <span>Mute Speaker</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Play in Speaker</span>
+              </>
+            )}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onCopy(replyTurn)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/75 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+        >
+          {copiedId === replyTurn.id ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function WorkbenchPage({
   scope,
   settings,
@@ -139,19 +268,32 @@ export function WorkbenchPage({
 
   const exchanges = useMemo<ConversationExchange[]>(() => {
     const grouped: ConversationExchange[] = [];
+    const exchangeById = new Map<string, ConversationExchange>();
     let current: ConversationExchange | null = null;
 
     for (const turn of turns) {
-      if (turn.role === 'user' || !current) {
+      if (turn.role === 'user') {
         current = {
           id: turn.id,
-          questionTurn: turn.role === 'user' ? turn : null,
-          replyTurn: turn.role === 'user' ? null : turn,
+          questionTurn: turn,
+          replyTurns: [],
         };
         grouped.push(current);
+        exchangeById.set(turn.id, current);
       } else {
-        current.replyTurn = turn;
-        current = null;
+        const exchange = turn.exchangeId
+          ? exchangeById.get(turn.exchangeId)
+          : current;
+        if (exchange) {
+          exchange.replyTurns.push(turn);
+          if (!turn.exchangeId) current = null;
+        } else {
+          grouped.push({
+            id: turn.exchangeId || turn.id,
+            questionTurn: null,
+            replyTurns: [turn],
+          });
+        }
       }
     }
 
@@ -238,13 +380,13 @@ export function WorkbenchPage({
                 <p className="mt-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
                   {scope === 'private'
                     ? 'Private mode · Your prompt stays with your local Ollama model. Type below to begin.'
-                    : `Public mode · Your prompt goes to ${
+                    : `Public mode · Compare local Ollama with ${
                         settings.publicLlm.activeAdapter === 'gemini'
                           ? 'Gemini'
                           : settings.publicLlm.activeAdapter === 'claude'
                             ? 'Claude'
                             : 'Fable'
-                      } through the cloud. Type below to begin.`}
+                      } through the cloud. Both responses appear side by side.`}
                 </p>
 
                 <div className="mt-5 flex justify-center">
@@ -276,10 +418,21 @@ export function WorkbenchPage({
           ) : (
             exchanges.map((ex, idx) => {
               const isLast = idx === exchanges.length - 1;
-              const showWaiting = isSending && isLast && !ex.replyTurn;
-              const replyTurn = ex.replyTurn;
-              const isSpeakingThisTurn =
-                replyTurn !== null && speech.speakingTurnId === replyTurn.id;
+              const expectedScopes =
+                ex.questionTurn?.responseScopes ??
+                [ex.questionTurn?.scope ?? ex.replyTurns[0]?.scope ?? 'public'];
+              const orderedReplies = [...ex.replyTurns].sort(
+                (left, right) =>
+                  expectedScopes.indexOf(left.scope) - expectedScopes.indexOf(right.scope),
+              );
+              const pendingScopes =
+                isSending && isLast
+                  ? expectedScopes.filter(
+                      (targetScope) =>
+                        !orderedReplies.some((turn) => turn.scope === targetScope),
+                    )
+                  : [];
+              const isDualResponse = expectedScopes.length > 1;
 
               return (
                 <motion.div
@@ -314,117 +467,36 @@ export function WorkbenchPage({
                       </div>
                     )}
 
-                    {/* In-Bubble Working / Thinking Indicator */}
-                    {showWaiting && (
-                      <div className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-300 px-3 py-1.5">
-                        <Hourglass
-                          className="w-4 h-4 animate-spin shrink-0"
-                          style={{ color: 'var(--pa-a-accent)' }}
+                    <div className={isDualResponse ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'space-y-3'}>
+                      {orderedReplies.map((replyTurn) => (
+                        <ConversationReplyCard
+                          key={replyTurn.id}
+                          replyTurn={replyTurn}
+                          copiedId={copiedId}
+                          speech={speech}
+                          onCopy={(turn) => handleCopy(turn.id, turn.content)}
+                          onOpenSettings={onOpenSettings}
+                          formatTime={formatTime}
                         />
-                        <span>Thinking...</span>
-                      </div>
-                    )}
-
-                    {/* Error Notice inside the Same Bubble */}
-                    {replyTurn && replyTurn.role === 'error' && (
-                      <div className="rounded-2xl bg-red-50/80 dark:bg-red-950/35 border border-red-200/80 dark:border-red-900/60 px-4 py-3 text-red-800 dark:text-red-200">
-                        <div className="flex items-center gap-2 text-xs font-semibold mb-1 tabular-nums">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Error · {formatTime(replyTurn.timestamp)}</span>
-                        </div>
-                        <p className="text-sm leading-relaxed">{replyTurn.content}</p>
-                        <button
-                          type="button"
-                          onClick={onOpenSettings}
-                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
-                        >
-                          <SettingsIcon className="w-3.5 h-3.5" />
-                          <span>Configure in Settings</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Assistant Answer Section (Theme Answer Color Code) */}
-                    {replyTurn && replyTurn.role === 'assistant' && (
-                      <div
-                        className="rounded-2xl px-4 py-3.5 border-l-4"
-                        style={{
-                          backgroundColor: 'var(--pa-a-bg)',
-                          borderLeftColor: 'var(--pa-a-accent)',
-                        }}
-                      >
+                      ))}
+                      {pendingScopes.map((targetScope) => (
                         <div
-                          className="text-[11px] font-semibold mb-1.5 tabular-nums"
-                          style={{ color: 'var(--pa-a-accent)' }}
+                          key={`pending-${ex.id}-${targetScope}`}
+                          role="status"
+                          className="min-w-0 rounded-2xl border border-slate-200/80 dark:border-slate-700/70 bg-white/60 dark:bg-slate-900/50 px-4 py-3.5"
                         >
-                          {replyTurn.scope === 'private' ? 'Private' : 'Public'} ·{' '}
-                          {formatTime(replyTurn.timestamp)}
+                          <div className="text-[11px] font-semibold mb-2 text-slate-600 dark:text-slate-300">
+                            {targetScope === 'private'
+                              ? `Private · Ollama · ${settings.privateLlm.selectedModel || 'No model selected'}`
+                              : `Public · ${settings.publicLlm.activeAdapter}`}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                            <Hourglass className="w-4 h-4 animate-spin shrink-0" />
+                            <span>Waiting for response...</span>
+                          </div>
                         </div>
-
-                        <MessageContent text={replyTurn.content} />
-
-                        <div className="mt-3 flex items-center gap-2 flex-wrap">
-                          {speech.speechSynthesisSupported && (
-                            <button
-                              type="button"
-                              aria-label={
-                                isSpeakingThisTurn
-                                  ? 'Mute response playback'
-                                  : 'Play response in Windows Speaker'
-                              }
-                              title={
-                                isSpeakingThisTurn
-                                  ? 'Mute response playback'
-                                  : 'Play response in Windows Speaker'
-                              }
-                              onClick={() =>
-                                speech.speakText(replyTurn.id, replyTurn.content)
-                              }
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                                isSpeakingThisTurn
-                                  ? 'text-white'
-                                  : 'bg-white/80 dark:bg-slate-800/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
-                              }`}
-                              style={
-                                isSpeakingThisTurn
-                                  ? { backgroundColor: 'var(--pa-a-accent)' }
-                                  : undefined
-                              }
-                            >
-                              {isSpeakingThisTurn ? (
-                                <>
-                                  <VolumeX className="w-3.5 h-3.5" />
-                                  <span>Mute Speaker</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Volume2 className="w-3.5 h-3.5" />
-                                  <span>Play in Windows Speaker</span>
-                                </>
-                              )}
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(replyTurn.id, replyTurn.content)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/75 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-                          >
-                            {copiedId === replyTurn.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                <span>Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copy</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 </motion.div>
               );

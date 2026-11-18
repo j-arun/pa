@@ -34,64 +34,84 @@ public sealed class WorkbenchCoordinator
     private void RebuildExchangesFromTurns()
     {
         Exchanges.Clear();
+        var exchangeById = new Dictionary<string, ConversationExchange>();
         ConversationExchange? current = null;
 
         foreach (var turn in Turns)
         {
-            if (turn.IsUser || current is null)
+            if (turn.IsUser)
             {
                 current = new ConversationExchange
                 {
                     Id = turn.Id,
-                    QuestionContent = turn.IsUser ? turn.Content : string.Empty,
+                    QuestionContent = turn.Content,
                     QuestionTimestamp = turn.Timestamp,
                     Scope = turn.Scope
                 };
                 current.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
-                if (turn.IsCanceled)
+                if (turn.ResponseScopes.Distinct().Count() > 1)
                 {
-                    current.SetCanceled(turn.Timestamp, turn.DurationMs);
-                }
-                else if (!turn.IsUser)
-                {
-                    current.SetReply(
-                        turn.Content,
-                        turn.Timestamp,
-                        turn.IsError,
-                        responseDurationMs: turn.DurationMs,
-                        promptTokenCount: turn.PromptTokenCount,
-                        promptTokenCountIsEstimate: turn.PromptTokenCountIsEstimate,
-                        referenceTokenEstimate: turn.ReferenceTokenEstimate,
-                        responseTokenCount: turn.ResponseTokenCount,
-                        responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
-                        contextWindowTokenCount: turn.ContextWindowTokenCount);
+                    current.InitializeDualResponse(Config.PrivateLlm.SelectedModel, GetPublicModel());
                 }
                 Exchanges.Add(current);
+                exchangeById[turn.Id] = current;
+                continue;
+            }
+
+            var exchange = !string.IsNullOrWhiteSpace(turn.ExchangeId)
+                && exchangeById.TryGetValue(turn.ExchangeId, out var savedExchange)
+                    ? savedExchange
+                    : current;
+            if (exchange is null)
+            {
+                exchange = new ConversationExchange
+                {
+                    Id = turn.Id,
+                    QuestionContent = string.Empty,
+                    QuestionTimestamp = turn.Timestamp,
+                    Scope = turn.Scope
+                };
+                exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
+                Exchanges.Add(exchange);
+            }
+
+            if (exchange.IsDualResponse)
+            {
+                exchange.SetDualResponse(turn);
+            }
+            else if (turn.IsCanceled)
+            {
+                exchange.SetCanceled(turn.Timestamp, turn.DurationMs);
             }
             else
             {
-                if (turn.IsCanceled)
-                {
-                    current.SetCanceled(turn.Timestamp, turn.DurationMs);
-                }
-                else
-                {
-                    current.SetReply(
-                        turn.Content,
-                        turn.Timestamp,
-                        turn.IsError,
-                        responseDurationMs: turn.DurationMs,
-                        promptTokenCount: turn.PromptTokenCount,
-                        promptTokenCountIsEstimate: turn.PromptTokenCountIsEstimate,
-                        referenceTokenEstimate: turn.ReferenceTokenEstimate,
-                        responseTokenCount: turn.ResponseTokenCount,
-                        responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
-                        contextWindowTokenCount: turn.ContextWindowTokenCount);
-                }
-                current = null;
+                exchange.SetReply(
+                    turn.Content,
+                    turn.Timestamp,
+                    turn.IsError,
+                    responseDurationMs: turn.DurationMs,
+                    promptTokenCount: turn.PromptTokenCount,
+                    promptTokenCountIsEstimate: turn.PromptTokenCountIsEstimate,
+                    referenceTokenEstimate: turn.ReferenceTokenEstimate,
+                    responseTokenCount: turn.ResponseTokenCount,
+                    responseTokenCountIsEstimate: turn.ResponseTokenCountIsEstimate,
+                    contextWindowTokenCount: turn.ContextWindowTokenCount);
             }
+            if (string.IsNullOrWhiteSpace(turn.ExchangeId)) current = null;
+        }
+
+        foreach (var exchange in Exchanges.Where(exchange => exchange.IsDualResponse && exchange.IsWaitingReply))
+        {
+            exchange.MarkDualResponseInterrupted();
         }
     }
+
+    private string GetPublicModel() => Config.PublicLlm.ActiveAdapter switch
+    {
+        "claude" => Config.PublicLlm.Claude.Model,
+        "fable" => Config.PublicLlm.Fable.Model,
+        _ => Config.PublicLlm.Gemini.Model
+    };
 
     public void RefreshExchangesAppearance()
     {
@@ -223,6 +243,11 @@ public sealed class WorkbenchCoordinator
         string inputMode,
         CancellationToken ct = default)
     {
+        if (Config.EffectiveScope == ConversationScope.Public)
+        {
+            return await SendDualMessageAsync(message, inputMode, ct);
+        }
+
         var activeScope = Config.EffectiveScope;
         var adapter = Adapters.Resolve(Config);
         var model = activeScope == ConversationScope.Private
@@ -241,6 +266,7 @@ public sealed class WorkbenchCoordinator
             Content = trimmedMessage,
             InputMode = inputMode,
             Scope = activeScope,
+            ResponseScopes = [activeScope],
             AdapterId = adapter.AdapterId,
             Model = model
         };
@@ -322,6 +348,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "assistant",
                 Content = reply.Text,
+                ExchangeId = userTurn.Id,
                 Scope = reply.Scope,
                 AdapterId = reply.AdapterId,
                 Model = reply.Model,
@@ -401,6 +428,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "canceled",
                 Content = "Response stopped by user.",
+                ExchangeId = userTurn.Id,
                 Scope = activeScope,
                 AdapterId = adapter.AdapterId,
                 Model = model,
@@ -426,6 +454,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "error",
                 Content = errMsg,
+                ExchangeId = userTurn.Id,
                 Scope = activeScope,
                 AdapterId = adapter.AdapterId,
                 Model = model
@@ -453,6 +482,7 @@ public sealed class WorkbenchCoordinator
             {
                 Role = "error",
                 Content = ex.Message,
+                ExchangeId = userTurn.Id,
                 Scope = activeScope,
                 AdapterId = adapter.AdapterId,
                 Model = model
@@ -483,6 +513,268 @@ public sealed class WorkbenchCoordinator
             return errTurn;
         }
     }
+
+    private async Task<ConversationTurn> SendDualMessageAsync(
+        string message,
+        string inputMode,
+        CancellationToken ct)
+    {
+        var trimmedMessage = message.Trim();
+        var privateAdapter = Adapters.Ollama;
+        var publicAdapter = Adapters.Resolve(Config);
+        var privateModel = Config.PrivateLlm.SelectedModel;
+        var publicModel = GetPublicModel();
+        var responseScopes = new List<ConversationScope>
+        {
+            ConversationScope.Private,
+            ConversationScope.Public
+        };
+        var userTurn = new ConversationTurn
+        {
+            Role = "user",
+            Content = trimmedMessage,
+            InputMode = inputMode,
+            Scope = ConversationScope.Public,
+            ResponseScopes = responseScopes,
+            AdapterId = publicAdapter.AdapterId,
+            Model = publicModel
+        };
+        var exchange = new ConversationExchange
+        {
+            Id = userTurn.Id,
+            QuestionContent = trimmedMessage,
+            QuestionTimestamp = userTurn.Timestamp,
+            Scope = ConversationScope.Public
+        };
+        exchange.InitializeDualResponse(privateModel, publicModel);
+        exchange.ApplyAppearance(Config.Theme, Config.FontFamily, Config.ChatFontSize);
+
+        var priorTurns = Turns.ToList();
+        var maxHistory = Math.Clamp(Config.PrivateLlm.MaxHistoryTurns, 2, 32);
+        var historyForScope = (ConversationScope targetScope) => priorTurns
+            .Where(turn => turn.IsUser
+                ? (turn.ResponseScopes.Count == 0
+                    ? turn.Scope == targetScope
+                    : turn.ResponseScopes.Contains(targetScope))
+                : turn.IsAssistant && turn.Scope == targetScope)
+            .TakeLast(maxHistory)
+            .Select(turn => (turn.Role, turn.Content))
+            .ToList();
+        var privateHistory = historyForScope(ConversationScope.Private);
+        var publicHistory = historyForScope(ConversationScope.Public);
+        var privateContext = GetContextCacheText(ConversationScope.Private);
+        var publicContext = GetContextCacheText(ConversationScope.Public);
+        var privateInstruction = AppendCachedContext(
+            GetBaseSystemInstruction(ConversationScope.Private),
+            privateContext);
+        var publicInstruction = AppendCachedContext(
+            GetBaseSystemInstruction(ConversationScope.Public),
+            publicContext);
+        var privatePromptTokens = TokenEstimate.Count(string.Join(
+            "\n",
+            new[] { privateInstruction }
+                .Concat(privateHistory.Select(turn => turn.Content))
+                .Append(trimmedMessage)));
+        var publicPromptTokens = TokenEstimate.Count(string.Join(
+            "\n",
+            new[] { publicInstruction }
+                .Concat(publicHistory.Select(turn => turn.Content))
+                .Append(trimmedMessage)));
+        var privateReferenceTokens = TokenEstimate.Count(privateContext);
+        var publicReferenceTokens = TokenEstimate.Count(publicContext);
+
+        Turns.Add(userTurn);
+        Exchanges.Add(exchange);
+        ConfigStore.SaveHistory(Turns);
+
+        Telemetry.Phase = "Thinking";
+        Telemetry.IsThinking = true;
+        Telemetry.ThinkingStartedAt = DateTimeOffset.UtcNow;
+        Telemetry.PromptChars = trimmedMessage.Length;
+        Telemetry.HistoryTurnsUsed = Math.Max(privateHistory.Count, publicHistory.Count);
+        Telemetry.LastError = string.Empty;
+        Telemetry.InputTokens = null;
+        Telemetry.OutputTokens = null;
+        Telemetry.TokensPerSecond = null;
+        Telemetry.DurationMs = null;
+
+        var timeoutSec = Config.RequestTimeoutSeconds;
+        var timeoutLabel = timeoutSec > 0 ? $"{timeoutSec}s" : "Unlimited";
+        AddContextLog(
+            "info",
+            $"Prompt sent to Private Ollama and Public {Config.PublicLlm.ActiveAdapter} · timeout: {timeoutLabel}");
+
+        using var timeoutCts = timeoutSec > 0
+            ? CancellationTokenSource.CreateLinkedTokenSource(ct)
+            : null;
+        timeoutCts?.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
+        var effectiveCt = timeoutCts?.Token ?? ct;
+        var requestStartedAt = DateTimeOffset.UtcNow;
+
+        async Task<ConversationTurn> RequestOneAsync(
+            ConversationScope targetScope,
+            ILlmAdapter adapter,
+            string targetModel,
+            List<(string Role, string Content)> history,
+            string systemInstruction,
+            int promptTokenCount,
+            int referenceTokenEstimate)
+        {
+            ConversationTurn result;
+            try
+            {
+                if (targetScope == ConversationScope.Private && string.IsNullOrWhiteSpace(targetModel))
+                {
+                    throw new InvalidOperationException(
+                        "Select a private Ollama model in Settings to get the Private response.");
+                }
+
+                var contextWindowTokenCount = targetScope == ConversationScope.Private
+                    && Config.PrivateLlm.ContextWindow > 0
+                        ? Config.PrivateLlm.ContextWindow
+                        : (int?)null;
+                var reply = await adapter.SendMessageAsync(
+                    new LlmChatRequest(trimmedMessage, history, Config, systemInstruction),
+                    effectiveCt);
+                result = new ConversationTurn
+                {
+                    Role = "assistant",
+                    Content = reply.Text,
+                    ExchangeId = userTurn.Id,
+                    Scope = targetScope,
+                    AdapterId = reply.AdapterId,
+                    Model = reply.Model,
+                    DurationMs = reply.DurationMs,
+                    TokensPerSecond = reply.TokensPerSecond,
+                    PromptTokenCount = reply.InputTokens ?? promptTokenCount,
+                    PromptTokenCountIsEstimate = !reply.InputTokens.HasValue,
+                    ReferenceTokenEstimate = referenceTokenEstimate,
+                    ResponseTokenCount = reply.OutputTokens ?? TokenEstimate.Count(reply.Text),
+                    ResponseTokenCountIsEstimate = !reply.OutputTokens.HasValue,
+                    ContextWindowTokenCount = contextWindowTokenCount
+                };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                result = new ConversationTurn
+                {
+                    Role = "canceled",
+                    Content = "Response stopped by user.",
+                    ExchangeId = userTurn.Id,
+                    Scope = targetScope,
+                    AdapterId = adapter.AdapterId,
+                    Model = targetModel
+                };
+            }
+            catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
+            {
+                result = new ConversationTurn
+                {
+                    Role = "error",
+                    Content = $"Configured query timeout of {timeoutSec}s elapsed.",
+                    ExchangeId = userTurn.Id,
+                    Scope = targetScope,
+                    AdapterId = adapter.AdapterId,
+                    Model = targetModel
+                };
+            }
+            catch (Exception ex)
+            {
+                result = new ConversationTurn
+                {
+                    Role = "error",
+                    Content = ex.Message,
+                    ExchangeId = userTurn.Id,
+                    Scope = targetScope,
+                    AdapterId = adapter.AdapterId,
+                    Model = targetModel
+                };
+            }
+
+            Turns.Add(result);
+            exchange.SetDualResponse(result);
+            ConfigStore.SaveHistory(Turns);
+            AddContextLog(
+                result.IsError ? "error" : result.IsCanceled ? "info" : "success",
+                $"{targetScope} response · {result.Model} · " +
+                (result.DurationMs.HasValue
+                    ? $"{result.DurationMs.Value / 1000d:0.00}s"
+                    : result.IsError ? result.Content : "complete"));
+            return result;
+        }
+
+        var privateTask = RequestOneAsync(
+            ConversationScope.Private,
+            privateAdapter,
+            privateModel,
+            privateHistory,
+            privateInstruction,
+            privatePromptTokens,
+            privateReferenceTokens);
+        var publicTask = RequestOneAsync(
+            ConversationScope.Public,
+            publicAdapter,
+            publicModel,
+            publicHistory,
+            publicInstruction,
+            publicPromptTokens,
+            publicReferenceTokens);
+        var responses = await Task.WhenAll(privateTask, publicTask);
+        var privateResponse = responses[0];
+        var publicResponse = responses[1];
+        var durationMs = (long)(DateTimeOffset.UtcNow - requestStartedAt).TotalMilliseconds;
+        var successfulResponses = responses.Where(turn => turn.IsAssistant).ToList();
+        var exactInputTokens = successfulResponses
+            .Where(turn => turn.PromptTokenCount.HasValue && !turn.PromptTokenCountIsEstimate)
+            .Sum(turn => turn.PromptTokenCount!.Value);
+        var exactOutputTokens = successfulResponses
+            .Where(turn => turn.ResponseTokenCount.HasValue && !turn.ResponseTokenCountIsEstimate)
+            .Sum(turn => turn.ResponseTokenCount!.Value);
+        Telemetry.Phase = responses.All(turn => !turn.IsError && !turn.IsCanceled) ? "Ready" : "Error";
+        Telemetry.IsThinking = false;
+        Telemetry.ThinkingStartedAt = null;
+        Telemetry.DurationMs = durationMs;
+        Telemetry.InputTokens = exactInputTokens > 0 ? exactInputTokens : null;
+        Telemetry.OutputTokens = exactOutputTokens > 0 ? exactOutputTokens : null;
+        Telemetry.TokensPerSecond = exactOutputTokens > 0 && durationMs > 0
+            ? exactOutputTokens / (durationMs / 1000d)
+            : null;
+        Telemetry.LastError = string.Join(
+            Environment.NewLine,
+            responses.Where(turn => turn.IsError).Select(turn => $"{turn.Scope}: {turn.Content}"));
+
+        var notificationResponse = publicResponse.IsError && privateResponse.IsAssistant
+            ? privateResponse
+            : publicResponse;
+        if (Config.Notifications.SoundOnReply)
+        {
+            NotificationSoundService.PlayReplyChime(
+                isError: responses.All(turn => turn.IsError || turn.IsCanceled));
+        }
+        ResponseArrived?.Invoke(this, new LlmResponseNotificationEventArgs(
+            Scope: notificationResponse.Scope,
+            PreviewText: notificationResponse.Content,
+            IsError: notificationResponse.IsError));
+
+        if (publicResponse.IsAssistant && Config.Voice.AutoSpeakPublic)
+        {
+            if (Config.Notifications.SoundOnReply)
+            {
+                await Task.Delay(220, ct);
+            }
+            await Speech.SpeakAsync(
+                publicResponse.Content,
+                Config.Voice.SelectedVoiceId,
+                publicResponse.Id);
+        }
+
+        return publicResponse;
+    }
+
+    private static string AppendCachedContext(string instruction, string cachedContext) =>
+        string.IsNullOrWhiteSpace(cachedContext)
+            ? instruction
+            : $"{instruction.Trim()}\n\n{cachedContext}";
 
     private string GetBaseSystemInstruction(ConversationScope scope)
     {

@@ -321,35 +321,45 @@ export default function App() {
   };
 
   const handleSendMessage = async (text: string, inputMode: 'text') => {
-    const adapterId: AnyAdapterId =
+    const responseScopes: ConversationScope[] =
+      scope === 'public' ? ['private', 'public'] : ['private'];
+    const selectedAdapterId: AnyAdapterId =
       scope === 'private'
         ? settings.privateLlm.activeAdapter
         : settings.publicLlm.activeAdapter;
 
-    const modelName =
+    const selectedModelName =
       scope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
 
     const userTurn: ConversationTurn = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      responseScopes,
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
       inputMode,
       scope,
-      adapterId,
-      model: modelName,
+      adapterId: selectedAdapterId,
+      model: selectedModelName,
     };
 
     const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
-    const historyPayload = turns
-      .filter((t) => t.role === 'user' || t.role === 'assistant')
-      .slice(-maxHistory)
+    const historyForScope = (targetScope: ConversationScope) =>
+      turns
+        .filter((turn) => {
+          if (turn.role === 'user') {
+            return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
+          }
+          return turn.role === 'assistant' && turn.scope === targetScope;
+        })
+        .slice(-maxHistory)
       .map((t) => ({
         role: t.role as 'user' | 'assistant',
         content: t.content,
       }));
+    const historyCounts = responseScopes.map((targetScope) => historyForScope(targetScope).length);
 
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
@@ -361,7 +371,7 @@ export default function App() {
       isThinking: true,
       startedAtMs: requestStartedAt,
       promptChars: text.trim().length,
-      historyTurnsUsed: historyPayload.length,
+      historyTurnsUsed: Math.max(...historyCounts),
       inputTokens: undefined,
       outputTokens: undefined,
       totalTokens: undefined,
@@ -374,16 +384,28 @@ export default function App() {
 
     pushContextLog(
       'info',
-      `Prompt sent (${text.trim().length} ch, ${historyPayload.length} hist) -> ${scope}:${adapterId}/${modelName} · timeout: ${timeoutLabel}`,
+      responseScopes.length === 2
+        ? `Prompt sent to Private Ollama and Public ${settings.publicLlm.activeAdapter} (${text.trim().length} ch) · timeout: ${timeoutLabel}`
+        : `Prompt sent (${text.trim().length} ch, ${historyCounts[0]} hist) -> ${scope}:${selectedAdapterId}/${selectedModelName} · timeout: ${timeoutLabel}`,
     );
 
     if (settings.notifications?.desktopNotificationOnReply !== false) {
       void requestDesktopNotificationPermission();
     }
 
-    try {
+    const requestOne = async (targetScope: ConversationScope): Promise<ConversationTurn> => {
+      const targetAdapterId: AnyAdapterId =
+        targetScope === 'private'
+          ? settings.privateLlm.activeAdapter
+          : settings.publicLlm.activeAdapter;
+      const targetModel =
+        targetScope === 'private'
+          ? settings.privateLlm.selectedModel || 'unselected'
+          : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+      const historyPayload = historyForScope(targetScope);
+      const requestStart = Date.now();
       const options =
-        scope === 'private'
+        targetScope === 'private'
           ? {
               model: settings.privateLlm.selectedModel,
               systemInstruction: settings.privateLlm.systemInstruction,
@@ -408,144 +430,162 @@ export default function App() {
               requestTimeoutSeconds: timeoutSec,
             };
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope,
-          adapterId,
-          message: text,
-          history: historyPayload,
-          options,
-        }),
-      });
+      try {
+        if (targetScope === 'private' && !settings.privateLlm.selectedModel.trim()) {
+          throw new Error('Select a private Ollama model in Settings to get the Private response.');
+        }
 
-      const payload = (await response.json()) as {
-        text?: string;
-        adapterId?: AnyAdapterId;
-        scope?: ConversationScope;
-        model?: string;
-        protocol?: string;
-        durationMs?: number;
-        tokenCount?: number;
-        inputTokens?: number;
-        outputTokens?: number;
-        tokensPerSecond?: number;
-        error?: string;
-      };
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: targetScope,
+            adapterId: targetAdapterId,
+            message: text,
+            history: historyPayload,
+            options,
+          }),
+        });
 
-      if (!response.ok || payload.error || !payload.text) {
-        throw new Error(payload.error || 'Adapter returned an error.');
+        const payload = (await response.json()) as {
+          text?: string;
+          adapterId?: AnyAdapterId;
+          scope?: ConversationScope;
+          model?: string;
+          protocol?: string;
+          durationMs?: number;
+          tokenCount?: number;
+          inputTokens?: number;
+          outputTokens?: number;
+          tokensPerSecond?: number;
+          error?: string;
+        };
+
+        if (!response.ok || payload.error || !payload.text) {
+          throw new Error(payload.error || 'Adapter returned an error.');
+        }
+
+        const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStart);
+        const inputTokens = payload.inputTokens;
+        const outputTokens = payload.outputTokens ?? payload.tokenCount;
+        const totalTokens =
+          inputTokens !== undefined && outputTokens !== undefined
+            ? inputTokens + outputTokens
+            : payload.tokenCount ?? outputTokens ?? inputTokens;
+        const tokensPerSecond =
+          payload.tokensPerSecond ??
+          (outputTokens !== undefined && elapsedMs > 0
+            ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
+            : undefined);
+        const assistantTurn: ConversationTurn = {
+          id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          exchangeId: userTurn.id,
+          role: 'assistant',
+          content: payload.text,
+          timestamp: new Date().toISOString(),
+          scope: payload.scope || targetScope,
+          adapterId: payload.adapterId || targetAdapterId,
+          model: payload.model || targetModel,
+          durationMs: elapsedMs,
+          tokenCount: totalTokens,
+          inputTokenCount: inputTokens,
+          outputTokenCount: outputTokens,
+          tokensPerSecond,
+          adapterProtocol: payload.protocol,
+        };
+
+        setTurns((prev) => [...prev, assistantTurn]);
+        pushContextLog(
+          'success',
+          `${targetScope} reply in ${(elapsedMs / 1000).toFixed(2)}s · ${
+            totalTokens !== undefined
+              ? `${totalTokens} tok (in ${inputTokens ?? '—'} / out ${outputTokens ?? '—'})`
+              : 'tokens n/a'
+          }${tokensPerSecond !== undefined ? ` @ ${tokensPerSecond.toFixed(1)} tok/s` : ''}`,
+        );
+        return assistantTurn;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Request failed.';
+        const errorTurn: ConversationTurn = {
+          id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          exchangeId: userTurn.id,
+          role: 'error',
+          content: errorMessage,
+          timestamp: new Date().toISOString(),
+          scope: targetScope,
+          adapterId: targetAdapterId,
+          model: targetModel,
+          durationMs: Math.max(0, Date.now() - requestStart),
+        };
+        setTurns((prev) => [...prev, errorTurn]);
+        pushContextLog('error', `${targetScope} response failed: ${errorMessage}`);
+        return errorTurn;
       }
+    };
 
-      const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStartedAt);
-      const inputTokens = payload.inputTokens;
-      const outputTokens = payload.outputTokens ?? payload.tokenCount;
-      const totalTokens =
-        inputTokens !== undefined && outputTokens !== undefined
-          ? inputTokens + outputTokens
-          : payload.tokenCount ?? outputTokens ?? inputTokens;
-      const tokensPerSecond =
-        payload.tokensPerSecond ??
-        (outputTokens !== undefined && elapsedMs > 0
-          ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
-          : undefined);
-
-      const assistantTurn: ConversationTurn = {
-        id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        role: 'assistant',
-        content: payload.text,
-        timestamp: new Date().toISOString(),
-        scope: payload.scope || scope,
-        adapterId: payload.adapterId || adapterId,
-        model: payload.model || modelName,
-        durationMs: elapsedMs,
-        tokenCount: totalTokens,
-        adapterProtocol: payload.protocol,
-      };
-
-      setTurns((prev) => [...prev, assistantTurn]);
+    try {
+      const results = await Promise.all(responseScopes.map(requestOne));
+      const successfulTurns = results.filter((turn) => turn.role === 'assistant');
+      const failedTurns = results.filter((turn) => turn.role === 'error');
+      const selectedReply = successfulTurns.find((turn) => turn.scope === scope);
+      const telemetryReply = selectedReply ?? successfulTurns[0];
       setTelemetry((prev) => ({
         ...prev,
-        phase: 'Ready',
+        phase: successfulTurns.length > 0 ? 'Ready' : 'Error',
         isThinking: false,
         startedAtMs: undefined,
-        inputTokens,
-        outputTokens,
-        totalTokens,
-        tokensPerSecond,
-        durationMs: elapsedMs,
-        lastError: '',
+        inputTokens: telemetryReply?.inputTokenCount,
+        outputTokens: telemetryReply?.outputTokenCount,
+        totalTokens: telemetryReply?.tokenCount,
+        tokensPerSecond: telemetryReply?.tokensPerSecond,
+        durationMs: Date.now() - requestStartedAt,
+        lastError: failedTurns.map((turn) => `${turn.scope}: ${turn.content}`).join(' · '),
       }));
 
-      const tokenSummary =
-        totalTokens !== undefined
-          ? `${totalTokens} tok (in ${inputTokens ?? '—'} / out ${outputTokens ?? '—'})`
-          : 'tokens n/a';
-      const speedSummary =
-        tokensPerSecond !== undefined ? ` @ ${tokensPerSecond.toFixed(1)} tok/s` : '';
-      pushContextLog(
-        'success',
-        `Reply in ${(elapsedMs / 1000).toFixed(2)}s · ${tokenSummary}${speedSummary}`,
-      );
-
+      const hasAnySuccess = successfulTurns.length > 0;
       if (settings.notifications?.soundOnReply !== false) {
-        playReplyChime(false);
+        playReplyChime(!hasAnySuccess);
       }
-      if (settings.notifications?.desktopNotificationOnReply !== false) {
-        const title = `Personal Assistant · ${
-          assistantTurn.scope === 'private' ? 'Private' : 'Public'
-        } reply ready`;
-        const cleanPreview = assistantTurn.content.replace(/\s+/g, ' ').trim();
-        const shortPreview =
-          cleanPreview.length > 110 ? `${cleanPreview.slice(0, 107)}...` : cleanPreview;
-        showDesktopNotification(title, cleanPreview);
-        setReplyToast({ title, preview: shortPreview, isError: false });
+
+      const replyTitle =
+        responseScopes.length === 2
+          ? failedTurns.length === 0
+            ? 'Personal Assistant · Private and Public replies ready'
+            : hasAnySuccess
+              ? 'Personal Assistant · One response failed'
+              : 'Personal Assistant · Responses failed'
+          : hasAnySuccess
+            ? `Personal Assistant · ${scope === 'private' ? 'Private' : 'Public'} reply ready`
+            : 'Personal Assistant · Response Error';
+      const replyPreview = successfulTurns
+        .map((turn) => `${turn.scope}: ${turn.content.replace(/\s+/g, ' ').trim()}`)
+        .concat(failedTurns.map((turn) => `${turn.scope} error: ${turn.content}`))
+        .join(' | ');
+      const shortPreview =
+        replyPreview.length > 110 ? `${replyPreview.slice(0, 107)}...` : replyPreview;
+
+      if (settings.notifications?.desktopNotificationOnReply !== false && replyPreview) {
+        showDesktopNotification(replyTitle, shortPreview);
+      }
+      if (replyPreview) {
+        setReplyToast({ title: replyTitle, preview: shortPreview, isError: !hasAnySuccess });
         if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 4500);
+        replyToastTimerRef.current = window.setTimeout(
+          () => setReplyToast(null),
+          hasAnySuccess ? 4500 : 5000,
+        );
       }
 
       const shouldAutoSpeak =
-        (assistantTurn.scope === 'public' && settings.voice.autoSpeakPublic) ||
-        (assistantTurn.scope === 'private' && settings.voice.autoSpeakPrivate);
-      if (shouldAutoSpeak) {
+        scope === 'public'
+          ? settings.voice.autoSpeakPublic
+          : settings.voice.autoSpeakPrivate;
+      if (shouldAutoSpeak && selectedReply) {
         if (settings.notifications?.soundOnReply !== false) {
-          setTimeout(() => speech.speakText(assistantTurn.id, assistantTurn.content), 240);
+          setTimeout(() => speech.speakText(selectedReply.id, selectedReply.content), 240);
         } else {
-          speech.speakText(assistantTurn.id, assistantTurn.content);
+          speech.speakText(selectedReply.id, selectedReply.content);
         }
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Request failed.';
-      const errTurn: ConversationTurn = {
-        id: `err-${Date.now()}`,
-        role: 'error',
-        content: errorMessage,
-        timestamp: new Date().toISOString(),
-        scope,
-        adapterId,
-        model: modelName,
-      };
-      setTurns((prev) => [...prev, errTurn]);
-      setTelemetry((prev) => ({
-        ...prev,
-        phase: 'Error',
-        isThinking: false,
-        startedAtMs: undefined,
-        durationMs: Math.max(0, Date.now() - requestStartedAt),
-        lastError: errorMessage,
-      }));
-      pushContextLog('error', `Context error: ${errorMessage}`);
-
-      if (settings.notifications?.soundOnReply !== false) {
-        playReplyChime(true);
-      }
-      if (settings.notifications?.desktopNotificationOnReply !== false) {
-        const title = 'Personal Assistant · Response Error';
-        showDesktopNotification(title, errTurn.content);
-        setReplyToast({ title, preview: errTurn.content, isError: true });
-        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
       }
     } finally {
       setIsSending(false);
