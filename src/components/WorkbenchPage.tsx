@@ -33,7 +33,6 @@ import {
   THREAD_MONTHS,
   THREAD_RATING_OPTIONS,
   THREAD_YEARS,
-  formatThreadDisplayTitle,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
 import { MessageContent } from './MessageContent';
@@ -553,7 +552,7 @@ export function WorkbenchPage({
     Number.isFinite(parsedThreadYear);
   const composerCombinedPreview =
     threadMonth && parsedThreadYear
-      ? `${activeDomainShortLabel} of ${threadMonth} ${parsedThreadYear}`
+      ? `${threadMonth} ${parsedThreadYear}`
       : null;
 
   const exchanges = useMemo<ConversationExchange[]>(() => {
@@ -701,17 +700,12 @@ export function WorkbenchPage({
       });
     if (!question || answers.length === 0) return;
 
-    const combinedTitle = formatThreadDisplayTitle({
-      domain: questionTurn?.promptDomain,
-      month: questionTurn?.threadMonth,
-      year: questionTurn?.threadYear,
-      fallbackNumber: threadNumber,
-    });
     const customThreadName = questionTurn?.threadName?.trim();
+    const combinedTitle = customThreadName || `Thread #${threadNumber}`;
     const ratingMeta = questionTurn?.threadRating
       ? THREAD_RATING_OPTIONS.find((item) => item.id === questionTurn.threadRating)
       : undefined;
-    const safeSlug = `${combinedTitle}${customThreadName ? `-${customThreadName}` : ''}`
+    const safeSlug = combinedTitle
       .replace(/[^a-z0-9]+/gi, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 64);
@@ -742,7 +736,7 @@ export function WorkbenchPage({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(combinedTitle)}${customThreadName ? ` — ${escapeHtml(customThreadName)}` : ''}</title>
+  <title>${escapeHtml(combinedTitle)}</title>
   <style>
     body { font: 16px/1.6 system-ui, sans-serif; max-width: 1600px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
     .meta { color: #475569; font-size: 0.9rem; margin-top: 0.25rem; }
@@ -819,18 +813,12 @@ export function WorkbenchPage({
     const question = exchange.questionTurn;
     if (!question) return;
     const isDualScope = (question.responseScopes ?? [question.scope]).length > 1;
-    const combinedTitle = formatThreadDisplayTitle({
-      domain: question.promptDomain,
-      month: question.threadMonth,
-      year: question.threadYear,
-      fallbackNumber: threadNumber,
-    });
+    const combinedTitle = question.threadName?.trim() || `Thread #${threadNumber}`;
     const ratingMeta = question.threadRating
       ? THREAD_RATING_OPTIONS.find((item) => item.id === question.threadRating)
       : undefined;
     const metadata = [
       `Thread metadata`,
-      `Combined title: ${combinedTitle}`,
       `Thread name: ${question.threadName?.trim() || '(Not specified)'}`,
       `Domain: ${getPromptDomainShortLabel(question.promptDomain ?? activePromptDomain)}`,
       `Period: ${question.threadMonth && question.threadYear ? `${question.threadMonth} ${question.threadYear}` : '(Not specified)'}`,
@@ -1015,12 +1003,9 @@ export function WorkbenchPage({
                   ),
                 );
               const qTurn = ex.questionTurn;
-              const combinedTitle = formatThreadDisplayTitle({
-                domain: qTurn?.promptDomain,
-                month: qTurn?.threadMonth,
-                year: qTurn?.threadYear,
-                fallbackNumber: idx + 1,
-              });
+              const combinedTitle = qTurn?.threadName?.trim() || `Thread #${idx + 1}`;
+              const isPublicThread =
+                (qTurn?.scope ?? orderedReplies[0]?.scope ?? scope) === 'public';
               const hasAssistantReply = orderedReplies.some(
                 (turn) => turn.role === 'assistant',
               );
@@ -1061,19 +1046,15 @@ export function WorkbenchPage({
                               />
                             </button>
                           )}
-                          <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">
+                          <h2
+                            className={`font-display text-sm sm:text-base ${
+                              isPublicThread
+                                ? 'font-bold text-slate-950 dark:text-white'
+                                : 'font-medium text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
                             {combinedTitle}
                           </h2>
-                          {qTurn?.threadName?.trim() && (
-                            <>
-                              <span aria-hidden="true" className="text-slate-400">
-                                ·
-                              </span>
-                              <span className="text-sm font-medium text-sky-700 dark:text-sky-300">
-                                {qTurn.threadName.trim()}
-                              </span>
-                            </>
-                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                           <span>#{idx + 1}</span>
@@ -1352,11 +1333,7 @@ export function WorkbenchPage({
                         className="rounded-2xl border border-sky-200/80 bg-sky-50/75 px-4 py-3 dark:border-sky-900/70 dark:bg-sky-950/35"
                       >
                         <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-sky-800 dark:text-sky-200">
-                          Source Prompt · {combinedTitle}
-                          {ex.questionTurn.threadName?.trim()
-                            ? ` · ${ex.questionTurn.threadName.trim()}`
-                            : ''}{' '}
-                          · {ex.questionTurn.promptStyle ?? promptStyle}
+                          Source Prompt · {combinedTitle} · {ex.questionTurn.promptStyle ?? promptStyle}
                         </div>
                         <pre className="max-h-52 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-200">
                           {ex.questionTurn.content}

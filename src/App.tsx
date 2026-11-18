@@ -7,10 +7,9 @@ import {
   PanelLeft,
   PanelRight,
   Settings,
-  Volume2,
-  VolumeX,
-  X,
   Sparkles,
+  Star,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PromptBuilderPage } from './components/PromptBuilderPage';
@@ -45,35 +44,17 @@ import {
   saveScope,
   saveSettings,
 } from './utils/storage';
-import { formatThreadDisplayTitle } from './utils/promptTemplates';
+import { THREAD_RATING_OPTIONS } from './utils/promptTemplates';
 import {
   playReplyChime,
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from './utils/notify';
 
-const RATED_NAV_COLORS: Record<
-  ThreadRating,
-  { textClass: string; dotClass: string; hoverClass: string; activeClass: string }
-> = {
-  green: {
-    textClass: 'text-emerald-600/90 dark:text-emerald-300/90',
-    dotClass: 'bg-emerald-400',
-    hoverClass: 'hover:bg-emerald-500/10',
-    activeClass: 'bg-emerald-500/12 border border-emerald-400/40 dark:border-emerald-500/35',
-  },
-  yellow: {
-    textClass: 'text-amber-500/95 dark:text-yellow-300/90',
-    dotClass: 'bg-yellow-400',
-    hoverClass: 'hover:bg-yellow-400/12',
-    activeClass: 'bg-yellow-400/15 border border-yellow-400/45 dark:border-yellow-500/35',
-  },
-  red: {
-    textClass: 'text-rose-500/90 dark:text-rose-300/90',
-    dotClass: 'bg-rose-400',
-    hoverClass: 'hover:bg-rose-500/10',
-    activeClass: 'bg-rose-500/12 border border-rose-400/40 dark:border-rose-500/35',
-  },
+const RATING_STAR_COUNT: Record<ThreadRating, number> = {
+  red: 1,
+  yellow: 2,
+  green: 3,
 };
 
 const USER_AVATAR_SRC = '/src/assets/images/local_user_avatar_1794900004889.jpg';
@@ -393,11 +374,6 @@ export default function App() {
     saveScope(scope);
   }, [scope]);
 
-  const activeAutoSpeak =
-    scope === 'public'
-      ? settings.voice.autoSpeakPublic
-      : settings.voice.autoSpeakPrivate;
-
   const activePublicAdapterLabel =
     settings.publicLlm.activeAdapter === 'gemini'
       ? 'Gemini'
@@ -409,24 +385,6 @@ export default function App() {
     scope === 'private'
       ? `Connected: Private · Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
       : `Connected: Public · ${activePublicAdapterLabel} (${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model})`;
-
-  const toggleTopBarSpeak = () => {
-    if (speech.speakingTurnId) {
-      speech.stopSpeaking();
-      return;
-    }
-    if (scope === 'public') {
-      setSettings((prev) => ({
-        ...prev,
-        voice: { ...prev.voice, autoSpeakPublic: !prev.voice.autoSpeakPublic },
-      }));
-    } else {
-      setSettings((prev) => ({
-        ...prev,
-        voice: { ...prev.voice, autoSpeakPrivate: !prev.voice.autoSpeakPrivate },
-      }));
-    }
-  };
 
   const handleCycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(effectiveTheme);
@@ -856,17 +814,17 @@ export default function App() {
                 {ratedThreads.map((record, index) => {
                   const qTurn = record.turns.find((turn) => turn.role === 'user');
                   const rating = qTurn?.threadRating ?? 'green';
-                  const colorStyle = RATED_NAV_COLORS[rating];
-                  const combinedTitle = formatThreadDisplayTitle({
-                    domain: qTurn?.promptDomain,
-                    month: qTurn?.threadMonth,
-                    year: qTurn?.threadYear,
-                    fallbackNumber: index + 1,
-                  });
-                  const customName = qTurn?.threadName?.trim();
-                  const displayLabel = customName
-                    ? `${customName} · ${combinedTitle}`
-                    : combinedTitle;
+                  const starCount = RATING_STAR_COUNT[rating];
+                  const ratingOption = THREAD_RATING_OPTIONS.find(
+                    (opt) => opt.id === rating,
+                  );
+                  const threadScope =
+                    qTurn?.scope ??
+                    record.turns.find((turn) => turn.role === 'assistant')?.scope ??
+                    'private';
+                  const isPublicThread = threadScope === 'public';
+                  const displayLabel =
+                    qTurn?.threadName?.trim() || `Thread #${index + 1}`;
                   const isActiveThread =
                     !isSettingsOpen &&
                     !isPromptBuilderOpen &&
@@ -890,15 +848,32 @@ export default function App() {
                           lastError: '',
                         });
                       }}
-                      title={displayLabel}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors text-left ${colorStyle.textClass} ${
-                        isActiveThread ? colorStyle.activeClass : colorStyle.hoverClass
+                      title={`${displayLabel} · ${isPublicThread ? 'Public' : 'Private'} · ${ratingOption?.description ?? `${starCount} stars`}`}
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors text-left ${
+                        isPublicThread
+                          ? 'font-semibold text-slate-900 dark:text-slate-100'
+                          : 'font-normal text-slate-500 dark:text-slate-400'
+                      } ${
+                        isActiveThread
+                          ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                          : 'hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                     >
                       <span
                         aria-hidden="true"
-                        className={`h-2 w-2 rounded-full shrink-0 ${colorStyle.dotClass}`}
-                      />
+                        className={`inline-flex items-center gap-0.5 w-8 shrink-0 ${
+                          isPublicThread
+                            ? 'text-amber-500 dark:text-amber-400'
+                            : 'text-amber-500/70 dark:text-amber-400/70'
+                        }`}
+                      >
+                        {Array.from({ length: starCount }).map((_, starIdx) => (
+                          <Star
+                            key={starIdx}
+                            className="w-2.5 h-2.5 fill-current stroke-[2.2]"
+                          />
+                        ))}
+                      </span>
                       <span className="truncate">{displayLabel}</span>
                     </button>
                   );
@@ -1044,50 +1019,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Speaker, Theme & Agent Session Sidebar Controls */}
+          {/* Zone 3: Theme & Agent Session Sidebar Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={toggleTopBarSpeak}
-              aria-label={
-                speech.speakingTurnId
-                  ? 'Mute Windows Speaker'
-                  : activeAutoSpeak
-                    ? 'Auto-speak on, click to disable'
-                    : 'Speaker off, click to enable auto-speak'
-              }
-              title={
-                speech.speakingTurnId
-                  ? 'Mute Windows Speaker'
-                  : activeAutoSpeak
-                    ? 'Windows Speaker Auto-Speak On'
-                    : 'Windows Speaker Off'
-              }
-              aria-pressed={Boolean(speech.speakingTurnId) || activeAutoSpeak}
-              className={`p-2 rounded-lg border transition-colors shrink-0 ${
-                speech.speakingTurnId
-                  ? 'text-white border-transparent'
-                  : activeAutoSpeak
-                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-                    : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              style={
-                speech.speakingTurnId
-                  ? { backgroundColor: 'var(--pa-accent)' }
-                  : activeAutoSpeak
-                    ? { color: 'var(--pa-accent-text)' }
-                    : undefined
-              }
-            >
-              {speech.speakingTurnId ? (
-                <VolumeX className="w-4 h-4" />
-              ) : activeAutoSpeak ? (
-                <Volume2 className="w-4 h-4" />
-              ) : (
-                <VolumeX className="w-4 h-4" />
-              )}
-            </button>
-
             <button
               type="button"
               onClick={handleCycleTheme}
