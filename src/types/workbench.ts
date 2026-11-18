@@ -49,6 +49,12 @@ export interface ConversationTurn {
   adapterProtocol?: string;
 }
 
+export interface RatedThreadRecord {
+  id: string;
+  turns: ConversationTurn[];
+  ratedAt: string;
+}
+
 export interface OllamaModelInfo {
   name: string;
   model: string;

@@ -29,23 +29,52 @@ import type {
   ConversationTurn,
   LlmContextLogEntry,
   LlmContextTelemetry,
+  RatedThreadRecord,
   ThemeMode,
+  ThreadRating,
   WorkbenchSettings,
 } from './types/workbench';
 import {
   DEFAULT_SETTINGS,
   loadConversation,
+  loadRatedThreads,
   loadScope,
   loadSettings,
   saveConversation,
+  saveRatedThreads,
   saveScope,
   saveSettings,
 } from './utils/storage';
+import { formatThreadDisplayTitle } from './utils/promptTemplates';
 import {
   playReplyChime,
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from './utils/notify';
+
+const RATED_NAV_COLORS: Record<
+  ThreadRating,
+  { textClass: string; dotClass: string; hoverClass: string; activeClass: string }
+> = {
+  green: {
+    textClass: 'text-emerald-600/90 dark:text-emerald-300/90',
+    dotClass: 'bg-emerald-400',
+    hoverClass: 'hover:bg-emerald-500/10',
+    activeClass: 'bg-emerald-500/12 border border-emerald-400/40 dark:border-emerald-500/35',
+  },
+  yellow: {
+    textClass: 'text-amber-500/95 dark:text-yellow-300/90',
+    dotClass: 'bg-yellow-400',
+    hoverClass: 'hover:bg-yellow-400/12',
+    activeClass: 'bg-yellow-400/15 border border-yellow-400/45 dark:border-yellow-500/35',
+  },
+  red: {
+    textClass: 'text-rose-500/90 dark:text-rose-300/90',
+    dotClass: 'bg-rose-400',
+    hoverClass: 'hover:bg-rose-500/10',
+    activeClass: 'bg-rose-500/12 border border-rose-400/40 dark:border-rose-500/35',
+  },
+};
 
 const USER_AVATAR_SRC = '/src/assets/images/local_user_avatar_1794900004889.jpg';
 const THEME_CYCLE: ThemeMode[] = [
@@ -79,6 +108,9 @@ export default function App() {
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
+  const [ratedThreads, setRatedThreads] = useState<RatedThreadRecord[]>(() =>
+    loadRatedThreads(),
+  );
   const activePromptDomain = settings.promptBuilder.activeDomain;
   const promptStyle = settings.promptBuilder.activeStyle;
   const promptTemplates = settings.promptBuilder.templates;
@@ -340,6 +372,46 @@ export default function App() {
   }, [turns]);
 
   useEffect(() => {
+    saveRatedThreads(ratedThreads);
+  }, [ratedThreads]);
+
+  useEffect(() => {
+    const ratedUserTurns = turns.filter((turn) => turn.role === 'user' && turn.threadRating);
+    if (ratedUserTurns.length === 0) return;
+
+    setRatedThreads((prevRated) => {
+      let changed = false;
+      const nextRated = [...prevRated];
+
+      for (const userTurn of ratedUserTurns) {
+        const snapshot = turns.filter(
+          (turn) => turn.id === userTurn.id || turn.exchangeId === userTurn.id,
+        );
+        const existingIdx = nextRated.findIndex((item) => item.id === userTurn.id);
+        if (existingIdx >= 0) {
+          const existing = nextRated[existingIdx];
+          if (JSON.stringify(existing.turns) !== JSON.stringify(snapshot)) {
+            nextRated[existingIdx] = {
+              ...existing,
+              turns: snapshot,
+            };
+            changed = true;
+          }
+        } else {
+          nextRated.push({
+            id: userTurn.id,
+            turns: snapshot,
+            ratedAt: new Date().toISOString(),
+          });
+          changed = true;
+        }
+      }
+
+      return changed ? nextRated : prevRated;
+    });
+  }, [turns]);
+
+  useEffect(() => {
     saveScope(scope);
   }, [scope]);
 
@@ -429,6 +501,11 @@ export default function App() {
             : turn,
         ),
       );
+      if ('threadRating' in patch && patch.threadRating === undefined) {
+        setRatedThreads((prevRated) =>
+          prevRated.filter((item) => item.id !== exchangeId),
+        );
+      }
     },
     [],
   );
@@ -762,8 +839,17 @@ export default function App() {
             style={{ width: leftRailWidth }}
             className="hidden md:flex shrink-0 flex-col justify-between border-r border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 overflow-hidden"
           >
-            <div className="space-y-6">
-              <div className="px-3 pt-2 pb-1 flex items-center gap-2.5">
+            <div className="flex-1 min-h-0 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen(false);
+                }}
+                title="Open Personal Assistant workspace"
+                className="w-full px-3 pt-2 pb-1 flex items-center gap-2.5 rounded-lg text-left hover:bg-white/65 dark:hover:bg-slate-800/65 transition-colors shrink-0"
+              >
                 <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
                 <div className="min-w-0">
                   <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
@@ -773,30 +859,9 @@ export default function App() {
                     WinUI 3 Fluent Edition
                   </div>
                 </div>
-              </div>
+              </button>
 
-              <nav className="space-y-1" aria-label="Primary pages">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsOpen(false);
-                    setIsPromptBuilderOpen(false);
-                    setIsReferenceContextOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen
-                      ? 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
-                      : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                  }`}
-                  aria-current={
-                    !isSettingsOpen && !isPromptBuilderOpen && !isReferenceContextOpen
-                      ? 'page'
-                      : undefined
-                  }
-                >
-                  <Cloud className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                  <span className="truncate">Personal Assistant</span>
-                </button>
+              <nav className="space-y-1 shrink-0" aria-label="Primary pages">
                 <button
                   type="button"
                   onClick={() => {
@@ -849,6 +914,67 @@ export default function App() {
                   <span className="truncate">Prompt Builder</span>
                 </button>
               </nav>
+
+              <div
+                role="separator"
+                className="border-t border-slate-200/80 dark:border-slate-800/80 shrink-0"
+              />
+
+              <div
+                aria-label="Rated threads"
+                className="flex-1 min-h-0 overflow-y-auto fluent-scroll space-y-1 pr-0.5"
+              >
+                {ratedThreads.map((record, index) => {
+                  const qTurn = record.turns.find((turn) => turn.role === 'user');
+                  const rating = qTurn?.threadRating ?? 'green';
+                  const colorStyle = RATED_NAV_COLORS[rating];
+                  const combinedTitle = formatThreadDisplayTitle({
+                    domain: qTurn?.promptDomain,
+                    month: qTurn?.threadMonth,
+                    year: qTurn?.threadYear,
+                    fallbackNumber: index + 1,
+                  });
+                  const customName = qTurn?.threadName?.trim();
+                  const displayLabel = customName
+                    ? `${customName} · ${combinedTitle}`
+                    : combinedTitle;
+                  const isActiveThread =
+                    !isSettingsOpen &&
+                    !isPromptBuilderOpen &&
+                    !isReferenceContextOpen &&
+                    turns.some((turn) => turn.id === record.id);
+
+                  return (
+                    <button
+                      key={record.id}
+                      type="button"
+                      onClick={() => {
+                        setIsSettingsOpen(false);
+                        setIsPromptBuilderOpen(false);
+                        setIsReferenceContextOpen(false);
+                        setTurns(record.turns);
+                        setTelemetry({
+                          phase: 'Idle',
+                          isThinking: false,
+                          promptChars: 0,
+                          historyTurnsUsed: 0,
+                          lastError: '',
+                        });
+                      }}
+                      title={displayLabel}
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors text-left ${colorStyle.textClass} ${
+                        isActiveThread ? colorStyle.activeClass : colorStyle.hoverClass
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`h-2 w-2 rounded-full shrink-0 ${colorStyle.dotClass}`}
+                      />
+                      <span className="truncate">{displayLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Account Profile Footer (Pulled from Windows / OS account profile) */}
@@ -1093,6 +1219,7 @@ export default function App() {
               }}
               onClearAppCache={() => {
                 setTurns([]);
+                setRatedThreads([]);
                 setReplyToast(null);
                 setTelemetry({
                   phase: 'Idle',
@@ -1103,6 +1230,7 @@ export default function App() {
                 });
                 try {
                   window.localStorage.removeItem('fluent_paw_conversation_v1');
+                  window.localStorage.removeItem('fluent_paw_rated_threads_v1');
                   if ('caches' in window) {
                     void caches.keys().then((keys) => keys.forEach((k) => void caches.delete(k)));
                   }
@@ -1180,13 +1308,16 @@ export default function App() {
                   historyTurnsUsed: 0,
                   lastError: '',
                 });
-                pushContextLog('info', 'Session context cleared');
+                pushContextLog('info', 'Started new thread; screen cleared');
               }}
               onDeleteExchange={(exchangeId) => {
                 setTurns((previous) =>
                   previous.filter(
                     (turn) => turn.id !== exchangeId && turn.exchangeId !== exchangeId,
                   ),
+                );
+                setRatedThreads((previous) =>
+                  previous.filter((item) => item.id !== exchangeId),
                 );
                 pushContextLog('info', 'Conversation thread deleted from session');
               }}

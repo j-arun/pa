@@ -9,6 +9,7 @@ import {
   FileDown,
   Hourglass,
   Lock,
+  Plus,
   RefreshCw,
   RotateCcw,
   Settings as SettingsIcon,
@@ -838,7 +839,19 @@ export function WorkbenchPage({
               </div>
             </div>
           ) : (
-            exchanges.map((ex, idx) => {
+            <>
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={onClearConversation}
+                  disabled={isSending}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/85 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs transition-colors hover:bg-white disabled:pointer-events-none disabled:opacity-40 dark:border-slate-700/80 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>New Thread</span>
+                </button>
+              </div>
+              {exchanges.map((ex, idx) => {
               const isLast = idx === exchanges.length - 1;
               const expectedScopes =
                 ex.questionTurn?.responseScopes ??
@@ -894,7 +907,23 @@ export function WorkbenchPage({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0 space-y-0.5">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {currentRating && currentRatingMeta && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSettingsThreadId((prev) => (prev === ex.id ? null : ex.id))
+                              }
+                              title={`Rated ${currentRatingMeta.starGlyphs} (${currentRatingMeta.label}) — click to change in Thread Settings`}
+                              aria-label={`Rated ${currentRatingMeta.starGlyphs} (${currentRatingMeta.label}). Click to change rating.`}
+                              className="inline-flex items-center justify-center rounded-full p-0.5 transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 shrink-0"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`h-2.5 w-2.5 rounded-full ${RATING_STYLES[currentRating].dotClass}`}
+                              />
+                            </button>
+                          )}
                           <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">
                             {combinedTitle}
                           </h2>
@@ -918,22 +947,6 @@ export function WorkbenchPage({
                               <span aria-hidden="true">·</span>
                               <span>
                                 {qTurn.threadMonth} {qTurn.threadYear}
-                              </span>
-                            </>
-                          )}
-                          {currentRating && currentRatingMeta && (
-                            <>
-                              <span aria-hidden="true">·</span>
-                              <span
-                                className={`inline-flex items-center gap-1.5 font-medium ${RATING_STYLES[currentRating].textClass}`}
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  className={`h-2 w-2 rounded-full ${RATING_STYLES[currentRating].dotClass}`}
-                                />
-                                <span>
-                                  {currentRatingMeta.label} — {currentRatingMeta.description}
-                                </span>
                               </span>
                             </>
                           )}
@@ -1176,6 +1189,8 @@ export function WorkbenchPage({
                                   })
                                 }
                                 aria-pressed={selected}
+                                aria-label={`${opt.description} (${opt.label})`}
+                                title={`${opt.description} (${opt.label})`}
                                 className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                                   selected
                                     ? RATING_STYLES[opt.id].activeClass
@@ -1186,9 +1201,7 @@ export function WorkbenchPage({
                                   aria-hidden="true"
                                   className={`h-2 w-2 rounded-full ${RATING_STYLES[opt.id].dotClass}`}
                                 />
-                                <span>
-                                  {opt.label} · {opt.description}
-                                </span>
+                                <span>{opt.starGlyphs}</span>
                               </button>
                             );
                           })}
@@ -1265,7 +1278,7 @@ export function WorkbenchPage({
                       ))}
                     </div>
 
-                    {hasAssistantReply && qTurn && (
+                    {hasAssistantReply && qTurn && !currentRating && (
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/70 dark:border-slate-800/70">
                         <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                           Rate this period:
@@ -1275,35 +1288,22 @@ export function WorkbenchPage({
                           aria-label={`Period rating for ${combinedTitle}`}
                           className="flex flex-wrap items-center gap-1.5"
                         >
-                          {THREAD_RATING_OPTIONS.map((opt) => {
-                            const selected = currentRating === opt.id;
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() =>
-                                  onUpdateExchangeMetadata(ex.id, {
-                                    threadRating: selected ? undefined : opt.id,
-                                  })
-                                }
-                                aria-pressed={selected}
-                                title={`${opt.label} — ${opt.description}`}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                                  selected
-                                    ? RATING_STYLES[opt.id].activeClass
-                                    : 'border-slate-200/85 bg-white/75 text-slate-600 hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/75 dark:text-slate-300 dark:hover:bg-slate-700'
-                                }`}
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  className={`h-2 w-2 rounded-full ${RATING_STYLES[opt.id].dotClass}`}
-                                />
-                                <span>
-                                  {opt.label} · {opt.description}
-                                </span>
-                              </button>
-                            );
-                          })}
+                          {THREAD_RATING_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                onUpdateExchangeMetadata(ex.id, {
+                                  threadRating: opt.id,
+                                })
+                              }
+                              aria-label={`Rate ${opt.description} (${opt.label})`}
+                              title={`${opt.description} (${opt.label})`}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/85 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
+                            >
+                              <span>{opt.starGlyphs}</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1312,7 +1312,8 @@ export function WorkbenchPage({
                   </div>
                 </motion.div>
               );
-            })
+            })}
+            </>
           )}
 
           <div ref={ladderEndRef} />
@@ -1350,55 +1351,28 @@ export function WorkbenchPage({
             </div>
           )}
 
-          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-              <span className="font-semibold text-slate-800 dark:text-slate-100">
-                Domain: {activeDomainShortLabel}
-              </span>
-              <span aria-hidden="true" className="text-slate-400">
-                ·
-              </span>
-              <span className="capitalize">{promptStyle} style</span>
-              {composerCombinedPreview && (
-                <>
-                  <span aria-hidden="true" className="text-slate-400">
-                    ·
-                  </span>
-                  <span className="font-medium text-sky-700 dark:text-sky-300">
-                    {composerCombinedPreview}
-                  </span>
-                </>
-              )}
-            </div>
-            <div
-              role="group"
-              aria-label="Prompt style"
-              className="inline-flex items-center rounded-xl border border-slate-200/90 bg-white/75 p-1 dark:border-slate-700/80 dark:bg-slate-900/70"
-            >
-              {(['formal', 'classic'] as const).map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  onClick={() => onPromptStyleChange(style)}
-                  aria-pressed={promptStyle === style}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors whitespace-nowrap shrink-0 ${
-                    promptStyle === style
-                      ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-1">
+            <span className="font-semibold text-slate-800 dark:text-slate-100">
+              Domain: {activeDomainShortLabel}
+            </span>
+            {composerCombinedPreview && (
+              <>
+                <span aria-hidden="true" className="text-slate-400">
+                  ·
+                </span>
+                <span className="font-medium text-sky-700 dark:text-sky-300">
+                  {composerCombinedPreview}
+                </span>
+              </>
+            )}
           </div>
 
           <section
             aria-label="Thread naming and period"
             className="mb-2.5 rounded-2xl border border-slate-200/85 bg-white/80 px-3.5 py-2.5 dark:border-slate-700/80 dark:bg-slate-900/70"
           >
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 items-end">
-              <label className="sm:col-span-6 block space-y-1">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 lg:flex lg:items-end">
+              <label className="sm:col-span-12 lg:flex-1 lg:min-w-0 block space-y-1">
                 <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
                   Thread Name (required before chatting)
                 </span>
@@ -1417,7 +1391,7 @@ export function WorkbenchPage({
                 />
               </label>
 
-              <label className="sm:col-span-3 block space-y-1">
+              <label className="sm:col-span-4 lg:w-36 lg:shrink-0 block space-y-1">
                 <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
                   Month
                 </span>
@@ -1440,7 +1414,7 @@ export function WorkbenchPage({
                 </select>
               </label>
 
-              <label className="sm:col-span-3 block space-y-1">
+              <label className="sm:col-span-4 lg:w-28 lg:shrink-0 block space-y-1">
                 <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
                   Year (1993–2090)
                 </span>
@@ -1462,6 +1436,33 @@ export function WorkbenchPage({
                   ))}
                 </select>
               </label>
+
+              <div className="sm:col-span-4 lg:shrink-0 space-y-1">
+                <span className="block text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Prompt Style
+                </span>
+                <div
+                  role="group"
+                  aria-label="Prompt style"
+                  className="inline-flex w-full sm:w-auto items-center rounded-xl border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800"
+                >
+                  {(['formal', 'classic'] as const).map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => onPromptStyleChange(style)}
+                      aria-pressed={promptStyle === style}
+                      className={`flex-1 sm:flex-none rounded-[10px] px-3 py-1.5 text-xs font-medium capitalize transition-colors whitespace-nowrap shrink-0 ${
+                        promptStyle === style
+                          ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             {metadataNotice && (
               <p
@@ -1546,8 +1547,8 @@ export function WorkbenchPage({
                   type="button"
                   onClick={onClearConversation}
                   disabled={turns.length === 0 || isSending}
-                  title="New Session"
-                  aria-label="New Session"
+                  title="New Thread (clear screen)"
+                  aria-label="New Thread"
                   className="relative z-10 h-11 w-11 rounded-2xl flex items-center justify-center border border-slate-200/85 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none transition-colors shrink-0"
                 >
                   <RotateCcw className="w-4 h-4" />

@@ -46,12 +46,14 @@ export const THREAD_YEARS: readonly number[] = Array.from(
 
 export const THREAD_RATING_OPTIONS: ReadonlyArray<{
   id: ThreadRating;
+  stars: string;
+  starGlyphs: string;
   label: string;
   description: string;
 }> = [
-  { id: 'green', label: 'Green', description: 'Very good period' },
-  { id: 'yellow', label: 'Yellow', description: 'Here and there' },
-  { id: 'red', label: 'Red', description: 'Period of difficulties' },
+  { id: 'red', stars: '*', starGlyphs: '★', label: 'Red', description: '1 star' },
+  { id: 'yellow', stars: '**', starGlyphs: '★★', label: 'Yellow', description: '2 stars' },
+  { id: 'green', stars: '***', starGlyphs: '★★★', label: 'Green', description: '3 stars' },
 ];
 
 export function getPromptDomainShortLabel(domain?: PromptDomain): string {

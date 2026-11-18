@@ -4,6 +4,7 @@ import type {
   PromptDomain,
   PromptStyle,
   PromptTemplates,
+  RatedThreadRecord,
   WorkbenchSettings,
 } from '../types/workbench';
 import {
@@ -16,6 +17,7 @@ import {
 
 const SETTINGS_KEY = 'fluent_paw_settings_v1';
 const CONVERSATION_KEY = 'fluent_paw_conversation_v1';
+const RATED_THREADS_KEY = 'fluent_paw_rated_threads_v1';
 const SCOPE_KEY = 'fluent_paw_scope_v1';
 function isPromptDomain(raw: unknown): raw is PromptDomain {
   return typeof raw === 'string' && PROMPT_DOMAINS.includes(raw as PromptDomain);
@@ -343,6 +345,32 @@ export function loadScope(): 'private' | 'public' {
 export function saveScope(scope: 'private' | 'public'): void {
   try {
     window.localStorage.setItem(SCOPE_KEY, scope);
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+export function loadRatedThreads(): RatedThreadRecord[] {
+  try {
+    const raw = window.localStorage.getItem(RATED_THREADS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is RatedThreadRecord =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        typeof (item as RatedThreadRecord).id === 'string' &&
+        Array.isArray((item as RatedThreadRecord).turns),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveRatedThreads(records: RatedThreadRecord[]): void {
+  try {
+    window.localStorage.setItem(RATED_THREADS_KEY, JSON.stringify(records));
   } catch {
     // Ignore quota errors
   }
