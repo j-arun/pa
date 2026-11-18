@@ -134,8 +134,6 @@ export default function App() {
   } | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(true);
-  const [isContextRailHiddenForComparison, setIsContextRailHiddenForComparison] =
-    useState(false);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -158,27 +156,7 @@ export default function App() {
   });
   const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const latestQuestionTurn = [...turns].reverse().find((turn) => turn.role === 'user');
-  const latestComparisonScopes = latestQuestionTurn?.responseScopes ?? [];
-  const latestComparisonReplies = latestQuestionTurn
-    ? turns.filter(
-        (turn) =>
-          turn.exchangeId === latestQuestionTurn.id && turn.role === 'assistant',
-      )
-    : [];
-  const hasPublicDualResponseReady =
-    scope === 'public' &&
-    latestComparisonScopes.includes('private') &&
-    latestComparisonScopes.includes('public') &&
-    ['private', 'public'].every((targetScope) =>
-      latestComparisonReplies.some((turn) => turn.scope === targetScope),
-    );
-  const isContextRailVisible =
-    isContextRailOpen && !isContextRailHiddenForComparison;
-
-  useEffect(() => {
-    setIsContextRailHiddenForComparison(hasPublicDualResponseReady);
-  }, [hasPublicDualResponseReady]);
+  const isContextRailVisible = isContextRailOpen;
 
   useEffect(() => {
     try {
@@ -497,8 +475,7 @@ export default function App() {
     threadYear,
     promptDomain,
   }: SendThreadMessagePayload) => {
-    const responseScopes: ConversationScope[] =
-      scope === 'public' ? ['private', 'public'] : ['private'];
+    const responseScopes: ConversationScope[] = [scope];
     const selectedAdapterId: AnyAdapterId =
       scope === 'private'
         ? settings.privateLlm.activeAdapter
@@ -522,23 +499,25 @@ export default function App() {
           role: turn.role as 'user' | 'assistant',
           content: turn.content,
         }));
+    const targetHistory = historyForScope(scope);
     const historyByScope = {
-      private: historyForScope('private'),
-      public: historyForScope('public'),
+      private: scope === 'private' ? targetHistory : [],
+      public: scope === 'public' ? targetHistory : [],
     };
     const privateCachedContext = settings.contextCache.privateText.trim();
     const publicCachedContext = settings.contextCache.publicText.trim();
+    const targetCachedContext =
+      scope === 'private' ? privateCachedContext : publicCachedContext;
+    const targetSystemInstruction = appendCachedContext(
+      scope === 'private'
+        ? settings.privateLlm.systemInstruction
+        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
+      targetCachedContext,
+      [text, ...targetHistory.map((turn) => turn.content)],
+    );
     const systemInstructionByScope = {
-      private: appendCachedContext(
-        settings.privateLlm.systemInstruction,
-        privateCachedContext,
-        [text, ...historyByScope.private.map((turn) => turn.content)],
-      ),
-      public: appendCachedContext(
-        settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
-        publicCachedContext,
-        [text, ...historyByScope.public.map((turn) => turn.content)],
-      ),
+      private: scope === 'private' ? targetSystemInstruction : '',
+      public: scope === 'public' ? targetSystemInstruction : '',
     };
 
     const userTurn: ConversationTurn = {
@@ -556,17 +535,9 @@ export default function App() {
       threadName,
       threadMonth,
       threadYear,
-      systemInstruction: systemInstructionByScope[scope],
-      cachedContext: scope === 'private' ? privateCachedContext : publicCachedContext,
-      privateSystemInstruction: systemInstructionByScope.private,
-      publicSystemInstruction: systemInstructionByScope.public,
-      privateCachedContext,
-      publicCachedContext,
+      systemInstruction: targetSystemInstruction,
+      cachedContext: targetCachedContext,
     };
-
-    const historyCounts = responseScopes.map(
-      (targetScope) => historyByScope[targetScope].length,
-    );
 
     setTurns((prev) => [...prev, userTurn]);
     setIsSending(true);
@@ -578,7 +549,7 @@ export default function App() {
       isThinking: true,
       startedAtMs: requestStartedAt,
       promptChars: text.trim().length,
-      historyTurnsUsed: Math.max(...historyCounts),
+      historyTurnsUsed: targetHistory.length,
       inputTokens: undefined,
       outputTokens: undefined,
       totalTokens: undefined,
@@ -591,9 +562,7 @@ export default function App() {
 
     pushContextLog(
       'info',
-      responseScopes.length === 2
-        ? `Prompt sent to Private Ollama and Public ${settings.publicLlm.activeAdapter} (${text.trim().length} ch) · timeout: ${timeoutLabel}`
-        : `Prompt sent (${text.trim().length} ch, ${historyCounts[0]} hist) -> ${scope}:${selectedAdapterId}/${selectedModelName} · timeout: ${timeoutLabel}`,
+      `Prompt sent (${text.trim().length} ch, ${targetHistory.length} hist) -> ${scope}:${selectedAdapterId}/${selectedModelName} · timeout: ${timeoutLabel}`,
     );
 
     if (settings.notifications?.desktopNotificationOnReply !== false) {
@@ -752,16 +721,9 @@ export default function App() {
         playReplyChime(!hasAnySuccess);
       }
 
-      const replyTitle =
-        responseScopes.length === 2
-          ? failedTurns.length === 0
-            ? 'Personal Assistant · Private and Public replies ready'
-            : hasAnySuccess
-              ? 'Personal Assistant · One response failed'
-              : 'Personal Assistant · Responses failed'
-          : hasAnySuccess
-            ? `Personal Assistant · ${scope === 'private' ? 'Private' : 'Public'} reply ready`
-            : 'Personal Assistant · Response Error';
+      const replyTitle = hasAnySuccess
+        ? `Personal Assistant · ${scope === 'private' ? 'Private' : 'Public'} reply ready`
+        : 'Personal Assistant · Response Error';
       const replyPreview = successfulTurns
         .map((turn) => `${turn.scope}: ${turn.content.replace(/\s+/g, ' ').trim()}`)
         .concat(failedTurns.map((turn) => `${turn.scope} error: ${turn.content}`))
@@ -1139,12 +1101,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (isContextRailHiddenForComparison) {
-                  setIsContextRailHiddenForComparison(false);
-                  setIsContextRailOpen(true);
-                } else {
-                  setIsContextRailOpen((prev) => !prev);
-                }
+                setIsContextRailOpen((prev) => !prev);
               }}
               aria-label={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
               title={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}

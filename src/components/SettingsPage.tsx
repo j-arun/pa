@@ -1,10 +1,8 @@
 import {
   ArrowLeft,
   Bell,
-  Check,
   ChevronDown,
   ChevronRight,
-  Copy,
   HardDrive,
   Lock,
   Palette,
@@ -33,7 +31,6 @@ import {
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from '../utils/notify';
-import { WINUI3_SKELETON_SNIPPETS } from '../utils/winui3Skeleton';
 
 const FONT_OPTIONS: Array<{
   id: FontOption;
@@ -158,11 +155,43 @@ export function SettingsPage({
   >({});
   const [testingAdapterId, setTestingAdapterId] = useState<AnyAdapterId | null>(null);
   const [inspectedAdapterId, setInspectedAdapterId] = useState<AnyAdapterId | null>(null);
-  const [showWinUiSkeleton, setShowWinUiSkeleton] = useState(false);
-  const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const [notifyFeedback, setNotifyFeedback] = useState<string | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceFeedback, setMaintenanceFeedback] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<{
+    appearance: boolean;
+    privateLlm: boolean;
+    publicLlm: boolean;
+    voice: boolean;
+    storage: boolean;
+  }>({
+    appearance: true,
+    privateLlm: true,
+    publicLlm: true,
+    voice: true,
+    storage: true,
+  });
+
+  const toggleSection = (
+    sectionKey: 'appearance' | 'privateLlm' | 'publicLlm' | 'voice' | 'storage',
+  ) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
+
+  const areAllExpanded = Object.values(expandedSections).every(Boolean);
+  const toggleAllSections = () => {
+    const nextValue = !areAllExpanded;
+    setExpandedSections({
+      appearance: nextValue,
+      privateLlm: nextValue,
+      publicLlm: nextValue,
+      voice: nextValue,
+      storage: nextValue,
+    });
+  };
 
   const updateDraft = (updater: WorkbenchSettings | ((prev: WorkbenchSettings) => WorkbenchSettings)) => {
     setDraft((prev) => (typeof updater === 'function' ? updater(prev) : updater));
@@ -394,12 +423,6 @@ export function SettingsPage({
     }));
   };
 
-  const handleCopySnippet = (filename: string, code: string) => {
-    void navigator.clipboard?.writeText(code);
-    setCopiedFile(filename);
-    setTimeout(() => setCopiedFile((prev) => (prev === filename ? null : prev)), 1500);
-  };
-
   const handleApply = () => {
     onApplySettings(draft);
     setHasUnsavedChanges(false);
@@ -432,28 +455,53 @@ export function SettingsPage({
               Themes, Windows account profile, Ollama, Public adapters &amp; local storage
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Return to Personal Assistant"
-            title="Back to Personal Assistant"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleAllSections}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+            >
+              {areAllExpanded ? 'Collapse All' : 'Expand All'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Return to Personal Assistant"
+              title="Back to Personal Assistant"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto fluent-scroll p-5 space-y-7">
-          {/* Section 0: Color-Coded Themes & Account Profile */}
-          <section className="space-y-4">
-            <div>
-              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Palette className="w-4 h-4" style={{ color: 'var(--pa-accent)' }} />
-                <span>Color Themes &amp; Account Profile</span>
-              </h2>
-            </div>
+        <div className="flex-1 overflow-y-auto fluent-scroll p-5 space-y-4">
+          {/* Section 1: Color Themes & Account Profile */}
+          <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggleSection('appearance')}
+              aria-expanded={expandedSections.appearance}
+              className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="min-w-0">
+                <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Palette className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span>Color Themes &amp; Account Profile</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  Theme palette, conversation font, and Windows account display name
+                </p>
+              </div>
+              {expandedSections.appearance ? (
+                <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+              )}
+            </button>
 
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 p-4 space-y-4">
+            {expandedSections.appearance && (
+              <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Select Theme
@@ -600,45 +648,62 @@ export function SettingsPage({
                   )}
                 </div>
               </div>
-            </div>
+              </div>
+            )}
           </section>
 
-        {/* Section 1: Private LLM (Windows Ollama) */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+        {/* Section 2: Private LLM (Windows Ollama) */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('privateLlm')}
+            aria-expanded={expandedSections.privateLlm}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>Private LLM (Windows Ollama)</span>
               </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-                Discover and connect to models deployed locally through Ollama on Windows.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Discover and connect to models deployed locally through Ollama on Windows
               </p>
             </div>
-            <div className="flex items-center gap-2 flex-wrap shrink-0">
-              <button
-                type="button"
-                onClick={() => void handleRefreshPrivateModel()}
-                disabled={ollamaRefreshing || !draft.privateLlm.selectedModel.trim()}
-                title="Unload running Ollama model memory (keep_alive: 0) to get a brand new context on the next prompt"
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200 text-xs font-medium hover:bg-sky-100 dark:hover:bg-sky-900/60 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${ollamaRefreshing ? 'animate-spin' : ''}`} />
-                <span>{ollamaRefreshing ? 'Refreshing Model...' : 'Refresh Model'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={discoverOllamaModels}
-                disabled={ollamaLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${ollamaLoading ? 'animate-spin' : ''}`} />
-                <span>{ollamaLoading ? 'Scanning Ollama...' : 'Discover Local Models'}</span>
-              </button>
-            </div>
-          </div>
+            {expandedSections.privateLlm ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
 
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 divide-y divide-slate-200 dark:divide-slate-800">
+          {expandedSections.privateLlm && (
+          <div className="border-t border-slate-200/80 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap bg-slate-50/40 dark:bg-slate-950/30">
+              <span className="text-xs text-slate-600 dark:text-slate-400">
+                Manage local Ollama connection, model discovery, and context refresh.
+              </span>
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void handleRefreshPrivateModel()}
+                  disabled={ollamaRefreshing || !draft.privateLlm.selectedModel.trim()}
+                  title="Unload running Ollama model memory (keep_alive: 0) to get a brand new context on the next prompt"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200 text-xs font-medium hover:bg-sky-100 dark:hover:bg-sky-900/60 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${ollamaRefreshing ? 'animate-spin' : ''}`} />
+                  <span>{ollamaRefreshing ? 'Refreshing Model...' : 'Refresh Model'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={discoverOllamaModels}
+                  disabled={ollamaLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${ollamaLoading ? 'animate-spin' : ''}`} />
+                  <span>{ollamaLoading ? 'Scanning Ollama...' : 'Discover Local Models'}</span>
+                </button>
+              </div>
+            </div>
             <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label
@@ -963,50 +1028,69 @@ export function SettingsPage({
               </div>
             </div>
           </div>
+          )}
         </section>
 
-        {/* Section 2: Public LLM Adapters */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Server className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+        {/* Section 3: Public LLM Adapters */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('publicLlm')}
+            aria-expanded={expandedSections.publicLlm}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Server className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
                 <span>Public LLM Adapters</span>
               </h2>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-                Separate provider adapters normalize outgoing prompts and incoming responses for Gemini, Claude, and Fable.
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Configure active cloud provider adapter (Gemini, Claude, or Fable)
               </p>
             </div>
+            {expandedSections.publicLlm ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
 
-            <div className="inline-flex items-center p-1 rounded-lg bg-slate-200/75 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              {(['gemini', 'claude', 'fable'] as PublicAdapterId[]).map((id) => {
-                const isActive = activePublicId === id;
-                const label = id === 'gemini' ? 'Gemini' : id === 'claude' ? 'Claude' : 'Fable';
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() =>
-                      updateDraft((prev) => ({
-                        ...prev,
-                        publicLlm: {
-                          ...prev.publicLlm,
-                          activeAdapter: id,
-                        },
-                      }))
-                    }
-                    className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                      isActive
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+          {expandedSections.publicLlm && (
+          <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Separate provider adapters normalize outgoing prompts and incoming responses for Gemini, Claude, and Fable.
+              </p>
+
+              <div className="inline-flex items-center p-1 rounded-lg bg-slate-200/75 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
+                {(['gemini', 'claude', 'fable'] as PublicAdapterId[]).map((id) => {
+                  const isActive = activePublicId === id;
+                  const label = id === 'gemini' ? 'Gemini' : id === 'claude' ? 'Claude' : 'Fable';
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          publicLlm: {
+                            ...prev.publicLlm,
+                            activeAdapter: id,
+                          },
+                        }))
+                      }
+                      className={`px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                        isActive
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
           <div className="space-y-4">
             {(['gemini', 'claude', 'fable'] as PublicAdapterId[]).map((adapterId) => {
@@ -1239,51 +1323,36 @@ export function SettingsPage({
               );
             })}
           </div>
-
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5">
-            <label
-              htmlFor="public-context-cache"
-              className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-            >
-              Public LLM Context Cache
-            </label>
-            <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-              Reference context for the selected public model. It is included in the system
-              instruction when absent from the current prompt, retained history, and system
-              instruction.
-            </p>
-            <textarea
-              id="public-context-cache"
-              rows={6}
-              value={draft.contextCache.publicText}
-              onChange={(event) =>
-                updateDraft((previous) => ({
-                  ...previous,
-                  contextCache: {
-                    ...previous.contextCache,
-                    publicText: event.target.value,
-                  },
-                }))
-              }
-              placeholder="Add reference material to provide to the selected public LLM..."
-              className="mt-3 w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm leading-relaxed text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
           </div>
+          )}
         </section>
 
-        {/* Section 3: Audio, Voice & Native Speaker */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-              <span>Voice & Windows Native Speaker</span>
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-              Select your system speech synthesis voice and automatic speaker playback rules.
-            </p>
-          </div>
+        {/* Section 4: Voice & Windows Native Speaker */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('voice')}
+            aria-expanded={expandedSections.voice}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                <span>Voice &amp; Windows Native Speaker</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Speech synthesis voice, playback rules, and reply notification alerts
+              </p>
+            </div>
+            {expandedSections.voice ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
 
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 p-5 space-y-5">
+          {expandedSections.voice && (
+          <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div className="md:col-span-2">
                 <label
@@ -1488,21 +1557,35 @@ export function SettingsPage({
               )}
             </div>
           </div>
+          )}
         </section>
 
-        {/* Section 4: Local Data, Config File & WinUI 3 Native Skeleton */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-              <span>Local Configuration File & Windows Storage</span>
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
-              Configure models in the UI before starting a conversation, or edit <code className="font-mono text-xs">workbench.config.json</code> directly on disk.
-            </p>
-          </div>
+        {/* Section 5: Local Configuration File & Windows Storage */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('storage')}
+            aria-expanded={expandedSections.storage}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <HardDrive className="w-4 h-4 text-slate-600 dark:text-slate-400 shrink-0" />
+                <span>Local Configuration File &amp; Windows Storage</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Disk persistence path (workbench.config.json), Ollama memory relief, and reset defaults
+              </p>
+            </div>
+            {expandedSections.storage ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
 
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 divide-y divide-slate-200 dark:divide-slate-800">
+          {expandedSections.storage && (
+          <div className="border-t border-slate-200/80 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
             <div className="p-5 space-y-2">
               <div className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Active application configurations are stored automatically in <code className="font-mono">workbench.config.json</code> ({configFileInfo.platform === 'win32' ? 'Windows LocalAppData' : 'Local Host Storage'})
@@ -1566,64 +1649,8 @@ export function SettingsPage({
                 </button>
               </div>
             </div>
-
-            <div className="p-5">
-              <button
-                type="button"
-                onClick={() => setShowWinUiSkeleton((prev) => !prev)}
-                className="flex items-center justify-between w-full text-left text-sm font-medium text-slate-800 dark:text-slate-200"
-              >
-                <span>WinUI 3 (.NET 8 / C#) Native Windows Adapter Skeleton</span>
-                {showWinUiSkeleton ? (
-                  <ChevronDown className="w-4 h-4 text-slate-500" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
-                )}
-              </button>
-
-              {showWinUiSkeleton && (
-                <div className="mt-4 space-y-4">
-                  {WINUI3_SKELETON_SNIPPETS.map((item) => (
-                    <div
-                      key={item.filename}
-                      className="rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
-                        <div>
-                          <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                            {item.title}
-                          </div>
-                          <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                            {item.filename}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopySnippet(item.filename, item.code)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          {copiedFile === item.filename ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span>Copied</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Copy</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <pre className="p-3.5 bg-slate-950 text-slate-100 text-xs font-mono overflow-x-auto leading-relaxed">
-                        <code>{item.code}</code>
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
+          )}
         </section>
       </div>
 
