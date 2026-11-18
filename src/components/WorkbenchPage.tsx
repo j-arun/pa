@@ -231,92 +231,6 @@ function ScopeModeSvg({
   );
 }
 
-function ScopeArtwork({
-  scope,
-  className,
-}: {
-  scope: ConversationScope;
-  className: string;
-}) {
-  const isPrivate = scope === 'private';
-
-  return (
-    <div
-      className={`pointer-events-none absolute ${className}`}
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 360 240" className="h-auto w-full">
-        <circle
-          cx="150"
-          cy="125"
-          r="105"
-          fill={isPrivate ? '#d1fae5' : '#dbeafe'}
-        />
-        <path
-          d="M64 236c5-46 35-72 82-72s77 26 82 72"
-          fill={isPrivate ? '#0f766e' : '#2563eb'}
-        />
-        <path
-          d="M115 86c0-30 18-50 44-50 28 0 48 22 45 54l-4 36c-3 25-20 42-43 42-25 0-42-19-42-45z"
-          fill="#f3c6a5"
-        />
-        <path
-          d="M114 89c-5-38 17-64 50-64 27 0 45 18 46 45-14-5-24-15-29-28-12 17-37 28-67 28z"
-          fill="#334155"
-        />
-        <circle cx="170" cy="102" r="3.2" fill="#334155" />
-        {isPrivate ? (
-          <g>
-            {/* Soft murmuring mouth + cupped hand + quiet dashed whisper arcs */}
-            <path
-              d="M174 123c4 2 8 2 11 0"
-              fill="none"
-              stroke="#9a5d4a"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            <path
-              d="M188 164l12-40c2-7 12-7 14 0l2 34c0 9-7 17-18 17z"
-              fill="#eab38f"
-              stroke="#9a5d4a"
-              strokeWidth="3"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M226 112c7 6 7 18 0 24M244 102c11 10 11 32 0 42"
-              fill="none"
-              stroke="#059669"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray="4 6"
-            />
-          </g>
-        ) : (
-          <g>
-            {/* Shouting into loudspeaker */}
-            <ellipse cx="184" cy="123" rx="6" ry="8" fill="#991b1b" />
-            <path
-              d="M196 105h30l48-28v82l-48-28h-30z"
-              fill="#f59e0b"
-              stroke="#b45309"
-              strokeWidth="4"
-              strokeLinejoin="round"
-            />
-            <path d="M210 131l10 34h19l-13-40" fill="#d97706" />
-            <path
-              d="M286 92c15 12 15 36 0 48M302 78c24 20 24 54 0 74"
-              fill="none"
-              stroke="#0284c7"
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-          </g>
-        )}
-      </svg>
-    </div>
-  );
-}
-
 function ConversationReplyCard({
   replyTurn,
   copiedId,
@@ -917,14 +831,46 @@ export function WorkbenchPage({
                   />
                 </div>
 
-                <div className="mt-5 flex justify-center">
+                <div className="mt-4 flex justify-center">
                   <button
                     type="button"
                     onClick={onOpenSettings}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 text-xs font-medium text-slate-700 shadow-xs hover:bg-white transition-colors"
+                    title="Open Settings to change the connected model"
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-medium shadow-xs transition-colors ${
+                      scope === 'private'
+                        ? 'border-emerald-200/90 bg-white/90 text-emerald-900 hover:bg-white'
+                        : 'border-sky-200/90 bg-white/90 text-sky-900 hover:bg-white'
+                    }`}
                   >
-                    <SettingsIcon className="w-3.5 h-3.5" />
-                    <span>Configure Models &amp; Themes</span>
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 rounded-full shrink-0 ${
+                        scope === 'private' ? 'bg-emerald-500' : 'bg-sky-500'
+                      }`}
+                    />
+                    <span>
+                      {scope === 'private'
+                        ? `Connected to Ollama${
+                            settings.privateLlm.selectedModel.trim()
+                              ? ` · ${settings.privateLlm.selectedModel.trim()}`
+                              : ''
+                          }`
+                        : `Connected to ${
+                            settings.publicLlm.activeAdapter === 'gemini'
+                              ? 'Gemini'
+                              : settings.publicLlm.activeAdapter === 'claude'
+                                ? 'Claude'
+                                : 'Fable'
+                          }${
+                            settings.publicLlm.adapters[
+                              settings.publicLlm.activeAdapter
+                            ].model.trim()
+                              ? ` · ${settings.publicLlm.adapters[
+                                  settings.publicLlm.activeAdapter
+                                ].model.trim()}`
+                              : ''
+                          }`}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1630,22 +1576,6 @@ export function WorkbenchPage({
                 : 'bg-[#f4f9ff]/95 border-sky-200/95 text-slate-900'
             }`}
           >
-            <ScopeArtwork
-              scope={scope}
-              className="right-20 top-1/2 z-0 w-32 sm:w-40 -translate-y-1/2 opacity-30"
-            />
-
-            {/* Unmistakable Private (Murmuring) vs Public (Shouting in Loudspeaker) indicator */}
-            <div className="relative z-10 flex flex-col items-center justify-center shrink-0 pr-1 border-r border-slate-200/80">
-              <ScopeModeSvg scope={scope} className="w-10 h-10 sm:w-11 sm:h-11" />
-              <span
-                className={`mt-1 text-[10px] font-semibold leading-none whitespace-nowrap ${
-                  scope === 'private' ? 'text-emerald-800' : 'text-sky-800'
-                }`}
-              >
-                {scope === 'private' ? 'Private' : 'Public'}
-              </span>
-            </div>
 
             <textarea
               ref={textareaRef}
