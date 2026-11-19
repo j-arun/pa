@@ -2,7 +2,6 @@ import {
   Bell,
   BookOpen,
   Cloud,
-  FileCode2,
   Home,
   Lock,
   Palette,
@@ -52,7 +51,6 @@ import {
   saveSettings,
 } from './utils/storage';
 import {
-  THREAD_RATING_OPTIONS,
   formatShortYearMonth,
   getMonthNameFromNumber,
 } from './utils/promptTemplates';
@@ -168,7 +166,7 @@ export default function App() {
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
-  const [isChatBarOpen, setIsChatBarOpen] = useState(true);
+  const [isChatBarOpen, setIsChatBarOpen] = useState(false);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -621,7 +619,7 @@ export default function App() {
     setIsReferenceContextOpen(false);
     setActiveReportExchangeId(null);
     setTurns([]);
-    setIsChatBarOpen(true);
+    setIsChatBarOpen(false);
     setTelemetry({
       phase: 'Idle',
       isThinking: false,
@@ -1293,10 +1291,6 @@ export default function App() {
                 {ratedThreads.length > 0 &&
                   ratedThreads.map((record, index) => {
                     const qTurn = record.turns.find((turn) => turn.role === 'user');
-                    const rating = qTurn?.threadRating;
-                    const ratingOption = rating
-                      ? THREAD_RATING_OPTIONS.find((opt) => opt.id === rating)
-                      : undefined;
                     const threadScope =
                       qTurn?.scope ??
                       record.turns.find((turn) => turn.role === 'assistant')?.scope ??
@@ -1310,14 +1304,8 @@ export default function App() {
                       return (
                         <div
                           key={record.id}
-                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs"
+                          className="w-full flex items-center px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs"
                         >
-                          <FileCode2
-                            className="w-3.5 h-3.5 shrink-0"
-                            style={{
-                              color: isPublicThread ? 'var(--pa-accent)' : '#94a3b8',
-                            }}
-                          />
                           <input
                             ref={renameInputRef}
                             type="text"
@@ -1363,8 +1351,8 @@ export default function App() {
                             y: Math.min(e.clientY, window.innerHeight - 108),
                           });
                         }}
-                        title={`${isPublicThread ? 'Public' : 'Private'} "${displayLabel}"${ratingOption ? ` · ${ratingOption.description}` : ''} (Right-click to edit or delete)`}
-                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
+                        title={`${isPublicThread ? 'Public' : 'Private'} "${displayLabel}" (Right-click to edit or delete)`}
+                        className={`w-full flex items-center px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
                           isPublicThread
                             ? 'font-semibold text-slate-900 dark:text-white'
                             : 'font-normal text-slate-500 dark:text-slate-400 opacity-55 blur-[0.4px] grayscale-[45%] hover:opacity-85 hover:blur-0'
@@ -1376,12 +1364,6 @@ export default function App() {
                               : 'hover:bg-white/55 dark:hover:bg-slate-800/55'
                         }`}
                       >
-                        <FileCode2
-                          className="w-3.5 h-3.5 shrink-0"
-                          style={{
-                            color: isPublicThread ? 'var(--pa-accent)' : '#94a3b8',
-                          }}
-                        />
                         <span className="truncate flex-1 tabular-nums">{displayLabel}</span>
                       </button>
                     );

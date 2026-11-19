@@ -39,6 +39,7 @@ import {
   PROMPT_DOMAINS,
   THREAD_RATING_OPTIONS,
   formatShortYearMonth,
+  formatThreadDisplayTitle,
   getMonthNameFromNumber,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
@@ -185,27 +186,6 @@ const DOMAIN_HOME_CARDS: Array<{
     icon: 'shield',
   },
 ];
-
-const RATING_STYLES: Record<
-  ThreadRating,
-  { dotClass: string; activeClass: string }
-> = {
-  green: {
-    dotClass: 'bg-emerald-600 dark:bg-emerald-400',
-    activeClass:
-      'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-200',
-  },
-  yellow: {
-    dotClass: 'bg-yellow-500 dark:bg-yellow-400',
-    activeClass:
-      'border-yellow-500 bg-yellow-50 text-yellow-800 dark:border-yellow-500 dark:bg-yellow-950/60 dark:text-yellow-200',
-  },
-  red: {
-    dotClass: 'bg-red-600 dark:bg-red-400',
-    activeClass:
-      'border-red-500 bg-red-50 text-red-800 dark:border-red-500 dark:bg-red-950/60 dark:text-red-200',
-  },
-};
 
 export interface SendThreadMessagePayload {
   text: string;
@@ -935,7 +915,7 @@ export function WorkbenchPage({
       </div>
 
       {/* Main Stage Viewport */}
-      <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-8 flex flex-col">
+      <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-4 sm:py-6 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
           {/* STAGE 1: Scope Intro Illustration + Medium Period Message + 4 Prompt Builder Domain Cards */}
           {!activeExchange && (
@@ -1033,15 +1013,15 @@ export function WorkbenchPage({
 
           {/* STAGE 2: Jumping Round 3D Speech Bubble */}
           {isWaitingForReply && activeQuestionTurn && (
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center">
+            <div className="my-auto py-2 flex flex-col items-center justify-center text-center">
               <div className="relative flex flex-col items-center">
                 <motion.div
                   key={`jumping-${activeQuestionTurn.id}`}
-                  initial={{ opacity: 0, scale: 0.82, y: 42 }}
+                  initial={{ opacity: 0, scale: 0.82, y: 36 }}
                   animate={{
                     opacity: 1,
                     scale: 1,
-                    y: [0, -26, 0, -14, 0],
+                    y: [0, -22, 0, -11, 0],
                     rotateZ: [-0.9, 0.9, -0.5, 0.6, -0.9],
                   }}
                   transition={{
@@ -1060,12 +1040,12 @@ export function WorkbenchPage({
                   }}
                   className="relative flex flex-col items-center"
                 >
-                  <div className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-8 flex flex-col items-center justify-center text-center gap-2.5 overflow-hidden">
+                  <div className="fluent-3d-bubble relative w-[264px] sm:w-[300px] aspect-square px-7 py-6 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute top-4 left-16 right-16 h-4 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[3px]"
                     />
-                    <span className="scale-125 mb-0.5">
+                    <span className="scale-115 mb-0.5">
                       <EventCategoryEmblem
                         icon={getDomainIconFromPromptDomain(activeQuestionTurn.promptDomain)}
                       />
@@ -1094,9 +1074,9 @@ export function WorkbenchPage({
                     </p>
                   </div>
                   {/* Round Speech Bubble Tail Beads */}
-                  <div className="flex flex-col items-start self-start ml-16 -mt-2 space-y-1.5" aria-hidden="true">
-                    <span className="fluent-3d-bubble-tail w-5 h-5 rounded-full block" />
-                    <span className="fluent-3d-bubble-tail w-3 h-3 rounded-full -ml-2 block" />
+                  <div className="flex flex-col items-start self-start ml-14 -mt-2 space-y-1.5" aria-hidden="true">
+                    <span className="fluent-3d-bubble-tail w-4 h-4 rounded-full block" />
+                    <span className="fluent-3d-bubble-tail w-2.5 h-2.5 rounded-full -ml-1.5 block" />
                   </div>
                 </motion.div>
 
@@ -1112,13 +1092,22 @@ export function WorkbenchPage({
                     repeat: Infinity,
                     ease: 'easeInOut',
                   }}
-                  className="mt-2 h-3.5 w-44 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
+                  className="mt-1.5 h-3 w-40 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
                 />
 
-                <div className="mt-5 inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  <Hourglass className="w-3.5 h-3.5 animate-spin text-sky-600 dark:text-sky-400" />
-                  <span>Gathering specific events &amp; updating HTML report…</span>
-                </div>
+                {/* Bobbing Timer Icon Only (up and down) */}
+                <motion.div
+                  aria-label="Generating response"
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{
+                    duration: 1.3,
+                    repeat: Infinity,
+                    ease: 'easeInOut',
+                  }}
+                  className="mt-5 inline-flex items-center justify-center text-sky-600 dark:text-sky-400"
+                >
+                  <Hourglass className="w-5 h-5" />
+                </motion.div>
               </div>
             </div>
           )}
@@ -1126,6 +1115,51 @@ export function WorkbenchPage({
           {/* STAGE 3: Response Arrived — Settled Round 3D Speech Bubble + Sliding Event Cards */}
           {!isWaitingForReply && activeExchange && (
             <div className="my-auto py-4 space-y-6">
+              {/* Beginning of Thread: 1-star / 2-star / 3-star Rating followed by Thread Name */}
+              {rootExchange?.questionTurn && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div
+                    role="group"
+                    aria-label="Thread star rating"
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200/85 dark:border-slate-700/80 bg-white/85 dark:bg-slate-900/80 p-1 shadow-2xs shrink-0"
+                  >
+                    {THREAD_RATING_OPTIONS.map((opt) => {
+                      const selected = rootExchange.questionTurn?.threadRating === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            onUpdateExchangeMetadata(rootExchange.id, {
+                              threadRating: selected ? undefined : opt.id,
+                            })
+                          }
+                          aria-pressed={selected}
+                          title={opt.description}
+                          className={`inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
+                            selected
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 shadow-2xs'
+                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100/80 dark:text-slate-500 dark:hover:text-amber-300 dark:hover:bg-slate-800/80'
+                          }`}
+                        >
+                          {opt.starGlyphs}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <h2 className="font-display text-base sm:text-lg font-semibold tracking-tight text-slate-900 dark:text-white truncate">
+                    {rootExchange.questionTurn.threadName?.trim() ||
+                      formatThreadDisplayTitle({
+                        domain: rootExchange.questionTurn.promptDomain,
+                        month: rootExchange.questionTurn.threadMonth,
+                        year: rootExchange.questionTurn.threadYear,
+                        fallbackNumber: 1,
+                      })}
+                  </h2>
+                </div>
+              )}
+
               {/* Follow-up Turn Switcher when >1 turn exists in this thread */}
               {exchanges.length > 1 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1395,7 +1429,7 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Subtle Stage Footer Controls: Open HTML Report, Remove, Rate */}
+              {/* Subtle Stage Footer Controls: Open HTML Report, Remove */}
               {activeAssistantReply && rootExchange && (
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1439,41 +1473,6 @@ export function WorkbenchPage({
                       </button>
                     )}
                   </div>
-
-                  {rootExchange.questionTurn && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">
-                        Rate:
-                      </span>
-                      {THREAD_RATING_OPTIONS.map((opt) => {
-                        const selected = rootExchange.questionTurn?.threadRating === opt.id;
-                        return (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            onClick={() =>
-                              onUpdateExchangeMetadata(rootExchange.id, {
-                                threadRating: selected ? undefined : opt.id,
-                              })
-                            }
-                            aria-pressed={selected}
-                            title={`${opt.description} (${opt.label})`}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                              selected
-                                ? RATING_STYLES[opt.id].activeClass
-                                : 'border-slate-200/85 bg-white/85 text-slate-600 hover:bg-white dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800'
-                            }`}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={`h-2 w-2 rounded-full ${RATING_STYLES[opt.id].dotClass}`}
-                            />
-                            <span>{opt.starGlyphs}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1498,9 +1497,7 @@ export function WorkbenchPage({
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    {hasActiveThread
-                      ? `Follow-up · ${getPromptDomainShortLabel(activePromptDomain)}`
-                      : `Ask Personal Assistant · ${getPromptDomainShortLabel(activePromptDomain)}`}
+                    {`What's Up · ${getPromptDomainShortLabel(activePromptDomain)}`}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
                     {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()
@@ -1672,7 +1669,7 @@ export function WorkbenchPage({
                 </button>
               </form>
             </motion.section>
-          ) : (
+          ) : hasActiveThread ? (
             <motion.button
               key="chat-panel-minimized"
               type="button"
@@ -1685,15 +1682,9 @@ export function WorkbenchPage({
               className="pointer-events-auto inline-flex items-center gap-2.5 rounded-full border border-white/90 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] hover:shadow-[0_18px_40px_-10px_rgba(2,132,199,0.28)] transition-shadow"
             >
               <MessageSquarePlus className="w-4 h-4" style={{ color: 'var(--pa-accent)' }} />
-              <span>
-                {isSending
-                  ? 'Thinking…'
-                  : hasActiveThread
-                    ? 'Ask Follow-up'
-                    : 'Ask Assistant'}
-              </span>
+              <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
             </motion.button>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
