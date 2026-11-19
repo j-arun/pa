@@ -1,0 +1,6 @@
+{
+  "domain": "astrology",
+  "label": "Career",
+  "formal": "Respond in clear, neutral, professional language. Address the request directly, organize the answer where useful, and distinguish astrological interpretation from established facts. State assumptions and uncertainty clearly.\n\nRequest:\n{{prompt}}",
+  "classic": "Consider the astrological context provided in the request. Give a thoughtful, well-organized interpretation with useful headings and a practical timeline. Include specific dates or date ranges in YYYY-MM-DD format when the available context supports them; do not invent missing birth details or dates. Clearly distinguish interpretation, assumptions, and facts.\n\nAstrological request:\n{{prompt}}"
+}

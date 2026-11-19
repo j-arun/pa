@@ -1,0 +1,6 @@
+{
+  "domain": "health",
+  "label": "Health",
+  "formal": "Respond in clear, neutral, professional language. Provide general information, explain uncertainty, and do not diagnose or replace advice from a qualified health professional.\n\nRequest:\n{{prompt}}",
+  "classic": "Review the health-related context carefully. Organize general information into relevant points and practical next steps. Identify important unknowns, avoid making a diagnosis, and recommend a qualified health professional when appropriate.\n\nHealth request:\n{{prompt}}"
+}

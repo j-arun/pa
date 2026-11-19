@@ -1,11 +1,15 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import type { WorkbenchSettings } from '../src/types/workbench.ts';
+import type { PromptDomain, WorkbenchSettings } from '../src/types/workbench.ts';
 import {
   DEFAULT_PROMPT_BUILDER_SETTINGS,
   normalizePromptBuilderSettings,
 } from '../src/utils/promptTemplates.ts';
+import {
+  readDomainPromptsFromFiles,
+  writeDomainPromptsToFiles,
+} from './promptStore.ts';
 
 function detectOsUserName(): string {
   try {
@@ -375,6 +379,7 @@ export function readLocalConfigFile(): {
   hasPromptBuilderSettings: boolean;
   defaultReportsDir: string;
   resolvedReportsDir: string;
+  promptFiles: Record<PromptDomain, string>;
 } {
   const filePath = resolveConfigFilePath();
   const dir = path.dirname(filePath);
@@ -385,18 +390,29 @@ export function readLocalConfigFile(): {
   }
 
   if (!fs.existsSync(filePath)) {
+    const domainPromptData = readDomainPromptsFromFiles(
+      DEFAULT_WORKBENCH_CONFIG.promptBuilder.templates,
+    );
+    const initialConfig: WorkbenchSettings = {
+      ...DEFAULT_WORKBENCH_CONFIG,
+      promptBuilder: {
+        ...DEFAULT_WORKBENCH_CONFIG.promptBuilder,
+        templates: domainPromptData.templates,
+      },
+    };
     fs.writeFileSync(
       filePath,
-      JSON.stringify(DEFAULT_WORKBENCH_CONFIG, null, 2),
+      JSON.stringify(initialConfig, null, 2),
       'utf-8',
     );
     return {
-      config: DEFAULT_WORKBENCH_CONFIG,
+      config: initialConfig,
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings: true,
       defaultReportsDir,
-      resolvedReportsDir: resolveReportsDir(DEFAULT_WORKBENCH_CONFIG.reportsDir),
+      resolvedReportsDir: resolveReportsDir(initialConfig.reportsDir),
+      promptFiles: domainPromptData.filePaths,
     };
   }
 
@@ -404,23 +420,44 @@ export function readLocalConfigFile(): {
     const text = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(text) as Partial<WorkbenchSettings>;
     const merged = mergeConfigWithDefaults(parsed);
+    const domainPromptData = readDomainPromptsFromFiles(merged.promptBuilder.templates);
+    const syncedConfig: WorkbenchSettings = {
+      ...merged,
+      promptBuilder: {
+        ...merged.promptBuilder,
+        templates: domainPromptData.templates,
+      },
+    };
     return {
-      config: merged,
+      config: syncedConfig,
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings:
-        Boolean(parsed.promptBuilder) && typeof parsed.promptBuilder === 'object',
+        (Boolean(parsed.promptBuilder) && typeof parsed.promptBuilder === 'object') ||
+        domainPromptData.hasAnyFile,
       defaultReportsDir,
-      resolvedReportsDir: resolveReportsDir(merged.reportsDir),
+      resolvedReportsDir: resolveReportsDir(syncedConfig.reportsDir),
+      promptFiles: domainPromptData.filePaths,
     };
   } catch {
+    const domainPromptData = readDomainPromptsFromFiles(
+      DEFAULT_WORKBENCH_CONFIG.promptBuilder.templates,
+    );
+    const fallbackConfig: WorkbenchSettings = {
+      ...DEFAULT_WORKBENCH_CONFIG,
+      promptBuilder: {
+        ...DEFAULT_WORKBENCH_CONFIG.promptBuilder,
+        templates: domainPromptData.templates,
+      },
+    };
     return {
-      config: DEFAULT_WORKBENCH_CONFIG,
+      config: fallbackConfig,
       filePath,
       platform: process.platform,
-      hasPromptBuilderSettings: false,
+      hasPromptBuilderSettings: domainPromptData.hasAnyFile,
       defaultReportsDir,
-      resolvedReportsDir: resolveReportsDir(DEFAULT_WORKBENCH_CONFIG.reportsDir),
+      resolvedReportsDir: resolveReportsDir(fallbackConfig.reportsDir),
+      promptFiles: domainPromptData.filePaths,
     };
   }
 }
@@ -431,6 +468,7 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
   savedAt: string;
   defaultReportsDir: string;
   resolvedReportsDir: string;
+  promptFiles: Record<PromptDomain, string>;
 } {
   const filePath = resolveConfigFilePath();
   const dir = path.dirname(filePath);
@@ -439,6 +477,7 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
   }
 
   const merged = mergeConfigWithDefaults(next);
+  const promptFiles = writeDomainPromptsToFiles(merged.promptBuilder.templates);
   fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf-8');
   return {
     config: merged,
@@ -446,5 +485,6 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
     savedAt: new Date().toISOString(),
     defaultReportsDir: resolveDefaultReportsDir(),
     resolvedReportsDir: resolveReportsDir(merged.reportsDir),
+    promptFiles,
   };
 }

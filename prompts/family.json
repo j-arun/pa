@@ -1,0 +1,6 @@
+{
+  "domain": "finance",
+  "label": "Family",
+  "formal": "Respond in clear, neutral, professional language. Explain assumptions and risks, and do not present general information as personalized financial advice.\n\nRequest:\n{{prompt}}",
+  "classic": "Analyze the financial context and organize the response into key considerations, assumptions, risks, and possible next steps. Use specific amounts and dates only when supplied or supportable, and clearly identify uncertainty.\n\nFinancial request:\n{{prompt}}"
+}

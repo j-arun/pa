@@ -143,6 +143,7 @@ export default function App() {
     syncError?: string;
     defaultReportsDir?: string;
     resolvedReportsDir?: string;
+    promptFiles?: Record<PromptDomain, string>;
   }>({
     filePath: 'workbench.config.json',
     platform: 'unknown',
@@ -387,6 +388,7 @@ export default function App() {
         hasPromptBuilderSettings?: boolean;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        promptFiles?: Record<PromptDomain, string>;
       };
       if (data.config) {
         loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
@@ -404,6 +406,7 @@ export default function App() {
         platform: data.platform || prev.platform,
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
       }));
     } catch (err) {
@@ -431,6 +434,7 @@ export default function App() {
         savedAt?: string;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        promptFiles?: Record<PromptDomain, string>;
       };
       setConfigFileInfo((prev) => ({
         ...prev,
@@ -438,6 +442,7 @@ export default function App() {
         lastSavedAt: data.savedAt || new Date().toISOString(),
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
       }));
       return true;
@@ -1678,6 +1683,7 @@ export default function App() {
               activeDomain={activePromptDomain}
               templates={promptTemplates}
               settingsFilePath={configFileInfo.filePath}
+              domainPromptFilePath={configFileInfo.promptFiles?.[activePromptDomain]}
               saveError={configFileInfo.syncError}
               onApplySettings={() => persistSettingsToFile(settings)}
               onSelectDomain={(activeDomain) =>

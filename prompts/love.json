@@ -1,0 +1,6 @@
+{
+  "domain": "general",
+  "label": "Love",
+  "formal": "Respond clearly and professionally. Address the request directly, organize details where useful, and identify any important assumptions.\n\nRequest:\n{{prompt}}",
+  "classic": "Use the context in the request to prepare a thoughtful, well-structured response. Use useful headings, specific details, and an actionable sequence where appropriate. Identify assumptions and unknowns.\n\nRequest:\n{{prompt}}"
+}

@@ -61,6 +61,7 @@ interface PromptBuilderPageProps {
   activeDomain: PromptDomain;
   templates: PromptTemplates;
   settingsFilePath: string;
+  domainPromptFilePath?: string;
   saveError?: string;
   onApplySettings: () => Promise<boolean>;
   onSelectDomain: (domain: PromptDomain) => void;
@@ -71,6 +72,7 @@ export function PromptBuilderPage({
   activeDomain,
   templates,
   settingsFilePath,
+  domainPromptFilePath,
   saveError,
   onApplySettings,
   onSelectDomain,
@@ -182,9 +184,12 @@ export function PromptBuilderPage({
           </p>
         )}
 
-        <p className="break-all text-xs text-slate-500 dark:text-slate-400">
-          Settings file: {settingsFilePath}
-        </p>
+        <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+          <p className="break-all">
+            Domain prompt file: {domainPromptFilePath || `prompts/${domain.label.toLowerCase()}.json`}
+          </p>
+          <p className="break-all">Settings file: {settingsFilePath}</p>
+        </div>
         {saveError && (
           <div
             role="alert"
