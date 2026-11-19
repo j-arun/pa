@@ -958,6 +958,7 @@ export function WorkbenchPage({
   }, [isChatBarOpen]);
 
   const hasActiveThread = exchanges.length > 0;
+  const isThreadFinalized = Boolean(rootExchange?.questionTurn?.isFinalized);
   const activeMonthNum =
     settings.contextCache.activeMonth ?? new Date().getMonth() + 1;
   const activeYearNum =
@@ -971,6 +972,7 @@ export function WorkbenchPage({
     const questionText = draft.trim();
     if (!questionText || isSending) return;
     const isFollowUp = hasActiveThread;
+    if (isFollowUp && isThreadFinalized) return;
     const submittedThreadName = isFollowUp
       ? rootExchange?.questionTurn?.threadName?.trim() ||
         deriveThreadTitleFromPrompt(questionText)
@@ -1520,19 +1522,21 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Subtle Stage Footer Controls: Ask Follow-up, Remove, and 1-star / 2-star / 3-star Rating */}
+              {/* Subtle Stage Footer Controls: Ask Follow-up (unless finalized), Remove, and 1-star / 2-star / 3-star Rating */}
               {activeAssistantReply && rootExchange && (
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={onOpenChatBar}
-                      disabled={isSending}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-45 transition-colors shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                      <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
-                    </button>
+                    {!isThreadFinalized && (
+                      <button
+                        type="button"
+                        onClick={onOpenChatBar}
+                        disabled={isSending}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-45 transition-colors shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <MessageSquarePlus className="w-3.5 h-3.5" />
+                        <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
+                      </button>
+                    )}
                     {confirmDeleteId === rootExchange.id ? (
                       <div className="inline-flex items-center gap-1.5">
                         <button
@@ -1751,47 +1755,67 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Question Input Form */}
-              <form
-                onSubmit={handleSubmit}
-                className={`rounded-2xl border px-3 py-2.5 flex items-end gap-2 transition-colors ${
-                  scope === 'private'
-                    ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200/90 dark:border-emerald-800/70'
-                    : 'bg-sky-50/75 dark:bg-slate-950/75 border-sky-200/90 dark:border-slate-700/85'
-                }`}
-              >
-                <textarea
-                  ref={textareaRef}
-                  rows={3}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={
-                    hasActiveThread
-                      ? 'Ask a follow-up question to update this report…'
-                      : 'Type your question… (Enter to send)'
-                  }
-                  style={{ fontFamily: 'var(--pa-font-body)' }}
-                  className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!draft.trim() || isSending}
-                  aria-label="Send question"
-                  className="h-10 px-3.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+              {/* Question Input Form (hidden when viewing a finalized thread) */}
+              {hasActiveThread && isThreadFinalized ? (
+                <div className="rounded-2xl border border-slate-200/85 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/60 px-3.5 py-3 flex items-center justify-between gap-3">
+                  <p
+                    className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"
+                    style={{ fontFamily: 'var(--pa-font-body)' }}
+                  >
+                    This thread is finalized.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onClearConversation}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] px-3 py-1.5 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New Thread</span>
+                  </button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleSubmit}
+                  className={`rounded-2xl border px-3 py-2.5 flex items-end gap-2 transition-colors ${
+                    scope === 'private'
+                      ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200/90 dark:border-emerald-800/70'
+                      : 'bg-sky-50/75 dark:bg-slate-950/75 border-sky-200/90 dark:border-slate-700/85'
+                  }`}
                 >
-                  {isSending ? (
-                    <Hourglass className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <span>{hasActiveThread ? 'Follow Up' : 'Send'}</span>
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </button>
-              </form>
+                  <textarea
+                    ref={textareaRef}
+                    rows={3}
+                    value={draft}
+                    disabled={isSending}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      hasActiveThread
+                        ? 'Ask a follow-up question to update this report…'
+                        : 'Type your question… (Enter to send)'
+                    }
+                    style={{ fontFamily: 'var(--pa-font-body)' }}
+                    className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!draft.trim() || isSending}
+                    aria-label="Send question"
+                    className="h-10 px-3.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                  >
+                    {isSending ? (
+                      <Hourglass className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <span>{hasActiveThread ? 'Follow Up' : 'Send'}</span>
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </motion.section>
-          ) : hasActiveThread && !(!isWaitingForReply && activeAssistantReply && rootExchange) ? (
+          ) : hasActiveThread && !isThreadFinalized && !(!isWaitingForReply && activeAssistantReply && rootExchange) ? (
             <motion.button
               key="chat-panel-minimized"
               type="button"

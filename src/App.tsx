@@ -533,27 +533,35 @@ export default function App() {
     if (!hasAssistantReply && !rootUserTurn.threadRating) return;
 
     const recordId = rootUserTurn.id;
+    const isFinalized = Boolean(rootUserTurn.isFinalized);
     const updatedRecord: RatedThreadRecord = {
       id: recordId,
       turns,
       ratedAt: new Date().toISOString(),
+      isFinalized,
     };
 
     setRatedThreads((prevRated) => {
       const existingIdx = prevRated.findIndex((item) => item.id === recordId);
       if (existingIdx >= 0) {
         const existing = prevRated[existingIdx];
-        if (JSON.stringify(existing.turns) === JSON.stringify(turns)) {
+        const nextFinalized = Boolean(existing.isFinalized || isFinalized);
+        if (
+          JSON.stringify(existing.turns) === JSON.stringify(turns) &&
+          Boolean(existing.isFinalized) === nextFinalized
+        ) {
           return prevRated;
         }
         const nextRated = [...prevRated];
-        nextRated[existingIdx] = {
+        const mergedRecord: RatedThreadRecord = {
           ...existing,
           turns,
           ratedAt: updatedRecord.ratedAt,
+          isFinalized: nextFinalized,
         };
+        nextRated[existingIdx] = mergedRecord;
         if (hasAssistantReply && reportsHydratedRef.current) {
-          void syncReportToDisk({ ...existing, turns, ratedAt: updatedRecord.ratedAt });
+          void syncReportToDisk(mergedRecord);
         }
         return nextRated;
       }
@@ -654,6 +662,50 @@ export default function App() {
   );
 
   const handleStartNewThread = useCallback(() => {
+    const rootUserTurn = turns.find((turn) => turn.role === 'user');
+    if (rootUserTurn) {
+      const finalizedTurns = turns.map((turn) =>
+        turn.id === rootUserTurn.id && turn.role === 'user'
+          ? { ...turn, isFinalized: true }
+          : turn,
+      );
+      const hasAssistantReply = finalizedTurns.some(
+        (candidate) => candidate.role === 'assistant',
+      );
+      const finalizedAt = new Date().toISOString();
+
+      setRatedThreads((prevRated) => {
+        const existingIdx = prevRated.findIndex((item) => item.id === rootUserTurn.id);
+        if (existingIdx >= 0) {
+          const existing = prevRated[existingIdx];
+          const updatedRecord: RatedThreadRecord = {
+            ...existing,
+            turns: finalizedTurns,
+            isFinalized: true,
+          };
+          const nextRated = [...prevRated];
+          nextRated[existingIdx] = updatedRecord;
+          if (hasAssistantReply && reportsHydratedRef.current && !existing.isFinalized) {
+            void syncReportToDisk(updatedRecord);
+          }
+          return nextRated;
+        }
+        if (hasAssistantReply) {
+          const newFinalizedRecord: RatedThreadRecord = {
+            id: rootUserTurn.id,
+            turns: finalizedTurns,
+            ratedAt: finalizedAt,
+            isFinalized: true,
+          };
+          if (reportsHydratedRef.current) {
+            void syncReportToDisk(newFinalizedRecord);
+          }
+          return [newFinalizedRecord, ...prevRated];
+        }
+        return prevRated;
+      });
+    }
+
     setIsSettingsOpen(false);
     setIsPromptBuilderOpen(false);
     setIsReferenceContextOpen(false);
@@ -667,8 +719,13 @@ export default function App() {
       historyTurnsUsed: 0,
       lastError: '',
     });
-    pushContextLog('info', 'Started new thread; stage cleared');
-  }, [pushContextLog]);
+    pushContextLog(
+      'info',
+      rootUserTurn
+        ? 'Previous thread finalized; started a new thread'
+        : 'Started new thread; stage cleared',
+    );
+  }, [turns, syncReportToDisk, pushContextLog]);
 
   useEffect(() => {
     if (!reportContextMenu) return;
@@ -1214,6 +1271,9 @@ export default function App() {
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
 
     const rootUserTurn = turns.find((t) => t.role === 'user');
+    if (isFollowUp && rootUserTurn?.isFinalized) {
+      return;
+    }
     const inheritedMonth =
       (isFollowUp ? rootUserTurn?.threadMonth : undefined) ||
       getMonthNameFromNumber(settings.contextCache.activeMonth);
@@ -1786,9 +1846,15 @@ export default function App() {
               onViewEventCards={(exchangeId) => {
                 const record = ratedThreads.find((r) => r.id === exchangeId);
                 if (record) {
-                  const qTurn = record.turns.find((t) => t.role === 'user');
+                  const firstUserIdx = record.turns.findIndex((t) => t.role === 'user');
+                  const qTurn = firstUserIdx >= 0 ? record.turns[firstUserIdx] : undefined;
                   if (qTurn?.scope) setScope(qTurn.scope);
-                  setTurns(record.turns);
+                  const loadedTurns = record.isFinalized
+                    ? record.turns.map((t, idx) =>
+                        idx === firstUserIdx ? { ...t, isFinalized: true } : t,
+                      )
+                    : record.turns;
+                  setTurns(loadedTurns);
                 }
                 setActiveReportExchangeId(null);
               }}

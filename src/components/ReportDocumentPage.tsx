@@ -1,13 +1,30 @@
-import { ArrowLeft, FileDown, Layers } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ArrowUpDown,
+  Calendar,
+  Clock,
+  FileDown,
+  Layers,
+  MessageSquare,
+  Search,
+  Sparkles,
+  Table2,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ConversationTurn } from '../types/workbench';
 import {
   buildThreadHtmlDocument,
+  extractReportTimelineTablesFromHtml,
+  extractReportTimelineTablesFromMarkdown,
+  type ReportMatrixTable,
   type ThreadHtmlExchangeInput,
 } from '../utils/eventParser';
 import {
   formatShortYearMonth,
   getPromptDomainShortLabel,
+  THREAD_RATING_OPTIONS,
 } from '../utils/promptTemplates';
 
 interface ReportDocumentPageProps {
@@ -18,6 +35,259 @@ interface ReportDocumentPageProps {
   isExternalFile?: boolean;
   onViewEventCards: (exchangeId: string) => void;
   onClose: () => void;
+}
+
+function getProviderLabel(turn: ConversationTurn, isExternalFile?: boolean): string {
+  if (isExternalFile) return turn.model;
+  const scopeLabel =
+    turn.scope === 'private'
+      ? 'Private · Ollama'
+      : `Public · ${
+          turn.adapterId === 'claude'
+            ? 'Claude'
+            : turn.adapterId === 'fable'
+              ? 'Fable'
+              : 'Gemini'
+        }`;
+  return `${scopeLabel} · ${turn.model}`;
+}
+
+function isRatingColumn(header: string): boolean {
+  return /\b(prob|likel|rating|chance|conf|score|tier|certainty|strength)\b/i.test(
+    header,
+  );
+}
+
+function isDateColumn(header: string): boolean {
+  return /\b(date|when|window|time|period|timeline|schedule|duration|range)\b/i.test(
+    header,
+  );
+}
+
+function isTitleColumn(header: string, colIdx: number): boolean {
+  if (/\b(event|title|milestone|headline|topic|area|focus)\b/i.test(header)) {
+    return true;
+  }
+  return colIdx === 0 && !/^(#|no\.?|id)$/i.test(header.trim());
+}
+
+function isIndexColumn(header: string): boolean {
+  return /^(#|no\.?|id|sl\.?\s*no\.?)$/i.test(header.trim());
+}
+
+function getProbabilityBadgeClasses(value: string): string {
+  const lower = value.toLowerCase();
+  const pctMatch = value.match(/(\d{1,3})\s*%/);
+  const pct = pctMatch ? Number(pctMatch[1]) : undefined;
+
+  if (
+    /\b(high(?:ly)?\s*likely|very\s*high|high|strong|certain|definite)\b/.test(lower) ||
+    (pct !== undefined && pct >= 75)
+  ) {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200/90 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/70';
+  }
+  if (
+    /\b(mostly\s*likely|moderate|medium|likely|probable|good)\b/.test(lower) ||
+    (pct !== undefined && pct >= 50)
+  ) {
+    return 'bg-amber-50 text-amber-800 border-amber-200/90 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/70';
+  }
+  return 'bg-slate-100 text-slate-700 border-slate-200/90 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+}
+
+function parseSortableValue(raw: string): { kind: 'number' | 'date' | 'text'; val: number | string } {
+  const trimmed = raw.trim();
+  const pctMatch = trimmed.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (pctMatch) {
+    return { kind: 'number', val: Number(pctMatch[1]) };
+  }
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    return { kind: 'number', val: Number(trimmed) };
+  }
+  const isoMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) {
+    const ms = Date.parse(isoMatch[1]);
+    if (Number.isFinite(ms)) return { kind: 'date', val: ms };
+  }
+  return { kind: 'text', val: trimmed.toLowerCase() };
+}
+
+function RichMatrixTable({ table }: { table: ReportMatrixTable }) {
+  const [filterQuery, setFilterQuery] = useState('');
+  const [sortCol, setSortCol] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (colIdx: number) => {
+    if (sortCol === colIdx) {
+      if (sortDir === 'asc') {
+        setSortDir('desc');
+      } else {
+        setSortCol(null);
+        setSortDir('asc');
+      }
+    } else {
+      setSortCol(colIdx);
+      setSortDir('asc');
+    }
+  };
+
+  const processedRows = useMemo(() => {
+    const needle = filterQuery.trim().toLowerCase();
+    const filtered = needle
+      ? table.rows.filter((row) =>
+          row.some((cell) => cell.toLowerCase().includes(needle)),
+        )
+      : table.rows;
+
+    if (sortCol === null) return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const av = parseSortableValue(a[sortCol] || '');
+      const bv = parseSortableValue(b[sortCol] || '');
+      let cmp = 0;
+      if (av.kind === bv.kind && (av.kind === 'number' || av.kind === 'date')) {
+        cmp = (av.val as number) - (bv.val as number);
+      } else {
+        cmp = String(av.val).localeCompare(String(bv.val));
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filterQuery, sortCol, sortDir, table.rows]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 shadow-xs overflow-hidden">
+      {/* Table Card Header */}
+      <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/70 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white dark:bg-slate-800 border border-slate-200/85 dark:border-slate-700 shadow-2xs shrink-0"
+            style={{ color: 'var(--pa-accent)' }}
+          >
+            <Table2 className="w-4 h-4" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+              {table.title}
+            </h3>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-slate-200/75 dark:bg-slate-800 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 tabular-nums shrink-0">
+            {processedRows.length === table.rows.length
+              ? `${table.rows.length} row${table.rows.length === 1 ? '' : 's'}`
+              : `${processedRows.length} / ${table.rows.length}`}
+          </span>
+        </div>
+
+        {table.rows.length >= 5 && (
+          <div className="relative w-full sm:w-56">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Filter rows…"
+              aria-label={`Filter ${table.title}`}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Responsive Data Table */}
+      <div className="overflow-x-auto fluent-scroll">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-slate-200/90 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+              {table.headers.map((header, colIdx) => {
+                const isSorted = sortCol === colIdx;
+                return (
+                  <th
+                    key={`${header}-${colIdx}`}
+                    scope="col"
+                    className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 select-none whitespace-nowrap"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSort(colIdx)}
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                    >
+                      <span>{header || `Column ${colIdx + 1}`}</span>
+                      {isSorted ? (
+                        sortDir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-35" />
+                      )}
+                    </button>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+            {processedRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={Math.max(1, table.headers.length)}
+                  className="px-4 py-8 text-center text-xs text-slate-500 dark:text-slate-400"
+                >
+                  No rows match &ldquo;{filterQuery}&rdquo;.
+                </td>
+              </tr>
+            ) : (
+              processedRows.map((row, rowIdx) => (
+                <tr
+                  key={rowIdx}
+                  className="hover:bg-sky-50/45 dark:hover:bg-slate-800/45 transition-colors align-top"
+                >
+                  {row.map((cell, colIdx) => {
+                    const header = table.headers[colIdx] || '';
+                    const trimmed = cell.trim();
+                    const ratingCol = isRatingColumn(header);
+                    const dateCol = isDateColumn(header);
+                    const indexCol = isIndexColumn(header);
+                    const titleCol = isTitleColumn(header, colIdx);
+
+                    return (
+                      <td
+                        key={colIdx}
+                        className={`px-4 py-3.5 text-xs sm:text-[13px] leading-relaxed ${
+                          indexCol
+                            ? 'w-12 text-slate-400 dark:text-slate-500 font-mono tabular-nums whitespace-nowrap'
+                            : dateCol
+                              ? 'text-slate-700 dark:text-slate-200 font-medium tabular-nums min-w-[130px]'
+                              : titleCol
+                                ? 'font-semibold text-slate-900 dark:text-slate-100 min-w-[170px]'
+                                : 'text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {ratingCol && trimmed ? (
+                          <span
+                            className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap ${getProbabilityBadgeClasses(trimmed)}`}
+                          >
+                            {trimmed}
+                          </span>
+                        ) : dateCol && trimmed ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 px-2.5 py-1 text-[11.5px] font-medium text-slate-700 dark:text-slate-200 tabular-nums">
+                            <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span>{trimmed}</span>
+                          </span>
+                        ) : (
+                          <span>{trimmed || '—'}</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 export function ReportDocumentPage({
@@ -122,7 +392,61 @@ export function ReportDocumentPage({
     };
   }, [exchangeId, reportFilePath, reportsDir]);
 
+  // Complete full HTML report (all sections intact) for downloading
   const renderedHtml = diskHtml ?? fallbackHtml;
+
+  // Structured per-exchange timeline matrix tables for in-app React UI
+  const exchangeViews = useMemo(() => {
+    if (isExternalFile) {
+      const htmlTables = extractReportTimelineTablesFromHtml(renderedHtml);
+      return [
+        {
+          label: 'Report Matrix',
+          question: rootQuestion?.content || '',
+          askedAt: rootQuestion?.timestamp,
+          replyBlocks: [
+            {
+              id: 'external-html',
+              providerLabel: latestReply
+                ? getProviderLabel(latestReply, true)
+                : 'HTML Report',
+              tables: htmlTables,
+            },
+          ],
+        },
+      ];
+    }
+
+    return exchanges.map((ex, idx) => {
+      const assistantReplies = ex.replies.filter((t) => t.role === 'assistant');
+      return {
+        label: idx === 0 ? 'Initial Question' : `Follow-up #${idx}`,
+        question: ex.question,
+        askedAt: ex.askedAt,
+        replyBlocks: assistantReplies.map((reply) => ({
+          id: reply.id,
+          providerLabel: getProviderLabel(reply, false),
+          tables: extractReportTimelineTablesFromMarkdown(
+            reply.content,
+            rootQuestion?.promptDomain,
+            reply.eventCards,
+          ),
+        })),
+      };
+    });
+  }, [
+    exchanges,
+    isExternalFile,
+    latestReply,
+    renderedHtml,
+    rootQuestion?.content,
+    rootQuestion?.promptDomain,
+    rootQuestion?.timestamp,
+  ]);
+
+  const hasAnyExtractedTable = exchangeViews.some((ev) =>
+    ev.replyBlocks.some((rb) => rb.tables.length > 0),
+  );
 
   const safeSlug =
     title
@@ -146,11 +470,22 @@ export function ReportDocumentPage({
     rootQuestion?.threadMonth,
     rootQuestion?.threadYear,
   );
+  const domainLabel = rootQuestion?.promptDomain
+    ? getPromptDomainShortLabel(rootQuestion.promptDomain)
+    : '';
+  const fullPeriodLabel =
+    rootQuestion?.threadMonth && rootQuestion?.threadYear
+      ? `${rootQuestion.threadMonth} ${rootQuestion.threadYear}`
+      : shortPeriod;
+  const ratingMeta = rootQuestion?.threadRating
+    ? THREAD_RATING_OPTIONS.find((item) => item.id === rootQuestion.threadRating)
+    : undefined;
+  const updatedAtRaw = latestReply?.timestamp || rootQuestion?.timestamp;
+  const updatedLabel = updatedAtRaw ? new Date(updatedAtRaw).toLocaleString() : '';
+
   const metaParts = [
     shortPeriod || '',
-    rootQuestion?.promptDomain
-      ? getPromptDomainShortLabel(rootQuestion.promptDomain)
-      : '',
+    domainLabel,
     exchanges.length > 1 ? `${exchanges.length} turns` : '',
     latestReply
       ? isExternalFile
@@ -167,7 +502,7 @@ export function ReportDocumentPage({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back</span>
@@ -193,7 +528,7 @@ export function ReportDocumentPage({
             <button
               type="button"
               onClick={() => onViewEventCards(exchangeId)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Layers className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
               <span>Event Cards</span>
@@ -202,7 +537,7 @@ export function ReportDocumentPage({
           <button
             type="button"
             onClick={handleDownload}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <FileDown className="w-3.5 h-3.5" />
             <span>Download</span>
@@ -210,16 +545,114 @@ export function ReportDocumentPage({
         </div>
       </header>
 
-      {/* Rendered Local HTML Report */}
-      <div className="flex-1 min-h-0 p-4 sm:p-6 flex flex-col overflow-hidden">
-        <section className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white overflow-hidden shadow-sm">
-          <iframe
-            title={`${title} Report`}
-            srcDoc={renderedHtml}
-            sandbox="allow-same-origin"
-            className="flex-1 w-full min-h-0 border-0 bg-white"
-          />
-        </section>
+      {/* Rich React Report Table Pane (Download still delivers full HTML) */}
+      <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-4 sm:p-6">
+        {isExternalFile && !hasAnyExtractedTable ? (
+          <section className="h-full min-h-[420px] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white overflow-hidden shadow-sm">
+            <iframe
+              title={`${title} Report`}
+              srcDoc={renderedHtml}
+              sandbox="allow-same-origin"
+              className="flex-1 w-full min-h-0 border-0 bg-white"
+            />
+          </section>
+        ) : (
+          <div className="max-w-5xl mx-auto space-y-6 pb-8">
+            {/* Report Header Card: Title, Domain, Period, Rating, Updated Timestamp */}
+            <section className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 backdrop-blur-xl p-5 sm:p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {domainLabel && (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200/80 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800/70"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>{domainLabel}</span>
+                      </span>
+                    )}
+                    {fullPeriodLabel && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200/80 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700 tabular-nums">
+                        <Calendar className="w-3 h-3 text-slate-500" />
+                        <span>
+                          {shortPeriod && fullPeriodLabel !== shortPeriod
+                            ? `${shortPeriod} · ${fullPeriodLabel}`
+                            : fullPeriodLabel}
+                        </span>
+                      </span>
+                    )}
+                    {ratingMeta && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/70">
+                        <span>{ratingMeta.starGlyphs}</span>
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    {title}
+                  </h2>
+                </div>
+
+                {updatedLabel && (
+                  <div className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/85 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/60 px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Updated {updatedLabel}</span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Exchanges: Initial Question + Follow-up(s) with Timeline & Rating Matrix Tables Only */}
+            {exchangeViews.map((exchange, exIdx) => (
+              <section key={`${exchange.label}-${exIdx}`} className="space-y-4">
+                {exchange.question && (
+                  <div className="rounded-2xl border border-sky-200/85 dark:border-sky-900/70 bg-sky-50/70 dark:bg-sky-950/25 px-4 sm:px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                      <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>{exchange.label}</span>
+                      </div>
+                      {exchange.askedAt && (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          {new Date(exchange.askedAt).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      className="text-sm font-medium leading-relaxed text-slate-900 dark:text-slate-100 whitespace-pre-line"
+                      style={{ fontFamily: 'var(--pa-font-body)' }}
+                    >
+                      {exchange.question}
+                    </p>
+                  </div>
+                )}
+
+                {exchange.replyBlocks.map((block) => (
+                  <div key={block.id} className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-semibold text-teal-700 dark:text-teal-400">
+                        {block.providerLabel}
+                      </span>
+                    </div>
+
+                    {block.tables.length > 0 ? (
+                      block.tables.map((table, tblIdx) => (
+                        <RichMatrixTable key={`${block.id}-${tblIdx}`} table={table} />
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/85 dark:bg-slate-900/80 px-5 py-6 text-xs text-slate-500 dark:text-slate-400">
+                        No Event Timeline &amp; Rating Matrix table was detected for this reply. Use{' '}
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          Download
+                        </span>{' '}
+                        to inspect the complete HTML report.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

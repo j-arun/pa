@@ -1015,6 +1015,244 @@ export interface ThreadHtmlExchangeInput {
   askedAt?: string;
 }
 
+export interface ReportMatrixTable {
+  title: string;
+  headers: string[];
+  rows: string[][];
+}
+
+function isMarkdownTableSeparatorLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return false;
+  const cells = trimmed
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell));
+}
+
+function parseMarkdownTableCells(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cleanLineKeepText(cell));
+}
+
+function isSynthesisHeading(heading: string): boolean {
+  return /\b(synthesis|overview|executive\s+summary|introduction|background|context\s+summary)\b/i.test(
+    heading,
+  );
+}
+
+function isBreakdownHeading(heading: string): boolean {
+  return /(?:detailed\s+.{0,40}\bevent\s+breakdown|\bevent\s+breakdown\b|^event\s+\d+\b)/i.test(
+    heading,
+  );
+}
+
+function isCautionOrClosingHeading(heading: string): boolean {
+  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|warning\s+dates|risk\s+windows|sensitivity\s+dates|conclusion|final\s+notes)\b/i.test(
+    heading,
+  );
+}
+
+function isTimelineMatrixHeading(heading: string): boolean {
+  return /\b(timeline|rating\s*matrix|matrix|schedule|event\s*table|milestone\s*table)\b/i.test(
+    heading,
+  );
+}
+
+export function extractReportTimelineTablesFromMarkdown(
+  rawContent: string,
+  fallbackDomain?: PromptDomain,
+  fallbackEvents?: EventCardItem[],
+): ReportMatrixTable[] {
+  const { cleanMarkdown, events } = parseResponseEventsAndReport(rawContent, fallbackDomain);
+  const lines = cleanMarkdown.split(/\r?\n/);
+
+  interface TableCandidate {
+    heading: string;
+    sectionIndex: number;
+    headers: string[];
+    rows: string[][];
+  }
+
+  const candidates: TableCandidate[] = [];
+  let currentHeading = '';
+  let sectionIndex = 0;
+  let inCodeFence = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    const headingMatch = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const nextHeading = cleanLineKeepText(headingMatch[2]);
+      if (!/^event\s+\d+\b/i.test(nextHeading)) {
+        sectionIndex += 1;
+      }
+      currentHeading = nextHeading;
+      continue;
+    }
+
+    if (
+      /^\s*\|.*\|\s*$/.test(line) &&
+      i + 1 < lines.length &&
+      isMarkdownTableSeparatorLine(lines[i + 1])
+    ) {
+      const headers = parseMarkdownTableCells(line);
+      const rows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) {
+        const parsedRow = parseMarkdownTableCells(lines[j]);
+        if (parsedRow.some((cell) => cell.length > 0)) {
+          const normalizedRow =
+            parsedRow.length < headers.length
+              ? [...parsedRow, ...Array(headers.length - parsedRow.length).fill('')]
+              : parsedRow.slice(0, headers.length);
+          rows.push(normalizedRow);
+        }
+        j += 1;
+      }
+      if (headers.some((h) => h.length > 0) && rows.length > 0) {
+        candidates.push({
+          heading: currentHeading,
+          sectionIndex,
+          headers,
+          rows,
+        });
+      }
+      i = j - 1;
+    }
+  }
+
+  const nonExcluded = candidates.filter(
+    (c) =>
+      !isSynthesisHeading(c.heading) &&
+      !isBreakdownHeading(c.heading) &&
+      !isCautionOrClosingHeading(c.heading),
+  );
+
+  const matrixMatches = nonExcluded.filter((c) => isTimelineMatrixHeading(c.heading));
+  const chosen = matrixMatches.length > 0 ? matrixMatches : nonExcluded;
+
+  if (chosen.length > 0) {
+    return chosen.map((c) => ({
+      title: c.heading || 'Event Timeline & Rating Matrix',
+      headers: c.headers,
+      rows: c.rows,
+    }));
+  }
+
+  const effectiveEvents = events.length > 0 ? events : fallbackEvents || [];
+  if (effectiveEvents.length > 0) {
+    return [
+      {
+        title: 'Event Timeline & Rating Matrix',
+        headers: ['Event', 'When', 'Probability Rating', 'Details'],
+        rows: effectiveEvents.map((evt) => [
+          evt.title,
+          evt.when || evt.dateRange || evt.timeframe || '—',
+          evt.probability || evt.likelihood || '—',
+          evt.how || evt.summary || '—',
+        ]),
+      },
+    ];
+  }
+
+  return [];
+}
+
+export function extractReportTimelineTablesFromHtml(html: string): ReportMatrixTable[] {
+  if (!html.trim() || typeof DOMParser === 'undefined') return [];
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tables = Array.from(doc.querySelectorAll('table'));
+  if (tables.length === 0) return [];
+
+  const getPrecedingHeading = (tableEl: Element): string => {
+    let cursor: Element | null = tableEl;
+    while (cursor) {
+      let prev = cursor.previousElementSibling;
+      while (prev) {
+        if (/^H[1-6]$/i.test(prev.tagName)) {
+          return cleanLineKeepText(prev.textContent || '');
+        }
+        const innerHeadings = prev.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        if (innerHeadings.length > 0) {
+          return cleanLineKeepText(
+            innerHeadings[innerHeadings.length - 1].textContent || '',
+          );
+        }
+        prev = prev.previousElementSibling;
+      }
+      cursor = cursor.parentElement;
+    }
+    return '';
+  };
+
+  const candidates: Array<{ heading: string; headers: string[]; rows: string[][] }> = [];
+
+  for (const table of tables) {
+    const allRows = Array.from(table.querySelectorAll('tr'));
+    if (allRows.length < 2) continue;
+
+    const theadRows = Array.from(table.querySelectorAll('thead tr'));
+    const headerTr = theadRows[0] ?? allRows[0];
+    const headers = Array.from(headerTr.querySelectorAll('th, td')).map((cell) =>
+      cleanLineKeepText(cell.textContent || ''),
+    );
+    const bodyTrs = theadRows.length > 0 ? Array.from(table.querySelectorAll('tbody tr')) : allRows.slice(1);
+    const rows = bodyTrs
+      .map((tr) =>
+        Array.from(tr.querySelectorAll('td, th')).map((cell) =>
+          cleanLineKeepText(cell.textContent || ''),
+        ),
+      )
+      .filter((r) => r.some((cell) => cell.length > 0))
+      .map((r) =>
+        r.length < headers.length
+          ? [...r, ...Array(headers.length - r.length).fill('')]
+          : r.slice(0, headers.length),
+      );
+
+    if (headers.some((h) => h.length > 0) && rows.length > 0) {
+      candidates.push({
+        heading: getPrecedingHeading(table),
+        headers,
+        rows,
+      });
+    }
+  }
+
+  const nonExcluded = candidates.filter(
+    (c) =>
+      !isSynthesisHeading(c.heading) &&
+      !isBreakdownHeading(c.heading) &&
+      !isCautionOrClosingHeading(c.heading),
+  );
+  const matrixMatches = nonExcluded.filter((c) => isTimelineMatrixHeading(c.heading));
+  const chosen =
+    matrixMatches.length > 0
+      ? matrixMatches
+      : nonExcluded.length > 0
+        ? nonExcluded
+        : candidates;
+
+  return chosen.map((c) => ({
+    title: c.heading || 'Event Timeline & Rating Matrix',
+    headers: c.headers,
+    rows: c.rows,
+  }));
+}
+
 export function buildThreadHtmlDocument({
   title,
   question,

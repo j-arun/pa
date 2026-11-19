@@ -59,6 +59,7 @@ export interface ConversationTurn {
   threadMonth?: string;
   threadYear?: number;
   threadRating?: ThreadRating;
+  isFinalized?: boolean;
   systemInstruction?: string;
   cachedContext?: string;
   privateSystemInstruction?: string;
@@ -90,6 +91,7 @@ export interface RatedThreadRecord {
   fileName?: string;
   filePath?: string;
   isExternalFile?: boolean;
+  isFinalized?: boolean;
 }
 
 export interface OllamaModelInfo {
