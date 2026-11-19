@@ -1983,7 +1983,7 @@ export default function App() {
                 setIsChatBarOpen(false);
                 setActiveReportExchangeId(null);
               }}
-              onClose={() => setActiveReportExchangeId(null)}
+              onClose={() => handleStartNewThread()}
             />
           ) : (
             <WorkbenchPage
