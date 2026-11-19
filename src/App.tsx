@@ -68,6 +68,7 @@ import {
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from './utils/notify';
+import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
 
 const THEME_CYCLE: ThemeMode[] = [
   'arctic-sky',
@@ -172,6 +173,9 @@ export default function App() {
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
+  const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
+  const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
+  const [hasChosenMonthThisThread, setHasChosenMonthThisThread] = useState(false);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -547,31 +551,74 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theme: nextTheme }));
   };
 
-  const handleApplyFetchedContext = async ({
-    text,
-    month,
-    year,
-    fetchedAt,
-  }: {
-    text: string;
-    month: number;
-    year: number;
-    fetchedAt: string;
-  }): Promise<boolean> => {
-    const nextSettings: WorkbenchSettings = {
-      ...settings,
-      contextCache: {
-        ...settings.contextCache,
-        privateText: text,
-        publicText: text,
-        activeMonth: month,
-        activeYear: year,
-        lastSyncedAt: fetchedAt,
-      },
-    };
-    setSettings(nextSettings);
-    return persistSettingsToFile(nextSettings);
-  };
+  const handleApplyFetchedContext = useCallback(
+    async ({
+      text,
+      month,
+      year,
+      fetchedAt,
+    }: {
+      text: string;
+      month: number;
+      year: number;
+      fetchedAt: string;
+    }): Promise<boolean> => {
+      const currentSettings = settingsRef.current;
+      const nextSettings: WorkbenchSettings = {
+        ...currentSettings,
+        contextCache: {
+          ...currentSettings.contextCache,
+          privateText: text,
+          publicText: text,
+          activeMonth: month,
+          activeYear: year,
+          lastSyncedAt: fetchedAt,
+        },
+      };
+      settingsRef.current = nextSettings;
+      setSettings(nextSettings);
+      return persistSettingsToFile(nextSettings);
+    },
+    [persistSettingsToFile],
+  );
+
+  const handleQuickSelectMonth = useCallback(
+    async (month: number, year: number) => {
+      if (switchingMonthKey) return;
+      const key = `${year}-${String(month).padStart(2, '0')}`;
+      setSwitchingMonthKey(key);
+      setMonthSwitchError(null);
+
+      try {
+        const result = await fetchReferenceContextFromApi({
+          month,
+          year,
+          apiConfig: settingsRef.current.referenceContextApi,
+        });
+        await handleApplyFetchedContext({
+          text: result.text,
+          month,
+          year,
+          fetchedAt: result.fetchedAt,
+        });
+        setHasChosenMonthThisThread(true);
+        pushContextLog(
+          'success',
+          `Switched active period to ${formatShortYearMonth(month, year)} and applied Reference Context automatically.`,
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Reference Context API endpoint is unavailable.';
+        setMonthSwitchError('Month toggling is currently unavailable.');
+        pushContextLog('error', `Month switch failed (${formatShortYearMonth(month, year)}): ${msg}`);
+      } finally {
+        setSwitchingMonthKey(null);
+      }
+    },
+    [handleApplyFetchedContext, pushContextLog, switchingMonthKey],
+  );
 
   const handleClearAllReferenceContext = async (): Promise<boolean> => {
     const nextSettings: WorkbenchSettings = {
@@ -617,6 +664,8 @@ export default function App() {
   );
 
   const handleStartNewThread = useCallback(() => {
+    setMonthSwitchError(null);
+    setHasChosenMonthThisThread(false);
     if (activeRequestAbortRef.current) {
       activeRequestAbortRef.current.controller.abort();
       activeRequestAbortRef.current = null;
@@ -1456,6 +1505,7 @@ export default function App() {
     };
 
     const nextBaseTurns = [...turns, userTurn];
+    setMonthSwitchError(null);
     setTurns(nextBaseTurns);
     setActiveReportExchangeId(null);
     setIsChatBarOpen(false);
@@ -2046,6 +2096,11 @@ export default function App() {
                 setActiveReportExchangeId(null);
                 setIsSettingsOpen(true);
               }}
+              showQuickMonthRainbow={!hasChosenMonthThisThread}
+              switchingMonthKey={switchingMonthKey}
+              monthSwitchError={monthSwitchError}
+              onSelectQuickMonth={(month, year) => void handleQuickSelectMonth(month, year)}
+              onDismissMonthSwitchError={() => setMonthSwitchError(null)}
             />
           )}
 

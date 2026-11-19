@@ -1,10 +1,12 @@
 import {
+  AlertCircle,
   ArrowUp,
   CalendarRange,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Hourglass,
+  Loader2,
   Megaphone,
   MessageSquarePlus,
   Plus,
@@ -14,6 +16,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  X,
   Zap,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -47,6 +50,34 @@ import {
 
 const FLASH_DURATION_SECONDS = 25;
 const FLASH_DURATION_MS = FLASH_DURATION_SECONDS * 1000;
+
+function formatProviderErrorDetail(raw?: string): string {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: { code?: number; status?: string; message?: string } | string;
+      message?: string;
+    };
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.error && typeof parsed.error === 'object') {
+        const prefix = [parsed.error.code, parsed.error.status].filter(Boolean).join(' ');
+        const msg = parsed.error.message?.trim();
+        if (prefix && msg) return `${prefix}: ${msg}`;
+        if (msg) return msg;
+      }
+      if (typeof parsed.error === 'string' && parsed.error.trim()) {
+        return parsed.error.trim();
+      }
+      if (typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message.trim();
+      }
+    }
+  } catch {
+    // Keep plain string error message as-is
+  }
+  return trimmed;
+}
 
 function splitProbabilityAndRating(rawValue?: string): {
   probabilityLine: string;
@@ -231,6 +262,11 @@ interface WorkbenchPageProps {
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
   onOpenSettings: () => void;
+  showQuickMonthRainbow?: boolean;
+  switchingMonthKey?: string | null;
+  monthSwitchError?: string | null;
+  onSelectQuickMonth?: (month: number, year: number) => void;
+  onDismissMonthSwitchError?: () => void;
 }
 
 function WhisperIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -799,6 +835,11 @@ export function WorkbenchPage({
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
+  showQuickMonthRainbow = true,
+  switchingMonthKey = null,
+  monthSwitchError = null,
+  onSelectQuickMonth,
+  onDismissMonthSwitchError,
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [threadName, setThreadName] = useState('');
@@ -1049,9 +1090,272 @@ export function WorkbenchPage({
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-4 sm:py-6 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-          {/* STAGE 1: Enlarged Shaka Hand Symbol + Period Message + 4 Icon-Only 3D Domain Bubbles */}
-          {!activeExchange && (
-            <div className="my-auto py-4 space-y-8">
+          {/* STAGE 1: Theme-Matched Moving & Glittering Rainbow 6-Month Selector + Shaka Hand + 4 Domain Bubbles */}
+          {!activeExchange && (() => {
+            const ARCH_OFFSETS = [
+              'sm:translate-y-5',
+              'sm:translate-y-1.5',
+              'sm:-translate-y-1.5',
+              'sm:-translate-y-1.5',
+              'sm:translate-y-1.5',
+              'sm:translate-y-5',
+            ];
+            const SPARKLE_SPOTS = [
+              { left: '10%', top: '52%', delay: 0 },
+              { left: '27%', top: '22%', delay: 0.55 },
+              { left: '48%', top: '8%', delay: 1.1 },
+              { left: '68%', top: '16%', delay: 0.35 },
+              { left: '86%', top: '44%', delay: 0.85 },
+            ];
+            const now = new Date();
+            const quickMonths = Array.from({ length: 6 }, (_, idx) => {
+              const dt = new Date(now.getFullYear(), now.getMonth() + idx, 1);
+              const month = dt.getMonth() + 1;
+              const year = dt.getFullYear();
+              const monthName = getMonthNameFromNumber(month) ?? '';
+              return {
+                key: `${year}-${String(month).padStart(2, '0')}`,
+                month,
+                year,
+                shortMonth: monthName.slice(0, 3),
+                fullLabel: `${monthName} ${year}`,
+                arcClass: ARCH_OFFSETS[idx],
+              };
+            });
+
+            return (
+            <div className="my-auto py-3 space-y-7">
+              <AnimatePresence>
+                {showQuickMonthRainbow && (
+                  <motion.div
+                    key="quick-month-rainbow"
+                    initial={{ opacity: 0, y: -12, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -16, scale: 0.95 }}
+                    transition={{ duration: 0.32, ease: 'easeOut' }}
+                    className="relative w-full max-w-3xl mx-auto pt-3 pb-6"
+                  >
+                    {/* Gently Breathing & Moving Theme-Matched Layered Rainbow Arc */}
+                    <motion.div
+                      aria-hidden="true"
+                      animate={{ y: [0, -3.5, 0] }}
+                      transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
+                      className="pointer-events-none hidden sm:block absolute inset-x-3 top-1 h-[84px] overflow-visible"
+                    >
+                      <svg
+                        viewBox="0 0 900 96"
+                        preserveAspectRatio="none"
+                        className="w-full h-full overflow-visible"
+                      >
+                        <defs>
+                          <linearGradient id="paThemeRainbowBand1" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="var(--pa-fig-skin)" stopOpacity="0.15" />
+                            <stop offset="28%" stopColor="var(--pa-accent)" stopOpacity="0.88" />
+                            <stop offset="50%" stopColor="var(--pa-fig-skin-mid)" stopOpacity="0.95" />
+                            <stop offset="72%" stopColor="var(--pa-accent)" stopOpacity="0.88" />
+                            <stop offset="100%" stopColor="var(--pa-fig-skin)" stopOpacity="0.15" />
+                          </linearGradient>
+                          <linearGradient id="paThemeRainbowBand2" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="var(--pa-accent)" stopOpacity="0.12" />
+                            <stop offset="50%" stopColor="var(--pa-accent)" stopOpacity="0.58" />
+                            <stop offset="100%" stopColor="var(--pa-accent)" stopOpacity="0.12" />
+                          </linearGradient>
+                        </defs>
+                        {/* Outer Soft Theme Aura Band */}
+                        <path
+                          d="M 42 78 C 245 8, 655 8, 858 78"
+                          fill="none"
+                          stroke="url(#paThemeRainbowBand1)"
+                          strokeWidth="16"
+                          strokeLinecap="round"
+                          opacity="0.34"
+                          style={{ filter: 'blur(9px)' }}
+                        />
+                        {/* Rainbow Ribbons in Active Theme Tones */}
+                        <path
+                          d="M 42 74 C 245 4, 655 4, 858 74"
+                          fill="none"
+                          stroke="url(#paThemeRainbowBand1)"
+                          strokeWidth="3.2"
+                          strokeLinecap="round"
+                          opacity="0.72"
+                        />
+                        <path
+                          d="M 52 80 C 250 13, 650 13, 848 80"
+                          fill="none"
+                          stroke="url(#paThemeRainbowBand2)"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          opacity="0.62"
+                        />
+                        <path
+                          d="M 62 85 C 255 21, 645 21, 838 85"
+                          fill="none"
+                          stroke="var(--pa-wave-stroke)"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          opacity="0.7"
+                        />
+                      </svg>
+
+                      {/* Glittering Twinkling Sparkles Along the Rainbow Arc */}
+                      {SPARKLE_SPOTS.map((spot, sIdx) => (
+                        <motion.span
+                          key={sIdx}
+                          style={{ left: spot.left, top: spot.top }}
+                          animate={{
+                            opacity: [0.18, 0.95, 0.18],
+                            scale: [0.7, 1.25, 0.7],
+                            rotate: [0, 30, 0],
+                          }}
+                          transition={{
+                            duration: 2.1 + (sIdx % 3) * 0.45,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: spot.delay,
+                          }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 inline-flex items-center justify-center"
+                        >
+                          <Sparkles
+                            className="w-3 h-3"
+                            style={{
+                              color: 'var(--pa-accent-text)',
+                              filter: 'drop-shadow(0 0 6px var(--pa-bubble-rim))',
+                            }}
+                          />
+                        </motion.span>
+                      ))}
+                    </motion.div>
+
+                    <div
+                      className="relative z-10 grid grid-cols-3 sm:grid-cols-6 gap-2.5 sm:gap-3 items-center justify-items-center"
+                      role="group"
+                      aria-label="Select prediction month"
+                    >
+                      {quickMonths.map((item, idx) => {
+                        const isActive =
+                          item.month === activeMonthNum && item.year === activeYearNum;
+                        const isLoadingThis = switchingMonthKey === item.key;
+                        const isAnySwitching = Boolean(switchingMonthKey);
+                        return (
+                          <div
+                            key={item.key}
+                            className={`w-full flex justify-center ${item.arcClass}`}
+                          >
+                            <motion.button
+                              type="button"
+                              disabled={isSending || isAnySwitching}
+                              onClick={() => onSelectQuickMonth?.(item.month, item.year)}
+                              title={`Switch to ${item.fullLabel} & apply Reference Context`}
+                              aria-label={`Switch to ${item.fullLabel}`}
+                              aria-pressed={isActive}
+                              animate={{
+                                y: [0, -5, 0],
+                                boxShadow: isActive
+                                  ? [
+                                      '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
+                                      '0 0 0 2.5px var(--pa-accent), 0 0 28px var(--pa-bubble-rim)',
+                                      '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
+                                    ]
+                                  : [
+                                      '0 4px 14px -2px var(--pa-bubble-glow)',
+                                      '0 6px 22px 1px var(--pa-bubble-rim)',
+                                      '0 4px 14px -2px var(--pa-bubble-glow)',
+                                    ],
+                              }}
+                              transition={{
+                                y: {
+                                  duration: 2.6,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                  delay: idx * 0.24,
+                                },
+                                boxShadow: {
+                                  duration: 2.4,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                  delay: idx * 0.24,
+                                },
+                              }}
+                              whileHover={{ scale: 1.09, y: -6 }}
+                              whileTap={{ scale: 0.95 }}
+                              className={`pa-rainbow-node-glitter relative inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-semibold backdrop-blur-xl transition-colors cursor-pointer disabled:opacity-65 ${
+                                isActive
+                                  ? 'bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-white'
+                                  : 'bg-white/80 dark:bg-slate-900/75 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800/95'
+                              }`}
+                              style={{
+                                border: isActive
+                                  ? '1.5px solid var(--pa-accent)'
+                                  : '1.5px solid var(--pa-bubble-rim)',
+                              }}
+                            >
+                              {isLoadingThis ? (
+                                <Loader2
+                                  className="w-3.5 h-3.5 animate-spin shrink-0"
+                                  style={{ color: 'var(--pa-accent)' }}
+                                />
+                              ) : (
+                                <motion.span
+                                  aria-hidden="true"
+                                  animate={{
+                                    opacity: [0.65, 1, 0.65],
+                                    scale: [0.9, 1.2, 0.9],
+                                  }}
+                                  transition={{
+                                    duration: 1.8,
+                                    repeat: Infinity,
+                                    ease: 'easeInOut',
+                                    delay: idx * 0.22,
+                                  }}
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{
+                                    backgroundColor: 'var(--pa-accent)',
+                                    boxShadow: '0 0 8px var(--pa-bubble-rim)',
+                                  }}
+                                />
+                              )}
+                              <span
+                                className="tracking-tight whitespace-nowrap"
+                                style={isActive ? { color: 'var(--pa-accent-text)' } : undefined}
+                              >
+                                {item.shortMonth}{' '}
+                                <span className="opacity-70 font-medium tabular-nums">
+                                  {String(item.year).slice(-2)}
+                                </span>
+                              </span>
+                            </motion.button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Red Alert if Month Toggling / Reference Context Sync is Unavailable */}
+              {monthSwitchError && (
+                <div
+                  role="alert"
+                  className="mx-auto max-w-md rounded-2xl border border-red-300 dark:border-red-800/90 bg-red-50/95 dark:bg-red-950/70 px-4 py-2.5 text-xs font-semibold text-red-700 dark:text-red-200 shadow-sm flex items-center justify-between gap-3"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                    <span>{monthSwitchError}</span>
+                  </span>
+                  {onDismissMonthSwitchError && (
+                    <button
+                      type="button"
+                      onClick={onDismissMonthSwitchError}
+                      aria-label="Dismiss alert"
+                      className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center">
                 <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-3.5 flex-wrap">
                   <motion.span
@@ -1154,7 +1458,8 @@ export function WorkbenchPage({
                 })}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* STAGE 2: Jumping Round 3D Speech Bubble */}
           {isWaitingForReply && activeQuestionTurn && (
@@ -1364,8 +1669,13 @@ export function WorkbenchPage({
               </div>
               )}
 
-              {/* Error State if Provider Failed — Friendly message with Retry & Settings */}
-              {activeErrorReply && !activeAssistantReply && (
+              {/* Error State if Provider Failed — Friendly message with exact reason, Retry & Settings */}
+              {activeErrorReply && !activeAssistantReply && (() => {
+                const detail = formatProviderErrorDetail(activeErrorReply.content);
+                const sourceLabel = [activeErrorReply.adapterId, activeErrorReply.model]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/70 bg-red-50/90 dark:bg-red-950/40 p-6 text-red-900 dark:text-red-200 max-w-2xl">
                   <div className="inline-flex items-center gap-1.5 text-xs font-semibold mb-1.5">
                     <WhatsAppSymbol className="w-4 h-4 shrink-0" />
@@ -1374,6 +1684,12 @@ export function WorkbenchPage({
                   <p className="text-sm font-medium leading-relaxed">
                     Try &quot;What&apos;s up&quot; little later ..
                   </p>
+                  {detail && (
+                    <p className="mt-2 text-xs leading-relaxed text-red-800/85 dark:text-red-200/80 break-words">
+                      {sourceLabel ? `${sourceLabel}: ` : ''}
+                      {detail}
+                    </p>
+                  )}
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {!isThreadFinalized && (
                       <button
@@ -1396,7 +1712,8 @@ export function WorkbenchPage({
                     </button>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Sliding Event Cards Carousel — Specific Events ONLY (Date Range + Likelihood) */}
               {activeAssistantReply && eventCards.length > 0 && (

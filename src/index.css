@@ -531,6 +531,36 @@
   pointer-events: none;
 }
 
+@keyframes paRainbowGlitterSweep {
+  0% {
+    transform: translateX(-140%) skewX(-22deg);
+  }
+  55%,
+  100% {
+    transform: translateX(240%) skewX(-22deg);
+  }
+}
+
+.pa-rainbow-node-glitter {
+  position: relative;
+  overflow: hidden;
+}
+
+.pa-rainbow-node-glitter::after {
+  content: '';
+  position: absolute;
+  inset: -30% auto -30% -50%;
+  width: 48%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 100%
+  );
+  animation: paRainbowGlitterSweep 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pa-mist-a,
   .pa-mist-b,
@@ -546,11 +576,8 @@
   .pa-ripple-2,
   .pa-ripple-3,
   .pa-glimmer-btn,
-  .pa-glimmer-btn::after {
+  .pa-glimmer-btn::after,
+  .pa-rainbow-node-glitter::after {
     animation: none !important;
   }
 }
-
-
-
-
