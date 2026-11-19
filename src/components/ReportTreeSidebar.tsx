@@ -1,0 +1,871 @@
+import {
+  ChevronDown,
+  ChevronRight,
+  Cloud,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  Lock,
+  MessageSquareText,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  AnyAdapterId,
+  PromptDomain,
+  RatedThreadRecord,
+} from '../types/workbench';
+import { EventCategoryEmblem, getDomainEmblemIcon } from './DomainEmblem';
+import {
+  getMonthNameFromNumber,
+  getMonthNumberFromName,
+  THREAD_MONTHS,
+  THREAD_YEARS,
+} from '../utils/promptTemplates';
+
+export interface ReportMoveTarget {
+  threadMonth: string;
+  threadYear: number;
+  promptDomain: PromptDomain;
+  adapterId: AnyAdapterId;
+}
+
+interface ReportTreeSidebarProps {
+  reports: RatedThreadRecord[];
+  activeReportId: string | null;
+  activePeriodMonth?: number;
+  activePeriodYear?: number;
+  onSelectReport: (recordId: string) => void;
+  onRenameReport: (recordId: string, newName: string) => void;
+  onUpdateComment: (recordId: string, comment: string) => void;
+  onMoveReport: (recordId: string, target: ReportMoveTarget) => void;
+  onDeleteReport: (recordId: string) => void;
+}
+
+const TREE_DOMAINS: ReadonlyArray<{
+  domain: PromptDomain;
+  label: string;
+}> = [
+  { domain: 'general', label: 'Love' },
+  { domain: 'astrology', label: 'Career' },
+  { domain: 'finance', label: 'Family' },
+  { domain: 'health', label: 'Health' },
+];
+
+const TREE_ADAPTERS: ReadonlyArray<{
+  adapterId: AnyAdapterId;
+  label: string;
+  isPrivate: boolean;
+}> = [
+  { adapterId: 'ollama', label: 'Local', isPrivate: true },
+  { adapterId: 'fable', label: 'Fable', isPrivate: false },
+  { adapterId: 'gemini', label: 'Gemini', isPrivate: false },
+  { adapterId: 'claude', label: 'Sonnet', isPrivate: false },
+];
+
+function normalizeRecordPlacement(record: RatedThreadRecord): {
+  year: number;
+  month: string;
+  monthNum: number;
+  periodKey: string;
+  periodLabel: string;
+  domain: PromptDomain;
+  adapterId: AnyAdapterId;
+  isPublic: boolean;
+  title: string;
+  comment: string;
+  ratingStars: string;
+} {
+  const qTurn = record.turns.find((t) => t.role === 'user');
+  const assistantTurn = [...record.turns].reverse().find((t) => t.role === 'assistant');
+  const fallbackDate = new Date(qTurn?.timestamp || record.ratedAt || Date.now());
+  const safeDate = Number.isNaN(fallbackDate.getTime()) ? new Date() : fallbackDate;
+
+  const monthNum =
+    getMonthNumberFromName(qTurn?.threadMonth) ?? safeDate.getMonth() + 1;
+  const month = getMonthNameFromNumber(monthNum) ?? THREAD_MONTHS[safeDate.getMonth()];
+  const year =
+    typeof qTurn?.threadYear === 'number' &&
+    Number.isFinite(qTurn.threadYear) &&
+    qTurn.threadYear >= 1990 &&
+    qTurn.threadYear <= 2090
+      ? Math.round(qTurn.threadYear)
+      : safeDate.getFullYear();
+
+  const periodKey = `${year}-${String(monthNum).padStart(2, '0')}`;
+  const periodLabel = `${year} ${month}`;
+
+  const domain: PromptDomain =
+    qTurn?.promptDomain === 'astrology' ||
+    qTurn?.promptDomain === 'finance' ||
+    qTurn?.promptDomain === 'general' ||
+    qTurn?.promptDomain === 'health'
+      ? qTurn.promptDomain
+      : 'astrology';
+
+  const rawAdapter = assistantTurn?.adapterId ?? qTurn?.adapterId;
+  const rawScope = qTurn?.scope ?? assistantTurn?.scope ?? 'public';
+  const adapterId: AnyAdapterId =
+    rawAdapter === 'ollama' ||
+    rawAdapter === 'fable' ||
+    rawAdapter === 'gemini' ||
+    rawAdapter === 'claude'
+      ? rawAdapter
+      : rawScope === 'private'
+        ? 'ollama'
+        : 'gemini';
+
+  const isPublic = adapterId !== 'ollama' && rawScope !== 'private';
+  const title = qTurn?.threadName?.trim() || 'Report';
+  const comment = (record.comment ?? qTurn?.threadComment ?? '').trim();
+  const ratingStars =
+    qTurn?.threadRating === 'red'
+      ? '★'
+      : qTurn?.threadRating === 'yellow'
+        ? '★★'
+        : qTurn?.threadRating === 'green'
+          ? '★★★'
+          : '';
+
+  return {
+    year,
+    month,
+    monthNum,
+    periodKey,
+    periodLabel,
+    domain,
+    adapterId,
+    isPublic,
+    title,
+    comment,
+    ratingStars,
+  };
+}
+
+export function ReportTreeSidebar({
+  reports,
+  activeReportId,
+  activePeriodMonth,
+  activePeriodYear,
+  onSelectReport,
+  onRenameReport,
+  onUpdateComment,
+  onMoveReport,
+  onDeleteReport,
+}: ReportTreeSidebarProps) {
+  const [expandedPeriods, setExpandedPeriods] = useState<Record<string, boolean>>({});
+  const [expandedDomains, setExpandedDomains] = useState<Record<string, boolean>>({});
+  const [expandedAdapters, setExpandedAdapters] = useState<Record<string, boolean>>({});
+
+  const [draggedReportId, setDraggedReportId] = useState<string | null>(null);
+  const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
+
+  const [contextMenu, setContextMenu] = useState<{
+    recordId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState('');
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentValue, setEditingCommentValue] = useState('');
+  const commentInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [moveModalRecordId, setMoveModalRecordId] = useState<string | null>(null);
+  const [moveMonth, setMoveMonth] = useState<string>('December');
+  const [moveYear, setMoveYear] = useState<number>(2026);
+  const [moveDomain, setMoveDomain] = useState<PromptDomain>('astrology');
+  const [moveAdapter, setMoveAdapter] = useState<AnyAdapterId>('gemini');
+
+  const periodGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        periodKey: string;
+        periodLabel: string;
+        year: number;
+        month: string;
+        monthNum: number;
+        items: Array<{
+          record: RatedThreadRecord;
+          meta: ReturnType<typeof normalizeRecordPlacement>;
+        }>;
+      }
+    >();
+
+    for (const record of reports) {
+      const meta = normalizeRecordPlacement(record);
+      const existing = map.get(meta.periodKey);
+      if (existing) {
+        existing.items.push({ record, meta });
+      } else {
+        map.set(meta.periodKey, {
+          periodKey: meta.periodKey,
+          periodLabel: meta.periodLabel,
+          year: meta.year,
+          month: meta.month,
+          monthNum: meta.monthNum,
+          items: [{ record, meta }],
+        });
+      }
+    }
+
+    if (
+      activePeriodMonth &&
+      activePeriodYear &&
+      activePeriodYear >= 1990 &&
+      activePeriodYear <= 2090
+    ) {
+      const monthName = getMonthNameFromNumber(activePeriodMonth);
+      if (monthName) {
+        const activeKey = `${activePeriodYear}-${String(activePeriodMonth).padStart(2, '0')}`;
+        if (!map.has(activeKey)) {
+          map.set(activeKey, {
+            periodKey: activeKey,
+            periodLabel: `${activePeriodYear} ${monthName}`,
+            year: activePeriodYear,
+            month: monthName,
+            monthNum: activePeriodMonth,
+            items: [],
+          });
+        }
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      b.periodKey.localeCompare(a.periodKey),
+    );
+  }, [activePeriodMonth, activePeriodYear, reports]);
+
+  // Auto-expand the newest / active period and any folder containing the active report
+  useEffect(() => {
+    if (periodGroups.length > 0) {
+      setExpandedPeriods((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        return { [periodGroups[0].periodKey]: true };
+      });
+    }
+  }, [periodGroups]);
+
+  useEffect(() => {
+    if (!activeReportId) return;
+    const target = reports.find((r) => r.id === activeReportId);
+    if (!target) return;
+    const meta = normalizeRecordPlacement(target);
+    const domainKey = `${meta.periodKey}::${meta.domain}`;
+    const adapterKey = `${meta.periodKey}::${meta.domain}::${meta.adapterId}`;
+    setExpandedPeriods((prev) => ({ ...prev, [meta.periodKey]: true }));
+    setExpandedDomains((prev) => ({ ...prev, [domainKey]: true }));
+    setExpandedAdapters((prev) => ({ ...prev, [adapterKey]: true }));
+  }, [activeReportId, reports]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const closeMenu = () => setContextMenu(null);
+    const onKeyDown = (e: globalThis.KeyboardEvent | Event) => {
+      if ('key' in e && e.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('pointerdown', closeMenu);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', closeMenu);
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onKeyDown);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (editingNameId) {
+      window.requestAnimationFrame(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      });
+    }
+  }, [editingNameId]);
+
+  useEffect(() => {
+    if (editingCommentId) {
+      window.requestAnimationFrame(() => {
+        commentInputRef.current?.focus();
+        commentInputRef.current?.select();
+      });
+    }
+  }, [editingCommentId]);
+
+  const openMoveModal = (recordId: string) => {
+    const target = reports.find((r) => r.id === recordId);
+    if (!target) return;
+    const meta = normalizeRecordPlacement(target);
+    setMoveMonth(meta.month);
+    setMoveYear(meta.year);
+    setMoveDomain(meta.domain);
+    setMoveAdapter(meta.adapterId);
+    setMoveModalRecordId(recordId);
+    setContextMenu(null);
+  };
+
+  const handleDropOnAdapter = (
+    e: React.DragEvent,
+    target: ReportMoveTarget,
+    adapterKey: string,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const recordId =
+      draggedReportId || e.dataTransfer.getData('text/plain');
+    setDropTargetKey(null);
+    setDraggedReportId(null);
+    if (!recordId) return;
+
+    onMoveReport(recordId, target);
+    const periodKey = `${target.threadYear}-${String(
+      getMonthNumberFromName(target.threadMonth) ?? 1,
+    ).padStart(2, '0')}`;
+    setExpandedPeriods((prev) => ({ ...prev, [periodKey]: true }));
+    setExpandedDomains((prev) => ({
+      ...prev,
+      [`${periodKey}::${target.promptDomain}`]: true,
+    }));
+    setExpandedAdapters((prev) => ({ ...prev, [adapterKey]: true }));
+  };
+
+  const commitNameEdit = (recordId: string) => {
+    const trimmed = editingNameValue.trim();
+    setEditingNameId(null);
+    setEditingNameValue('');
+    if (trimmed) {
+      onRenameReport(recordId, trimmed);
+    }
+  };
+
+  const commitCommentEdit = (recordId: string) => {
+    const trimmed = editingCommentValue.trim();
+    setEditingCommentId(null);
+    setEditingCommentValue('');
+    onUpdateComment(recordId, trimmed);
+  };
+
+  return (
+    <>
+      <div
+        aria-label="Reports Folder Tree"
+        className="flex-1 min-h-0 overflow-y-auto fluent-scroll space-y-1.5 pr-0.5"
+      >
+        {periodGroups.map((group) => {
+          const isPeriodExpanded = Boolean(expandedPeriods[group.periodKey]);
+          const periodTotalCount = group.items.length;
+
+          return (
+            <div key={group.periodKey} className="space-y-0.5">
+              {/* Level 1: Year & Month Folder */}
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedPeriods((prev) => ({
+                    ...prev,
+                    [group.periodKey]: !prev[group.periodKey],
+                  }))
+                }
+                aria-expanded={isPeriodExpanded}
+                className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-white/75 dark:hover:bg-slate-800/75 transition-colors text-left cursor-pointer"
+              >
+                {isPeriodExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+                {isPeriodExpanded ? (
+                  <FolderOpen
+                    className="w-3.5 h-3.5 shrink-0"
+                    style={{ color: 'var(--pa-accent)' }}
+                  />
+                ) : (
+                  <Folder className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+                )}
+                <span className="truncate flex-1 tabular-nums">
+                  {group.periodLabel}
+                </span>
+                {periodTotalCount > 0 && (
+                  <span className="rounded-full bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums shrink-0">
+                    {periodTotalCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Level 2: 4 Domain Siblings (Love, Career, Family, Health) */}
+              {isPeriodExpanded && (
+                <div className="pl-3 space-y-0.5 border-l border-slate-200/80 dark:border-slate-800 ml-3.5">
+                  {TREE_DOMAINS.map(({ domain, label }) => {
+                    const domainKey = `${group.periodKey}::${domain}`;
+                    const domainItems = group.items.filter(
+                      (entry) => entry.meta.domain === domain,
+                    );
+                    const isDomainExpanded = Boolean(expandedDomains[domainKey]);
+
+                    return (
+                      <div key={domainKey} className="space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedDomains((prev) => ({
+                              ...prev,
+                              [domainKey]: !prev[domainKey],
+                            }))
+                          }
+                          aria-expanded={isDomainExpanded}
+                          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left cursor-pointer"
+                        >
+                          {isDomainExpanded ? (
+                            <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                          )}
+                          <EventCategoryEmblem
+                            icon={getDomainEmblemIcon(domain)}
+                            className="w-4 h-4 shrink-0"
+                          />
+                          <span className="truncate flex-1">{label}</span>
+                          {domainItems.length > 0 && (
+                            <span className="rounded-full bg-sky-100/90 dark:bg-sky-950/70 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 tabular-nums shrink-0">
+                              {domainItems.length}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Level 3: 4 Adapter Folders (Local, Fable, Gemini, Sonnet) */}
+                        {isDomainExpanded && (
+                          <div className="pl-3 space-y-0.5 border-l border-slate-200/70 dark:border-slate-800/80 ml-3">
+                            {TREE_ADAPTERS.map(({ adapterId, label: adapterLabel, isPrivate }) => {
+                              const adapterKey = `${domainKey}::${adapterId}`;
+                              const adapterItems = domainItems.filter(
+                                (entry) => entry.meta.adapterId === adapterId,
+                              );
+                              const isAdapterExpanded = Boolean(
+                                expandedAdapters[adapterKey],
+                              );
+                              const isDropHover = dropTargetKey === adapterKey;
+
+                              return (
+                                <div key={adapterKey} className="space-y-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedAdapters((prev) => ({
+                                        ...prev,
+                                        [adapterKey]: !prev[adapterKey],
+                                      }))
+                                    }
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      if (dropTargetKey !== adapterKey) {
+                                        setDropTargetKey(adapterKey);
+                                      }
+                                    }}
+                                    onDragLeave={() => {
+                                      if (dropTargetKey === adapterKey) {
+                                        setDropTargetKey(null);
+                                      }
+                                    }}
+                                    onDrop={(e) =>
+                                      handleDropOnAdapter(
+                                        e,
+                                        {
+                                          threadMonth: group.month,
+                                          threadYear: group.year,
+                                          promptDomain: domain,
+                                          adapterId,
+                                        },
+                                        adapterKey,
+                                      )
+                                    }
+                                    aria-expanded={isAdapterExpanded}
+                                    className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11.5px] transition-all text-left cursor-pointer ${
+                                      isDropHover
+                                        ? 'bg-sky-100 dark:bg-sky-900/60 ring-1 ring-sky-400 text-sky-900 dark:text-sky-100'
+                                        : isPrivate
+                                          ? 'text-slate-500 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800/55'
+                                          : 'text-slate-700 dark:text-slate-200 hover:bg-white/75 dark:hover:bg-slate-800/75'
+                                    }`}
+                                  >
+                                    {isAdapterExpanded ? (
+                                      <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                                    )}
+                                    {isPrivate ? (
+                                      <Lock className="w-3 h-3 text-emerald-600/80 dark:text-emerald-400/80 shrink-0" />
+                                    ) : adapterId === 'gemini' ? (
+                                      <Sparkles className="w-3 h-3 text-sky-500 shrink-0" />
+                                    ) : (
+                                      <Cloud className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0" />
+                                    )}
+                                    <span className="truncate flex-1 font-medium">
+                                      {adapterLabel}
+                                    </span>
+                                    <span
+                                      className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums shrink-0 ${
+                                        adapterItems.length > 0
+                                          ? 'bg-slate-200/85 dark:bg-slate-700/85 font-semibold text-slate-700 dark:text-slate-200'
+                                          : 'text-slate-400 dark:text-slate-600'
+                                      }`}
+                                    >
+                                      {adapterItems.length}
+                                    </span>
+                                  </button>
+
+                                  {/* Level 4: Individual Reports inside Adapter Folder */}
+                                  {isAdapterExpanded && (
+                                    <div className="pl-3 space-y-0.5 border-l border-slate-200/60 dark:border-slate-800/70 ml-2.5">
+                                      {adapterItems.length === 0 ? (
+                                        <div className="px-2 py-1 text-[10.5px] italic text-slate-400 dark:text-slate-600">
+                                          No reports yet
+                                        </div>
+                                      ) : (
+                                        adapterItems.map(({ record, meta }, runIdx) => {
+                                          const isActive = activeReportId === record.id;
+                                          const isEditingName = editingNameId === record.id;
+                                          const isEditingComment = editingCommentId === record.id;
+                                          const fallbackRunTitle =
+                                            meta.title || `Report ${runIdx + 1}`;
+
+                                          if (isEditingName) {
+                                            return (
+                                              <div
+                                                key={record.id}
+                                                className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs"
+                                              >
+                                                <input
+                                                  ref={nameInputRef}
+                                                  type="text"
+                                                  value={editingNameValue}
+                                                  aria-label="Edit report name"
+                                                  onChange={(e) =>
+                                                    setEditingNameValue(e.target.value)
+                                                  }
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      commitNameEdit(record.id);
+                                                    } else if (e.key === 'Escape') {
+                                                      e.preventDefault();
+                                                      setEditingNameId(null);
+                                                      setEditingNameValue('');
+                                                    }
+                                                  }}
+                                                  onBlur={() => commitNameEdit(record.id)}
+                                                  className="w-full bg-transparent text-[11.5px] font-medium text-slate-900 dark:text-white focus:outline-none"
+                                                />
+                                              </div>
+                                            );
+                                          }
+
+                                          return (
+                                            <div key={record.id} className="space-y-0.5">
+                                              <button
+                                                type="button"
+                                                draggable
+                                                onDragStart={(e) => {
+                                                  setDraggedReportId(record.id);
+                                                  e.dataTransfer.setData(
+                                                    'text/plain',
+                                                    record.id,
+                                                  );
+                                                  e.dataTransfer.effectAllowed = 'move';
+                                                }}
+                                                onDragEnd={() => {
+                                                  setDraggedReportId(null);
+                                                  setDropTargetKey(null);
+                                                }}
+                                                onClick={() => {
+                                                  setContextMenu(null);
+                                                  onSelectReport(record.id);
+                                                }}
+                                                onContextMenu={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  setContextMenu({
+                                                    recordId: record.id,
+                                                    x: Math.min(
+                                                      e.clientX,
+                                                      window.innerWidth - 208,
+                                                    ),
+                                                    y: Math.min(
+                                                      e.clientY,
+                                                      window.innerHeight - 175,
+                                                    ),
+                                                  });
+                                                }}
+                                                title={
+                                                  meta.comment
+                                                    ? `${fallbackRunTitle}\nNote: ${meta.comment}\n(Right-click to rename, comment, move, or delete; drag to move)`
+                                                    : `${fallbackRunTitle} (Right-click to rename, add comment, move, or delete; drag to move)`
+                                                }
+                                                className={`w-full flex flex-col px-2 py-1.5 rounded-lg text-left transition-all cursor-pointer ${
+                                                  meta.isPublic
+                                                    ? 'font-medium text-slate-800 dark:text-slate-100'
+                                                    : 'font-normal text-slate-500 dark:text-slate-400 opacity-70 hover:opacity-100'
+                                                } ${
+                                                  isActive
+                                                    ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/90 dark:border-slate-700 opacity-100'
+                                                    : meta.isPublic
+                                                      ? 'bg-white/45 dark:bg-slate-800/35 hover:bg-white/85 dark:hover:bg-slate-800/80'
+                                                      : 'hover:bg-white/60 dark:hover:bg-slate-800/60'
+                                                }`}
+                                              >
+                                                <div className="flex items-center gap-1 min-w-0 w-full text-[11.5px]">
+                                                  {meta.ratingStars && (
+                                                    <span
+                                                      className="text-amber-500 dark:text-amber-400 shrink-0 text-[10px]"
+                                                      aria-hidden="true"
+                                                    >
+                                                      {meta.ratingStars}
+                                                    </span>
+                                                  )}
+                                                  <span className="truncate flex-1">
+                                                    {fallbackRunTitle}
+                                                  </span>
+                                                </div>
+                                                {meta.comment && !isEditingComment && (
+                                                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 truncate w-full">
+                                                    <MessageSquareText className="w-2.5 h-2.5 shrink-0 opacity-75" />
+                                                    <span className="truncate">
+                                                      {meta.comment}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </button>
+
+                                              {isEditingComment && (
+                                                <div className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs">
+                                                  <input
+                                                    ref={commentInputRef}
+                                                    type="text"
+                                                    value={editingCommentValue}
+                                                    placeholder="Add note / why rerun…"
+                                                    aria-label="Edit report comment"
+                                                    onChange={(e) =>
+                                                      setEditingCommentValue(e.target.value)
+                                                    }
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        commitCommentEdit(record.id);
+                                                      } else if (e.key === 'Escape') {
+                                                        e.preventDefault();
+                                                        setEditingCommentId(null);
+                                                        setEditingCommentValue('');
+                                                      }
+                                                    }}
+                                                    onBlur={() => commitCommentEdit(record.id)}
+                                                    className="w-full bg-transparent text-[11px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          role="menu"
+          aria-label="Report actions"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="fixed z-50 w-48 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl p-1.5 space-y-0.5"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = reports.find((r) => r.id === contextMenu.recordId);
+              const qTurn = target?.turns.find((t) => t.role === 'user');
+              setEditingNameId(contextMenu.recordId);
+              setEditingNameValue(qTurn?.threadName?.trim() || '');
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+          >
+            <Pencil className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>Edit Name</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = reports.find((r) => r.id === contextMenu.recordId);
+              const qTurn = target?.turns.find((t) => t.role === 'user');
+              setEditingCommentId(contextMenu.recordId);
+              setEditingCommentValue(
+                target?.comment ?? qTurn?.threadComment ?? '',
+              );
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+          >
+            <MessageSquareText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>Add / Edit Comment</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => openMoveModal(contextMenu.recordId)}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+          >
+            <FolderInput className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>Move to Folder…</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const id = contextMenu.recordId;
+              setContextMenu(null);
+              onDeleteReport(id);
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors text-left cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
+
+      {/* Move Existing Report Modal */}
+      {moveModalRecordId && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Move report to folder"
+          onClick={() => setMoveModalRecordId(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-5 space-y-4"
+          >
+            <div className="space-y-1">
+              <h3 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Move Report to Folder
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Updates the sidebar tree and moves the HTML file on disk.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <span>Year</span>
+                <select
+                  value={moveYear}
+                  onChange={(e) => setMoveYear(Number(e.target.value))}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {THREAD_YEARS.map((yr) => (
+                    <option key={yr} value={yr}>
+                      {yr}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <span>Month</span>
+                <select
+                  value={moveMonth}
+                  onChange={(e) => setMoveMonth(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {THREAD_MONTHS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <span>Domain</span>
+                <select
+                  value={moveDomain}
+                  onChange={(e) => setMoveDomain(e.target.value as PromptDomain)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {TREE_DOMAINS.map((d) => (
+                    <option key={d.domain} value={d.domain}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <span>Engine / Adapter</span>
+                <select
+                  value={moveAdapter}
+                  onChange={(e) => setMoveAdapter(e.target.value as AnyAdapterId)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  {TREE_ADAPTERS.map((a) => (
+                    <option key={a.adapterId} value={a.adapterId}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setMoveModalRecordId(null)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = moveModalRecordId;
+                  setMoveModalRecordId(null);
+                  onMoveReport(id, {
+                    threadMonth: moveMonth,
+                    threadYear: moveYear,
+                    promptDomain: moveDomain,
+                    adapterId: moveAdapter,
+                  });
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] text-xs font-semibold text-white cursor-pointer"
+              >
+                Move Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

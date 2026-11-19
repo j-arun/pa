@@ -1,12 +1,44 @@
 import fs from 'fs';
 import path from 'path';
 import type {
+  AnyAdapterId,
+  ConversationScope,
   ConversationTurn,
+  PromptDomain,
   RatedThreadRecord,
 } from '../src/types/workbench.ts';
 import { resolveReportsDir } from './configStore.ts';
 
 const META_DIR_NAME = '.workbench-records';
+
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const DOMAIN_FOLDER_NAMES: Record<PromptDomain, string> = {
+  astrology: 'Career',
+  finance: 'Family',
+  general: 'Love',
+  health: 'Health',
+};
+
+const ADAPTER_FOLDER_NAMES: Record<AnyAdapterId, string> = {
+  ollama: 'Local',
+  fable: 'Fable',
+  gemini: 'Gemini',
+  claude: 'Sonnet',
+};
 
 function sanitizeId(rawId: string): string {
   const cleaned = rawId.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
@@ -22,6 +54,14 @@ function sanitizeSlug(rawTitle: string): string {
   return slug || 'reference-report';
 }
 
+function sanitizeFolderSegment(rawSegment: string, fallback: string): string {
+  const cleaned = rawSegment
+    .replace(/[<>:"/\\|?*\x00-\x1f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || fallback;
+}
+
 function ensureReportsFolders(dir?: string): { root: string; metaDir: string } {
   const root = resolveReportsDir(dir);
   const metaDir = path.join(root, META_DIR_NAME);
@@ -32,6 +72,140 @@ function ensureReportsFolders(dir?: string): { root: string; metaDir: string } {
     fs.mkdirSync(metaDir, { recursive: true });
   }
   return { root, metaDir };
+}
+
+function normalizeMonthName(rawMonth?: string, fallbackDateIso?: string): string {
+  if (rawMonth && rawMonth.trim()) {
+    const trimmed = rawMonth.trim().toLowerCase();
+    const matched = MONTHS.find(
+      (m) => m.toLowerCase() === trimmed || m.toLowerCase().startsWith(trimmed.slice(0, 3)),
+    );
+    if (matched) return matched;
+    const numeric = Number(trimmed);
+    if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) {
+      return MONTHS[numeric - 1];
+    }
+  }
+  const parsed = fallbackDateIso ? new Date(fallbackDateIso) : new Date();
+  const safeDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return MONTHS[safeDate.getMonth()];
+}
+
+function normalizeYearNumber(rawYear?: number, fallbackDateIso?: string): number {
+  if (typeof rawYear === 'number' && Number.isFinite(rawYear) && rawYear >= 1990 && rawYear <= 2090) {
+    return Math.round(rawYear);
+  }
+  const parsed = fallbackDateIso ? new Date(fallbackDateIso) : new Date();
+  const safeDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return safeDate.getFullYear();
+}
+
+function normalizeDomain(rawDomain?: string): PromptDomain {
+  if (
+    rawDomain === 'astrology' ||
+    rawDomain === 'finance' ||
+    rawDomain === 'general' ||
+    rawDomain === 'health'
+  ) {
+    return rawDomain;
+  }
+  return 'astrology';
+}
+
+function normalizeAdapterId(rawAdapter?: string, scope?: ConversationScope): AnyAdapterId {
+  if (
+    rawAdapter === 'ollama' ||
+    rawAdapter === 'fable' ||
+    rawAdapter === 'gemini' ||
+    rawAdapter === 'claude'
+  ) {
+    return rawAdapter;
+  }
+  return scope === 'private' ? 'ollama' : 'gemini';
+}
+
+function getStructuredFolderSegments(record: RatedThreadRecord): {
+  yearMonthDir: string;
+  domainDir: string;
+  adapterDir: string;
+  monthName: string;
+  yearNum: number;
+  domain: PromptDomain;
+  adapterId: AnyAdapterId;
+} {
+  const qTurn = record.turns.find((t) => t.role === 'user');
+  const assistantTurn = [...record.turns].reverse().find((t) => t.role === 'assistant');
+  const fallbackIso = qTurn?.timestamp || record.ratedAt;
+  const monthName = normalizeMonthName(qTurn?.threadMonth, fallbackIso);
+  const yearNum = normalizeYearNumber(qTurn?.threadYear, fallbackIso);
+  const domain = normalizeDomain(qTurn?.promptDomain);
+  const adapterId = normalizeAdapterId(
+    assistantTurn?.adapterId ?? qTurn?.adapterId,
+    qTurn?.scope ?? assistantTurn?.scope,
+  );
+
+  return {
+    yearMonthDir: sanitizeFolderSegment(`${yearNum} ${monthName}`, `${yearNum} ${monthName}`),
+    domainDir: DOMAIN_FOLDER_NAMES[domain],
+    adapterDir: ADAPTER_FOLDER_NAMES[adapterId],
+    monthName,
+    yearNum,
+    domain,
+    adapterId,
+  };
+}
+
+function parseFolderMetadataFromRelativePath(relPosixPath: string): {
+  threadMonth?: string;
+  threadYear?: number;
+  promptDomain?: PromptDomain;
+  adapterId?: AnyAdapterId;
+  scope?: ConversationScope;
+} {
+  const parts = relPosixPath.split('/').filter(Boolean);
+  if (parts.length < 2) return {};
+  const result: {
+    threadMonth?: string;
+    threadYear?: number;
+    promptDomain?: PromptDomain;
+    adapterId?: AnyAdapterId;
+    scope?: ConversationScope;
+  } = {};
+
+  for (const seg of parts.slice(0, -1)) {
+    const ymMatch = seg.match(/^(\d{4})\s+([A-Za-z]+)$/);
+    if (ymMatch) {
+      const y = Number(ymMatch[1]);
+      if (y >= 1990 && y <= 2090) result.threadYear = y;
+      result.threadMonth = normalizeMonthName(ymMatch[2]);
+      continue;
+    }
+
+    const lower = seg.trim().toLowerCase();
+    if (lower === 'career' || lower === 'astrology') {
+      result.promptDomain = 'astrology';
+    } else if (lower === 'family' || lower === 'home' || lower === 'finance') {
+      result.promptDomain = 'finance';
+    } else if (lower === 'love' || lower === 'general' || lower === 'relationship') {
+      result.promptDomain = 'general';
+    } else if (lower === 'health') {
+      result.promptDomain = 'health';
+    } else if (lower === 'local' || lower === 'ollama') {
+      result.adapterId = 'ollama';
+      result.scope = 'private';
+    } else if (lower === 'fable') {
+      result.adapterId = 'fable';
+      result.scope = 'public';
+    } else if (lower === 'gemini') {
+      result.adapterId = 'gemini';
+      result.scope = 'public';
+    } else if (lower === 'sonnet' || lower === 'claude' || lower === 'claude sonnet') {
+      result.adapterId = 'claude';
+      result.scope = 'public';
+    }
+  }
+
+  return result;
 }
 
 function extractTitleFromHtml(html: string, fallbackName: string): string {
@@ -53,10 +227,8 @@ function extractTitleFromHtml(html: string, fallbackName: string): string {
 function getPreferredHtmlFileName(record: RatedThreadRecord): string {
   const qTurn = record.turns.find((t) => t.role === 'user');
   const title = qTurn?.threadName?.trim() || 'reference-report';
-  const monthPart = qTurn?.threadMonth ? `${qTurn.threadMonth}-` : '';
-  const yearPart = qTurn?.threadYear ? `${qTurn.threadYear}-` : '';
   const shortId = sanitizeId(record.id).slice(-8);
-  return `${sanitizeSlug(`${yearPart}${monthPart}${title}`)}-${shortId}.html`;
+  return `${sanitizeSlug(title)}-${shortId}.html`;
 }
 
 function getLatestHtmlFromRecord(record: RatedThreadRecord): string | null {
@@ -85,15 +257,64 @@ function applyHtmlToRecord(record: RatedThreadRecord, html: string): RatedThread
   };
 }
 
+function pruneEmptyParentDirs(startDir: string, rootDir: string) {
+  const resolvedRoot = path.resolve(rootDir);
+  let current = path.resolve(startDir);
+  while (
+    current !== resolvedRoot &&
+    current.startsWith(resolvedRoot + path.sep)
+  ) {
+    try {
+      const entries = fs.readdirSync(current);
+      if (entries.length > 0) break;
+      fs.rmdirSync(current);
+      current = path.dirname(current);
+    } catch {
+      break;
+    }
+  }
+}
+
+function toPosixRelative(root: string, targetPath: string): string {
+  return path.relative(root, targetPath).split(path.sep).join('/');
+}
+
+function safeResolveUnderRoot(root: string, relOrName: string): string | null {
+  const resolvedRoot = path.resolve(root);
+  const candidate = path.resolve(resolvedRoot, relOrName);
+  if (candidate === resolvedRoot || candidate.startsWith(resolvedRoot + path.sep)) {
+    return candidate;
+  }
+  return null;
+}
+
+function walkHtmlFilesRecursively(dir: string, root: string, results: string[]) {
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name === META_DIR_NAME || entry.name.startsWith('.')) continue;
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkHtmlFilesRecursively(fullPath, root, results);
+    } else if (entry.isFile() && /\.html?$/i.test(entry.name)) {
+      results.push(fullPath);
+    }
+  }
+}
+
 export function listStoredReports(customReportsDir?: string): {
   reportsDir: string;
   reports: RatedThreadRecord[];
 } {
   const { root, metaDir } = ensureReportsFolders(customReportsDir);
   const reports: RatedThreadRecord[] = [];
-  const claimedHtmlFiles = new Set<string>();
+  const claimedHtmlPaths = new Set<string>();
 
-  // 1. Load metadata records saved by the workbench and hydrate their exact HTML from disk
+  // 1. Load metadata records saved by the workbench and organize into <Year Month>/<Domain>/<Adapter>/
   let metaFiles: string[] = [];
   try {
     metaFiles = fs.readdirSync(metaDir).filter((name) => name.toLowerCase().endsWith('.json'));
@@ -105,30 +326,69 @@ export function listStoredReports(customReportsDir?: string): {
     const metaPath = path.join(metaDir, metaFile);
     try {
       const raw = fs.readFileSync(metaPath, 'utf-8');
-      const parsed = JSON.parse(raw) as RatedThreadRecord & { htmlFileName?: string };
+      const parsed = JSON.parse(raw) as RatedThreadRecord & {
+        htmlFileName?: string;
+        relativePath?: string;
+      };
       if (!parsed || typeof parsed.id !== 'string' || !Array.isArray(parsed.turns)) {
         continue;
       }
 
-      const candidateFileName =
+      const segments = getStructuredFolderSegments(parsed);
+      const baseFileName =
         (typeof parsed.htmlFileName === 'string' && path.basename(parsed.htmlFileName)) ||
         (typeof parsed.fileName === 'string' && path.basename(parsed.fileName)) ||
         getPreferredHtmlFileName(parsed);
 
-      const candidateHtmlPath = path.join(root, candidateFileName);
+      const structuredFolder = path.join(
+        root,
+        segments.yearMonthDir,
+        segments.domainDir,
+        segments.adapterDir,
+      );
+      const structuredHtmlPath = path.join(structuredFolder, baseFileName);
+      const structuredRelPath = toPosixRelative(root, structuredHtmlPath);
+
+      // Check prior locations (relativePath or flat root fileName) and migrate on disk if needed
+      const priorRelPath =
+        typeof parsed.relativePath === 'string' && parsed.relativePath.trim()
+          ? parsed.relativePath.trim()
+          : '';
+      const priorResolved = priorRelPath
+        ? safeResolveUnderRoot(root, priorRelPath)
+        : null;
+      const flatLegacyPath = path.join(root, baseFileName);
+
+      if (!fs.existsSync(structuredHtmlPath)) {
+        const sourceToMigrate =
+          priorResolved && fs.existsSync(priorResolved)
+            ? priorResolved
+            : fs.existsSync(flatLegacyPath)
+              ? flatLegacyPath
+              : null;
+        if (sourceToMigrate) {
+          fs.mkdirSync(structuredFolder, { recursive: true });
+          fs.renameSync(sourceToMigrate, structuredHtmlPath);
+          pruneEmptyParentDirs(path.dirname(sourceToMigrate), root);
+        }
+      }
+
       let finalRecord: RatedThreadRecord = {
         id: parsed.id,
         turns: parsed.turns,
         ratedAt: parsed.ratedAt || new Date().toISOString(),
-        fileName: candidateFileName,
-        filePath: candidateHtmlPath,
+        fileName: baseFileName,
+        filePath: structuredHtmlPath,
+        relativePath: structuredRelPath,
         isExternalFile: false,
+        isFinalized: Boolean(parsed.isFinalized),
+        comment: parsed.comment,
       };
 
-      if (fs.existsSync(candidateHtmlPath)) {
-        claimedHtmlFiles.add(candidateFileName.toLowerCase());
+      if (fs.existsSync(structuredHtmlPath)) {
+        claimedHtmlPaths.add(path.resolve(structuredHtmlPath).toLowerCase());
         try {
-          const diskHtml = fs.readFileSync(candidateHtmlPath, 'utf-8');
+          const diskHtml = fs.readFileSync(structuredHtmlPath, 'utf-8');
           if (diskHtml) {
             finalRecord = applyHtmlToRecord(finalRecord, diskHtml);
           }
@@ -138,8 +398,30 @@ export function listStoredReports(customReportsDir?: string): {
       } else {
         const inlineHtml = getLatestHtmlFromRecord(finalRecord);
         if (inlineHtml) {
-          fs.writeFileSync(candidateHtmlPath, inlineHtml, 'utf-8');
-          claimedHtmlFiles.add(candidateFileName.toLowerCase());
+          fs.mkdirSync(structuredFolder, { recursive: true });
+          fs.writeFileSync(structuredHtmlPath, inlineHtml, 'utf-8');
+          claimedHtmlPaths.add(path.resolve(structuredHtmlPath).toLowerCase());
+        }
+      }
+
+      // Persist updated relativePath in metadata if migrated
+      if (parsed.relativePath !== structuredRelPath) {
+        try {
+          fs.writeFileSync(
+            metaPath,
+            JSON.stringify(
+              {
+                ...finalRecord,
+                htmlFileName: baseFileName,
+                relativePath: structuredRelPath,
+              },
+              null,
+              2,
+            ),
+            'utf-8',
+          );
+        } catch {
+          // Ignore non-critical metadata sync write errors
         }
       }
 
@@ -149,35 +431,42 @@ export function listStoredReports(customReportsDir?: string): {
     }
   }
 
-  // 2. Also include any standalone .html / .htm files directly inside reportsDir
-  let dirEntries: fs.Dirent[] = [];
-  try {
-    dirEntries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    dirEntries = [];
-  }
+  // 2. Also include any standalone .html / .htm files anywhere under reportsDir (both flat and nested folders)
+  const discoveredHtmlFiles: string[] = [];
+  walkHtmlFilesRecursively(root, root, discoveredHtmlFiles);
 
-  for (const entry of dirEntries) {
-    if (!entry.isFile()) continue;
-    if (!/\.html?$/i.test(entry.name)) continue;
-    if (claimedHtmlFiles.has(entry.name.toLowerCase())) continue;
+  for (const fullPath of discoveredHtmlFiles) {
+    if (claimedHtmlPaths.has(path.resolve(fullPath).toLowerCase())) continue;
 
-    const fullPath = path.join(root, entry.name);
     try {
       const htmlContent = fs.readFileSync(fullPath, 'utf-8');
       const stat = fs.statSync(fullPath);
       const isoTime = stat.mtime.toISOString();
-      const title = extractTitleFromHtml(htmlContent, entry.name);
-      const recordId = `file:${entry.name}`;
+      const relPosix = toPosixRelative(root, fullPath);
+      const fileName = path.basename(fullPath);
+      const title = extractTitleFromHtml(htmlContent, fileName);
+      const inferred = parseFolderMetadataFromRelativePath(relPosix);
+      const recordId = `file:${relPosix}`;
+
+      const fallbackMonth = normalizeMonthName(inferred.threadMonth, isoTime);
+      const fallbackYear = normalizeYearNumber(inferred.threadYear, isoTime);
+      const fallbackDomain = inferred.promptDomain ?? 'astrology';
+      const fallbackAdapter: AnyAdapterId = inferred.adapterId ?? 'gemini';
+      const fallbackScope: ConversationScope =
+        inferred.scope ?? (fallbackAdapter === 'ollama' ? 'private' : 'public');
+
       const syntheticUserTurn: ConversationTurn = {
         id: `${recordId}:user`,
         role: 'user',
         content: title,
         timestamp: isoTime,
-        scope: 'public',
-        adapterId: 'gemini',
+        scope: fallbackScope,
+        adapterId: fallbackAdapter,
         model: 'local-html',
+        promptDomain: fallbackDomain,
         threadName: title,
+        threadMonth: fallbackMonth,
+        threadYear: fallbackYear,
       };
       const syntheticAssistantTurn: ConversationTurn = {
         id: `${recordId}:html`,
@@ -186,16 +475,17 @@ export function listStoredReports(customReportsDir?: string): {
         content: title,
         htmlReport: htmlContent,
         timestamp: isoTime,
-        scope: 'public',
-        adapterId: 'gemini',
+        scope: fallbackScope,
+        adapterId: fallbackAdapter,
         model: 'Local HTML File',
       };
       reports.push({
         id: recordId,
         turns: [syntheticUserTurn, syntheticAssistantTurn],
         ratedAt: isoTime,
-        fileName: entry.name,
+        fileName,
         filePath: fullPath,
+        relativePath: relPosix,
         isExternalFile: true,
       });
     } catch {
@@ -225,36 +515,77 @@ export function saveStoredReport(
   const safeId = sanitizeId(record.id);
   const metaPath = path.join(metaDir, `${safeId}.json`);
 
-  // Preserve previous filename for this ID if it already existed so we update in place
+  const segments = getStructuredFolderSegments(record);
+  const targetFolder = path.join(
+    root,
+    segments.yearMonthDir,
+    segments.domainDir,
+    segments.adapterDir,
+  );
+  fs.mkdirSync(targetFolder, { recursive: true });
+
+  // Inspect existing metadata to find any previous HTML path so we can clean/move cleanly
+  let prevHtmlPath: string | null = null;
   let fileName = record.fileName ? path.basename(record.fileName) : '';
-  if (!fileName && fs.existsSync(metaPath)) {
+  if (fs.existsSync(metaPath)) {
     try {
       const existing = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as {
         htmlFileName?: string;
         fileName?: string;
+        relativePath?: string;
       };
-      const prevName = existing.htmlFileName || existing.fileName;
-      if (prevName) fileName = path.basename(prevName);
+      if (existing.relativePath) {
+        prevHtmlPath = safeResolveUnderRoot(root, existing.relativePath);
+      } else if (existing.htmlFileName || existing.fileName) {
+        prevHtmlPath = path.join(root, path.basename(existing.htmlFileName || existing.fileName || ''));
+      }
+      if (!fileName) {
+        const prevName = existing.htmlFileName || existing.fileName;
+        if (prevName) fileName = path.basename(prevName);
+      }
     } catch {
       // Ignore parse error
     }
   }
+
   if (!fileName || !/\.html?$/i.test(fileName)) {
     fileName = getPreferredHtmlFileName(record);
   }
 
-  const htmlFilePath = path.join(root, fileName);
+  const htmlFilePath = path.join(targetFolder, fileName);
+  const relativePath = toPosixRelative(root, htmlFilePath);
+
+  if (
+    prevHtmlPath &&
+    path.resolve(prevHtmlPath) !== path.resolve(htmlFilePath) &&
+    fs.existsSync(prevHtmlPath)
+  ) {
+    try {
+      fs.renameSync(prevHtmlPath, htmlFilePath);
+      pruneEmptyParentDirs(path.dirname(prevHtmlPath), root);
+    } catch {
+      // Fall back to writing fresh below
+    }
+  }
+
   const htmlContent = explicitHtml ?? getLatestHtmlFromRecord(record);
   if (htmlContent && htmlContent.trim()) {
     fs.writeFileSync(htmlFilePath, htmlContent, 'utf-8');
   }
 
+  const qTurn = record.turns.find((t) => t.role === 'user');
+  const baseRecord: RatedThreadRecord = {
+    ...record,
+    fileName,
+    filePath: htmlFilePath,
+    relativePath,
+    isExternalFile: false,
+    comment: record.comment ?? qTurn?.threadComment,
+  };
+
   const updatedRecord: RatedThreadRecord = htmlContent
-    ? applyHtmlToRecord(
-        { ...record, fileName, filePath: htmlFilePath, isExternalFile: false },
-        htmlContent,
-      )
-    : { ...record, fileName, filePath: htmlFilePath, isExternalFile: false };
+    ? applyHtmlToRecord(baseRecord, htmlContent)
+    : baseRecord;
 
   fs.writeFileSync(
     metaPath,
@@ -262,6 +593,7 @@ export function saveStoredReport(
       {
         ...updatedRecord,
         htmlFileName: fileName,
+        relativePath,
       },
       null,
       2,
@@ -288,12 +620,12 @@ export function readStoredReportHtml(
   const { root, metaDir } = ensureReportsFolders(customReportsDir);
 
   if (reportId.startsWith('file:')) {
-    const fileName = path.basename(reportId.slice('file:'.length));
-    const fullPath = path.join(root, fileName);
-    if (!fs.existsSync(fullPath)) return null;
+    const relTarget = reportId.slice('file:'.length);
+    const fullPath = safeResolveUnderRoot(root, relTarget);
+    if (!fullPath || !fs.existsSync(fullPath)) return null;
     return {
       html: fs.readFileSync(fullPath, 'utf-8'),
-      fileName,
+      fileName: path.basename(fullPath),
       filePath: fullPath,
     };
   }
@@ -305,24 +637,37 @@ export function readStoredReportHtml(
   try {
     const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as RatedThreadRecord & {
       htmlFileName?: string;
+      relativePath?: string;
     };
     const fileName = path.basename(
       parsed.htmlFileName || parsed.fileName || getPreferredHtmlFileName(parsed),
     );
-    const fullPath = path.join(root, fileName);
-    if (fs.existsSync(fullPath)) {
-      return {
-        html: fs.readFileSync(fullPath, 'utf-8'),
-        fileName,
-        filePath: fullPath,
-      };
+
+    const candidates: string[] = [];
+    if (parsed.relativePath) {
+      const resolvedRel = safeResolveUnderRoot(root, parsed.relativePath);
+      if (resolvedRel) candidates.push(resolvedRel);
     }
+    const seg = getStructuredFolderSegments(parsed);
+    candidates.push(path.join(root, seg.yearMonthDir, seg.domainDir, seg.adapterDir, fileName));
+    candidates.push(path.join(root, fileName));
+
+    for (const fullPath of candidates) {
+      if (fs.existsSync(fullPath)) {
+        return {
+          html: fs.readFileSync(fullPath, 'utf-8'),
+          fileName,
+          filePath: fullPath,
+        };
+      }
+    }
+
     const fallbackHtml = getLatestHtmlFromRecord(parsed);
     if (fallbackHtml) {
       return {
         html: fallbackHtml,
         fileName,
-        filePath: fullPath,
+        filePath: candidates[0],
       };
     }
   } catch {
@@ -339,10 +684,11 @@ export function deleteStoredReport(
   const { root, metaDir } = ensureReportsFolders(customReportsDir);
 
   if (reportId.startsWith('file:')) {
-    const fileName = path.basename(reportId.slice('file:'.length));
-    const fullPath = path.join(root, fileName);
-    if (fs.existsSync(fullPath)) {
+    const relTarget = reportId.slice('file:'.length);
+    const fullPath = safeResolveUnderRoot(root, relTarget);
+    if (fullPath && fs.existsSync(fullPath)) {
       fs.unlinkSync(fullPath);
+      pruneEmptyParentDirs(path.dirname(fullPath), root);
       return { deleted: true };
     }
     return { deleted: false };
@@ -354,15 +700,22 @@ export function deleteStoredReport(
 
   if (fs.existsSync(metaPath)) {
     try {
-      const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as {
+      const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as RatedThreadRecord & {
         htmlFileName?: string;
-        fileName?: string;
+        relativePath?: string;
       };
+      if (parsed.relativePath) {
+        const relFull = safeResolveUnderRoot(root, parsed.relativePath);
+        if (relFull && fs.existsSync(relFull)) {
+          fs.unlinkSync(relFull);
+          pruneEmptyParentDirs(path.dirname(relFull), root);
+        }
+      }
       const fileName = parsed.htmlFileName || parsed.fileName;
       if (fileName) {
-        const htmlPath = path.join(root, path.basename(fileName));
-        if (fs.existsSync(htmlPath)) {
-          fs.unlinkSync(htmlPath);
+        const flatPath = path.join(root, path.basename(fileName));
+        if (fs.existsSync(flatPath)) {
+          fs.unlinkSync(flatPath);
         }
       }
     } catch {
@@ -375,60 +728,109 @@ export function deleteStoredReport(
   return { deleted };
 }
 
-export function renameStoredReport(
+export interface ReportMetadataUpdatePayload {
+  name?: string;
+  comment?: string;
+  moveTarget?: {
+    threadMonth: string;
+    threadYear: number;
+    promptDomain: PromptDomain;
+    adapterId: AnyAdapterId;
+  };
+}
+
+export function updateStoredReportMetadata(
   reportId: string,
-  newName: string,
+  patch: ReportMetadataUpdatePayload,
   customReportsDir?: string,
 ): {
   record: RatedThreadRecord;
 } | null {
-  const trimmedName = newName.trim();
-  if (!trimmedName) return null;
-
   const { root, metaDir } = ensureReportsFolders(customReportsDir);
+  const trimmedName = typeof patch.name === 'string' ? patch.name.trim() : undefined;
+  const nextComment = typeof patch.comment === 'string' ? patch.comment.trim() : undefined;
 
   if (reportId.startsWith('file:')) {
-    const oldFileName = path.basename(reportId.slice('file:'.length));
-    const oldPath = path.join(root, oldFileName);
-    if (!fs.existsSync(oldPath)) return null;
+    const oldRel = reportId.slice('file:'.length);
+    const oldPath = safeResolveUnderRoot(root, oldRel);
+    if (!oldPath || !fs.existsSync(oldPath)) return null;
 
+    const oldFileName = path.basename(oldPath);
     const ext = path.extname(oldFileName) || '.html';
-    const baseFromName = sanitizeSlug(trimmedName);
-    let nextFileName = `${baseFromName}${ext}`;
-    if (
-      nextFileName.toLowerCase() !== oldFileName.toLowerCase() &&
-      fs.existsSync(path.join(root, nextFileName))
-    ) {
-      nextFileName = `${baseFromName}-${Date.now().toString().slice(-5)}${ext}`;
+    let nextFileName = oldFileName;
+    if (trimmedName) {
+      const baseFromName = sanitizeSlug(trimmedName);
+      nextFileName = `${baseFromName}${ext}`;
     }
-    const nextPath = path.join(root, nextFileName);
-    if (nextPath !== oldPath) {
+
+    let targetDir = path.dirname(oldPath);
+    if (patch.moveTarget) {
+      const monthName = normalizeMonthName(patch.moveTarget.threadMonth);
+      const yearNum = normalizeYearNumber(patch.moveTarget.threadYear);
+      const domainDir = DOMAIN_FOLDER_NAMES[normalizeDomain(patch.moveTarget.promptDomain)];
+      const adapterDir = ADAPTER_FOLDER_NAMES[normalizeAdapterId(patch.moveTarget.adapterId)];
+      targetDir = path.join(root, `${yearNum} ${monthName}`, domainDir, adapterDir);
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    let nextPath = path.join(targetDir, nextFileName);
+    if (
+      path.resolve(nextPath).toLowerCase() !== path.resolve(oldPath).toLowerCase() &&
+      fs.existsSync(nextPath)
+    ) {
+      const baseWithoutExt = nextFileName.replace(/\.html?$/i, '');
+      nextFileName = `${baseWithoutExt}-${Date.now().toString().slice(-5)}${ext}`;
+      nextPath = path.join(targetDir, nextFileName);
+    }
+
+    if (path.resolve(nextPath) !== path.resolve(oldPath)) {
       fs.renameSync(oldPath, nextPath);
+      pruneEmptyParentDirs(path.dirname(oldPath), root);
     }
 
     const htmlContent = fs.readFileSync(nextPath, 'utf-8');
     const stat = fs.statSync(nextPath);
     const isoTime = stat.mtime.toISOString();
-    const nextId = `file:${nextFileName}`;
+    const relPosix = toPosixRelative(root, nextPath);
+    const nextId = `file:${relPosix}`;
+    const inferred = parseFolderMetadataFromRelativePath(relPosix);
+    const resolvedTitle = trimmedName || extractTitleFromHtml(htmlContent, nextFileName);
+    const resolvedAdapter = patch.moveTarget?.adapterId ?? inferred.adapterId ?? 'gemini';
+    const resolvedScope: ConversationScope =
+      resolvedAdapter === 'ollama' ? 'private' : 'public';
+    const resolvedDomain = patch.moveTarget?.promptDomain ?? inferred.promptDomain ?? 'astrology';
+    const resolvedMonth =
+      patch.moveTarget?.threadMonth ??
+      inferred.threadMonth ??
+      normalizeMonthName(undefined, isoTime);
+    const resolvedYear =
+      patch.moveTarget?.threadYear ??
+      inferred.threadYear ??
+      normalizeYearNumber(undefined, isoTime);
+
     const syntheticUserTurn: ConversationTurn = {
       id: `${nextId}:user`,
       role: 'user',
-      content: trimmedName,
+      content: resolvedTitle,
       timestamp: isoTime,
-      scope: 'public',
-      adapterId: 'gemini',
+      scope: resolvedScope,
+      adapterId: resolvedAdapter,
       model: 'local-html',
-      threadName: trimmedName,
+      promptDomain: resolvedDomain,
+      threadName: resolvedTitle,
+      threadMonth: resolvedMonth,
+      threadYear: resolvedYear,
+      threadComment: nextComment,
     };
     const syntheticAssistantTurn: ConversationTurn = {
       id: `${nextId}:html`,
       exchangeId: syntheticUserTurn.id,
       role: 'assistant',
-      content: trimmedName,
+      content: resolvedTitle,
       htmlReport: htmlContent,
       timestamp: isoTime,
-      scope: 'public',
-      adapterId: 'gemini',
+      scope: resolvedScope,
+      adapterId: resolvedAdapter,
       model: 'Local HTML File',
     };
     return {
@@ -438,7 +840,9 @@ export function renameStoredReport(
         ratedAt: isoTime,
         fileName: nextFileName,
         filePath: nextPath,
+        relativePath: relPosix,
         isExternalFile: true,
+        comment: nextComment,
       },
     };
   }
@@ -451,14 +855,48 @@ export function renameStoredReport(
     const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as RatedThreadRecord & {
       htmlFileName?: string;
     };
-    const updatedTurns = (parsed.turns || []).map((turn) =>
-      turn.role === 'user' ? { ...turn, threadName: trimmedName } : turn,
-    );
+
+    const nextScope: ConversationScope | undefined = patch.moveTarget
+      ? patch.moveTarget.adapterId === 'ollama'
+        ? 'private'
+        : 'public'
+      : undefined;
+
+    const updatedTurns = (parsed.turns || []).map((turn) => {
+      if (turn.role === 'user') {
+        return {
+          ...turn,
+          ...(trimmedName ? { threadName: trimmedName } : {}),
+          ...(nextComment !== undefined ? { threadComment: nextComment } : {}),
+          ...(patch.moveTarget
+            ? {
+                threadMonth: normalizeMonthName(patch.moveTarget.threadMonth),
+                threadYear: normalizeYearNumber(patch.moveTarget.threadYear),
+                promptDomain: patch.moveTarget.promptDomain,
+                adapterId: patch.moveTarget.adapterId,
+                scope: nextScope ?? turn.scope,
+                responseScopes: nextScope ? [nextScope] : turn.responseScopes,
+              }
+            : {}),
+        };
+      }
+      if (turn.role === 'assistant' && patch.moveTarget) {
+        return {
+          ...turn,
+          adapterId: patch.moveTarget.adapterId,
+          scope: nextScope ?? turn.scope,
+        };
+      }
+      return turn;
+    });
+
     const updatedRecord: RatedThreadRecord = {
       ...parsed,
       turns: updatedTurns,
       ratedAt: new Date().toISOString(),
+      ...(nextComment !== undefined ? { comment: nextComment } : {}),
     };
+
     const saved = saveStoredReport(updatedRecord, customReportsDir);
     return { record: saved.record };
   } catch {
@@ -466,3 +904,14 @@ export function renameStoredReport(
   }
 }
 
+export function renameStoredReport(
+  reportId: string,
+  newName: string,
+  customReportsDir?: string,
+): {
+  record: RatedThreadRecord;
+} | null {
+  const trimmedName = newName.trim();
+  if (!trimmedName) return null;
+  return updateStoredReportMetadata(reportId, { name: trimmedName }, customReportsDir);
+}

@@ -7,10 +7,8 @@ import {
   PanelBottom,
   PanelLeft,
   PanelRight,
-  Pencil,
   Settings,
   Sparkles,
-  Trash2,
   X,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -19,6 +17,10 @@ import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { ReferenceContextPage } from './components/ReferenceContextPage';
 import { ReportDocumentPage } from './components/ReportDocumentPage';
+import {
+  ReportTreeSidebar,
+  type ReportMoveTarget,
+} from './components/ReportTreeSidebar';
 import { SettingsPage } from './components/SettingsPage';
 import { WhatsAppSymbol } from './components/WhatsAppSymbol';
 import {
@@ -57,7 +59,6 @@ import {
 import {
   EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
   buildThreadHtmlDocument,
-  formatSidebarThreadLabel,
   parseResponseEventsAndReport,
   type ThreadHtmlExchangeInput,
 } from './utils/eventParser';
@@ -166,14 +167,6 @@ export default function App() {
     preview: string;
     isError: boolean;
   } | null>(null);
-  const [reportContextMenu, setReportContextMenu] = useState<{
-    recordId: string;
-    x: number;
-    y: number;
-  } | null>(null);
-  const [editingReportId, setEditingReportId] = useState<string | null>(null);
-  const [editingReportName, setEditingReportName] = useState('');
-  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
@@ -736,40 +729,8 @@ export default function App() {
     );
   }, [turns, syncReportToDisk, pushContextLog]);
 
-  useEffect(() => {
-    if (!reportContextMenu) return;
-    const closeMenu = () => setReportContextMenu(null);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setReportContextMenu(null);
-      }
-    };
-    window.addEventListener('pointerdown', closeMenu);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', closeMenu);
-    return () => {
-      window.removeEventListener('pointerdown', closeMenu);
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', closeMenu);
-    };
-  }, [reportContextMenu]);
-
-  useEffect(() => {
-    if (editingReportId) {
-      window.requestAnimationFrame(() => {
-        renameInputRef.current?.focus();
-        renameInputRef.current?.select();
-      });
-    }
-  }, [editingReportId]);
-
   const handleDeleteSidebarReport = useCallback(
     (recordId: string) => {
-      setReportContextMenu(null);
-      if (editingReportId === recordId) {
-        setEditingReportId(null);
-        setEditingReportName('');
-      }
       setRatedThreads((previous) => previous.filter((item) => item.id !== recordId));
       if (activeReportExchangeId === recordId) {
         setActiveReportExchangeId(null);
@@ -787,14 +748,12 @@ export default function App() {
       }).catch(() => undefined);
       pushContextLog('info', 'Report deleted from session and local folder');
     },
-    [activeReportExchangeId, editingReportId, pushContextLog, settings.reportsDir],
+    [activeReportExchangeId, pushContextLog, settings.reportsDir],
   );
 
   const handleRenameReportCommit = useCallback(
     async (recordId: string, rawNewName: string) => {
       const nextName = rawNewName.trim();
-      setEditingReportId(null);
-      setEditingReportName('');
       if (!nextName) return;
 
       setRatedThreads((previous) =>
@@ -842,6 +801,150 @@ export default function App() {
         // Local state already updated
       }
       pushContextLog('info', `Renamed report to "${nextName}"`);
+    },
+    [activeReportExchangeId, pushContextLog, settings.reportsDir],
+  );
+
+  const handleUpdateReportComment = useCallback(
+    async (recordId: string, rawComment: string) => {
+      const nextComment = rawComment.trim();
+
+      setRatedThreads((previous) =>
+        previous.map((item) =>
+          item.id === recordId
+            ? {
+                ...item,
+                comment: nextComment,
+                turns: item.turns.map((turn) =>
+                  turn.role === 'user' ? { ...turn, threadComment: nextComment } : turn,
+                ),
+              }
+            : item,
+        ),
+      );
+      setTurns((previous) =>
+        previous.some((t) => t.id === recordId)
+          ? previous.map((turn) =>
+              turn.role === 'user' ? { ...turn, threadComment: nextComment } : turn,
+            )
+          : previous,
+      );
+
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(recordId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comment: nextComment,
+            reportsDir: settings.reportsDir,
+          }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { record?: RatedThreadRecord };
+        if (data.record) {
+          const updatedRecord = data.record;
+          setRatedThreads((previous) =>
+            previous.map((item) => (item.id === recordId ? updatedRecord : item)),
+          );
+        }
+      } catch {
+        // Local state already updated
+      }
+      pushContextLog('info', nextComment ? 'Updated report note' : 'Cleared report note');
+    },
+    [pushContextLog, settings.reportsDir],
+  );
+
+  const handleMoveSidebarReport = useCallback(
+    async (recordId: string, target: ReportMoveTarget) => {
+      const nextScope: ConversationScope =
+        target.adapterId === 'ollama' ? 'private' : 'public';
+
+      setRatedThreads((previous) =>
+        previous.map((item) =>
+          item.id === recordId
+            ? {
+                ...item,
+                ratedAt: new Date().toISOString(),
+                turns: item.turns.map((turn) => {
+                  if (turn.role === 'user') {
+                    return {
+                      ...turn,
+                      threadMonth: target.threadMonth,
+                      threadYear: target.threadYear,
+                      promptDomain: target.promptDomain,
+                      adapterId: target.adapterId,
+                      scope: nextScope,
+                      responseScopes: [nextScope],
+                    };
+                  }
+                  if (turn.role === 'assistant') {
+                    return {
+                      ...turn,
+                      adapterId: target.adapterId,
+                      scope: nextScope,
+                    };
+                  }
+                  return turn;
+                }),
+              }
+            : item,
+        ),
+      );
+
+      setTurns((previous) =>
+        previous.some((t) => t.id === recordId)
+          ? previous.map((turn) => {
+              if (turn.role === 'user') {
+                return {
+                  ...turn,
+                  threadMonth: target.threadMonth,
+                  threadYear: target.threadYear,
+                  promptDomain: target.promptDomain,
+                  adapterId: target.adapterId,
+                  scope: nextScope,
+                  responseScopes: [nextScope],
+                };
+              }
+              if (turn.role === 'assistant') {
+                return {
+                  ...turn,
+                  adapterId: target.adapterId,
+                  scope: nextScope,
+                };
+              }
+              return turn;
+            })
+          : previous,
+      );
+
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(recordId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            moveTarget: target,
+            reportsDir: settings.reportsDir,
+          }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { record?: RatedThreadRecord };
+        if (data.record) {
+          const updatedRecord = data.record;
+          setRatedThreads((previous) =>
+            previous.map((item) => (item.id === recordId ? updatedRecord : item)),
+          );
+          if (activeReportExchangeId === recordId && updatedRecord.id !== recordId) {
+            setActiveReportExchangeId(updatedRecord.id);
+          }
+        }
+      } catch {
+        // Local state already updated
+      }
+      pushContextLog(
+        'info',
+        `Moved report to ${target.threadYear} ${target.threadMonth} (${target.adapterId})`,
+      );
     },
     [activeReportExchangeId, pushContextLog, settings.reportsDir],
   );
@@ -1339,11 +1442,43 @@ export default function App() {
     const inheritedYear =
       (isFollowUp ? rootUserTurn?.threadYear : undefined) ??
       settings.contextCache.activeYear;
-    const effectiveThreadName =
+    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+    let effectiveThreadName =
       isFollowUp && rootUserTurn?.threadName?.trim()
         ? rootUserTurn.threadName.trim()
-        : threadName;
-    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+        : threadName.trim();
+
+    if (!isFollowUp) {
+      const matchingExisting = ratedThreads.filter((rec) => {
+        const q = rec.turns.find((t) => t.role === 'user');
+        const a = [...rec.turns].reverse().find((t) => t.role === 'assistant');
+        const recAdapter = a?.adapterId ?? q?.adapterId;
+        const recMonth = (q?.threadMonth || '').toLowerCase();
+        const recYear = q?.threadYear;
+        const recDomain = q?.promptDomain ?? 'astrology';
+        return (
+          recMonth === (inheritedMonth || '').toLowerCase() &&
+          recYear === inheritedYear &&
+          recDomain === effectiveDomain &&
+          recAdapter === selectedAdapterId
+        );
+      });
+      const runNumber = matchingExisting.length + 1;
+      const baseTitle = effectiveThreadName || 'Report';
+      const isGenericDomainTitle = /^(career|family|love|health|general)$/i.test(
+        baseTitle,
+      );
+      if (isGenericDomainTitle) {
+        effectiveThreadName = `${baseTitle} Report ${runNumber}`;
+      } else if (
+        matchingExisting.some((rec) => {
+          const q = rec.turns.find((t) => t.role === 'user');
+          return (q?.threadName || '').trim().toLowerCase() === baseTitle.toLowerCase();
+        })
+      ) {
+        effectiveThreadName = `${baseTitle} (${runNumber})`;
+      }
+    }
 
     const userTurn: ConversationTurn = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1442,111 +1577,30 @@ export default function App() {
                 <Home className="w-5 h-5" />
               </button>
 
-              <div
-                aria-label="Reports"
-                className="flex-1 min-h-0 overflow-y-auto fluent-scroll space-y-1 pr-0.5"
-              >
-                {ratedThreads.length > 0 &&
-                  ratedThreads.map((record, index) => {
-                    const qTurn = record.turns.find((turn) => turn.role === 'user');
-                    const threadScope =
-                      qTurn?.scope ??
-                      record.turns.find((turn) => turn.role === 'assistant')?.scope ??
-                      'public';
-                    const isPublicThread = threadScope === 'public';
-                    const displayLabel = formatSidebarThreadLabel(qTurn, index);
-                    const isActiveReport = activeReportExchangeId === record.id;
-                    const isEditing = editingReportId === record.id;
-
-                    if (isEditing) {
-                      return (
-                        <div
-                          key={record.id}
-                          className="w-full flex items-center px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs"
-                        >
-                          <input
-                            ref={renameInputRef}
-                            type="text"
-                            value={editingReportName}
-                            aria-label="Edit report name"
-                            onChange={(e) => setEditingReportName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                void handleRenameReportCommit(record.id, editingReportName);
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                setEditingReportId(null);
-                                setEditingReportName('');
-                              }
-                            }}
-                            onBlur={() => {
-                              void handleRenameReportCommit(record.id, editingReportName);
-                            }}
-                            className="flex-1 min-w-0 bg-transparent text-xs font-medium text-slate-900 dark:text-white focus:outline-none"
-                          />
-                        </div>
-                      );
-                    }
-
-                    const ratingStars =
-                      qTurn?.threadRating === 'red'
-                        ? '★'
-                        : qTurn?.threadRating === 'yellow'
-                          ? '★★'
-                          : qTurn?.threadRating === 'green'
-                            ? '★★★'
-                            : '';
-                    const baseLabel = ratingStars
-                      ? displayLabel.replace(/^★+\s+/, '')
-                      : displayLabel;
-
-                    return (
-                      <button
-                        key={record.id}
-                        type="button"
-                        onClick={() => {
-                          setReportContextMenu(null);
-                          setIsSettingsOpen(false);
-                          setIsPromptBuilderOpen(false);
-                          setIsReferenceContextOpen(false);
-                          setActiveReportExchangeId(record.id);
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setReportContextMenu({
-                            recordId: record.id,
-                            x: Math.min(e.clientX, window.innerWidth - 196),
-                            y: Math.min(e.clientY, window.innerHeight - 108),
-                          });
-                        }}
-                        title={`${isPublicThread ? 'Public' : 'Private'} "${displayLabel}" (Right-click to edit or delete)`}
-                        className={`w-full flex items-center px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
-                          isPublicThread
-                            ? 'font-semibold text-slate-900 dark:text-white'
-                            : 'font-normal text-slate-500 dark:text-slate-400 opacity-55 blur-[0.4px] grayscale-[45%] hover:opacity-85 hover:blur-0'
-                        } ${
-                          isActiveReport
-                            ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70 opacity-100 blur-none'
-                            : isPublicThread
-                              ? 'bg-white/45 dark:bg-slate-800/35 hover:bg-white/80 dark:hover:bg-slate-800/75'
-                              : 'hover:bg-white/55 dark:hover:bg-slate-800/55'
-                        }`}
-                      >
-                        {ratingStars && (
-                          <span
-                            className="text-amber-500 dark:text-amber-400 shrink-0 mr-1.5"
-                            aria-hidden="true"
-                          >
-                            {ratingStars}
-                          </span>
-                        )}
-                        <span className="truncate flex-1 tabular-nums">{baseLabel}</span>
-                      </button>
-                    );
-                  })}
-              </div>
+              <ReportTreeSidebar
+                reports={ratedThreads}
+                activeReportId={activeReportExchangeId}
+                activePeriodMonth={settings.contextCache.activeMonth}
+                activePeriodYear={settings.contextCache.activeYear}
+                onSelectReport={(recordId) => {
+                  setIsSettingsOpen(false);
+                  setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen(false);
+                  setActiveReportExchangeId(recordId);
+                }}
+                onRenameReport={(recordId, newName) =>
+                  void handleRenameReportCommit(recordId, newName)
+                }
+                onUpdateComment={(recordId, comment) =>
+                  void handleUpdateReportComment(recordId, comment)
+                }
+                onMoveReport={(recordId, target) =>
+                  void handleMoveSidebarReport(recordId, target)
+                }
+                onDeleteReport={(recordId) =>
+                  handleDeleteSidebarReport(recordId)
+                }
+              />
             </div>
 
           </aside>
@@ -1902,6 +1956,10 @@ export default function App() {
               reportFilePath={activeReportRecord.filePath}
               reportsDir={settings.reportsDir}
               isExternalFile={activeReportRecord.isExternalFile}
+              comment={activeReportRecord.comment}
+              onUpdateComment={(id, nextComment) =>
+                void handleUpdateReportComment(id, nextComment)
+              }
               onViewEventCards={(exchangeId) => {
                 const record = ratedThreads.find((r) => r.id === exchangeId);
                 if (record) {
@@ -2143,43 +2201,6 @@ export default function App() {
           </button>
         </div>
       )}
-
-      {/* Left-Rail Report Right-Click Context Menu */}
-      {reportContextMenu && (
-        <div
-          role="menu"
-          aria-label="Report actions"
-          style={{ left: reportContextMenu.x, top: reportContextMenu.y }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="fixed z-50 w-44 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl p-1.5 space-y-0.5"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const target = ratedThreads.find((r) => r.id === reportContextMenu.recordId);
-              const qTurn = target?.turns.find((t) => t.role === 'user');
-              setEditingReportId(reportContextMenu.recordId);
-              setEditingReportName(qTurn?.threadName?.trim() || '');
-              setReportContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
-          >
-            <Pencil className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
-            <span>Edit Name</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => handleDeleteSidebarReport(reportContextMenu.recordId)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors text-left"
-          >
-            <Trash2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Delete</span>
-          </button>
-        </div>
-      )}
-
     </div>
   );
 }

@@ -21,8 +21,9 @@ import {
   deleteStoredReport,
   listStoredReports,
   readStoredReportHtml,
-  renameStoredReport,
   saveStoredReport,
+  updateStoredReportMetadata,
+  type ReportMetadataUpdatePayload,
 } from './server/reportStore.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -153,17 +154,38 @@ async function startServer() {
   app.patch('/api/reports/:id', (req, res) => {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
-      const { name, reportsDir } = req.body as {
+      const { name, comment, moveTarget, reportsDir } = req.body as {
         name?: string;
+        comment?: string;
+        moveTarget?: ReportMetadataUpdatePayload['moveTarget'];
         reportsDir?: string;
       };
-      if (typeof name !== 'string' || !name.trim()) {
-        return res.status(400).json({ error: 'Report name cannot be empty.' });
+      const hasName = typeof name === 'string' && name.trim().length > 0;
+      const hasComment = typeof comment === 'string';
+      const hasMove = Boolean(
+        moveTarget &&
+          moveTarget.threadMonth &&
+          Number.isFinite(Number(moveTarget.threadYear)) &&
+          moveTarget.promptDomain &&
+          moveTarget.adapterId,
+      );
+      if (!hasName && !hasComment && !hasMove) {
+        return res
+          .status(400)
+          .json({ error: 'Provide a report name, comment, or move target.' });
       }
       const targetDir =
         (typeof reportsDir === 'string' && reportsDir.trim()) ||
         readLocalConfigFile().config.reportsDir;
-      const result = renameStoredReport(reportId, name, targetDir);
+      const result = updateStoredReportMetadata(
+        reportId,
+        {
+          ...(hasName ? { name } : {}),
+          ...(hasComment ? { comment } : {}),
+          ...(hasMove ? { moveTarget } : {}),
+        },
+        targetDir,
+      );
       if (!result) {
         return res.status(404).json({ error: 'Report not found on disk.' });
       }
@@ -173,7 +195,7 @@ async function startServer() {
         error:
           err instanceof Error
             ? err.message
-            : 'Unable to rename report on local filesystem.',
+            : 'Unable to update report on local filesystem.',
       });
     }
   });
