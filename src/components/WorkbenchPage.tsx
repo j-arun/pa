@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  FileCode2,
   Hourglass,
   Megaphone,
   MessageSquarePlus,
@@ -228,7 +227,6 @@ interface WorkbenchPageProps {
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
   onOpenSettings: () => void;
-  onOpenReportViewer: (exchangeId: string) => void;
 }
 
 function EventCategoryEmblem({ icon }: { icon: EventCardIconType }) {
@@ -781,7 +779,7 @@ function ScopeBubbleBadge({
   );
 }
 
-function FluentPeekCompanion({ caption }: { caption: string }) {
+function FluentPeekCompanion() {
   return (
     <div
       className="pointer-events-none hidden lg:flex items-end gap-1.5 select-none"
@@ -808,9 +806,6 @@ function FluentPeekCompanion({ caption }: { caption: string }) {
         <path d="M22 54C22 48 66 48 66 54L68 74H20L22 54Z" fill="url(#paBotBody)" stroke="#E2E8F0" strokeWidth="1.2" />
         <rect x="30" y="57" width="28" height="3" rx="1.5" fill="#38BDF8" opacity="0.65" />
       </svg>
-      <div className="mb-9 rounded-full bg-white/95 dark:bg-slate-800/95 border border-slate-200/80 dark:border-slate-700/80 shadow-md px-3.5 py-1.5 text-[11px] font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
-        {caption}
-      </div>
     </div>
   );
 }
@@ -833,7 +828,6 @@ export function WorkbenchPage({
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
-  onOpenReportViewer,
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [threadName, setThreadName] = useState('');
@@ -1349,13 +1343,7 @@ export function WorkbenchPage({
                 </motion.div>
 
                 <div className="flex items-center gap-3">
-                  <FluentPeekCompanion
-                    caption={
-                      eventCards.length > 0
-                        ? `${eventCards.length} event${eventCards.length === 1 ? '' : 's'} ready`
-                        : 'Response ready'
-                    }
-                  />
+                  <FluentPeekCompanion />
                 </div>
               </div>
 
@@ -1532,17 +1520,18 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Subtle Stage Footer Controls: Open HTML Report, Remove, and 1-star / 2-star / 3-star Rating */}
+              {/* Subtle Stage Footer Controls: Ask Follow-up, Remove, and 1-star / 2-star / 3-star Rating */}
               {activeAssistantReply && rootExchange && (
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => onOpenReportViewer(rootExchange.id)}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors shadow-xs whitespace-nowrap shrink-0"
+                      onClick={onOpenChatBar}
+                      disabled={isSending}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-45 transition-colors shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
                     >
-                      <FileCode2 className="w-3.5 h-3.5" />
-                      <span>Open HTML Report</span>
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                      <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
                     </button>
                     {confirmDeleteId === rootExchange.id ? (
                       <div className="inline-flex items-center gap-1.5">
@@ -1802,7 +1791,7 @@ export function WorkbenchPage({
                 </button>
               </form>
             </motion.section>
-          ) : hasActiveThread ? (
+          ) : hasActiveThread && !(!isWaitingForReply && activeAssistantReply && rootExchange) ? (
             <motion.button
               key="chat-panel-minimized"
               type="button"

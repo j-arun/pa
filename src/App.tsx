@@ -1847,12 +1847,6 @@ export default function App() {
                 setActiveReportExchangeId(null);
                 setIsSettingsOpen(true);
               }}
-              onOpenReportViewer={(exchangeId) => {
-                setIsSettingsOpen(false);
-                setIsPromptBuilderOpen(false);
-                setIsReferenceContextOpen(false);
-                setActiveReportExchangeId(exchangeId);
-              }}
             />
           )}
 
