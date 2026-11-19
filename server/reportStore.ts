@@ -374,3 +374,95 @@ export function deleteStoredReport(
 
   return { deleted };
 }
+
+export function renameStoredReport(
+  reportId: string,
+  newName: string,
+  customReportsDir?: string,
+): {
+  record: RatedThreadRecord;
+} | null {
+  const trimmedName = newName.trim();
+  if (!trimmedName) return null;
+
+  const { root, metaDir } = ensureReportsFolders(customReportsDir);
+
+  if (reportId.startsWith('file:')) {
+    const oldFileName = path.basename(reportId.slice('file:'.length));
+    const oldPath = path.join(root, oldFileName);
+    if (!fs.existsSync(oldPath)) return null;
+
+    const ext = path.extname(oldFileName) || '.html';
+    const baseFromName = sanitizeSlug(trimmedName);
+    let nextFileName = `${baseFromName}${ext}`;
+    if (
+      nextFileName.toLowerCase() !== oldFileName.toLowerCase() &&
+      fs.existsSync(path.join(root, nextFileName))
+    ) {
+      nextFileName = `${baseFromName}-${Date.now().toString().slice(-5)}${ext}`;
+    }
+    const nextPath = path.join(root, nextFileName);
+    if (nextPath !== oldPath) {
+      fs.renameSync(oldPath, nextPath);
+    }
+
+    const htmlContent = fs.readFileSync(nextPath, 'utf-8');
+    const stat = fs.statSync(nextPath);
+    const isoTime = stat.mtime.toISOString();
+    const nextId = `file:${nextFileName}`;
+    const syntheticUserTurn: ConversationTurn = {
+      id: `${nextId}:user`,
+      role: 'user',
+      content: trimmedName,
+      timestamp: isoTime,
+      scope: 'public',
+      adapterId: 'gemini',
+      model: 'local-html',
+      threadName: trimmedName,
+    };
+    const syntheticAssistantTurn: ConversationTurn = {
+      id: `${nextId}:html`,
+      exchangeId: syntheticUserTurn.id,
+      role: 'assistant',
+      content: trimmedName,
+      htmlReport: htmlContent,
+      timestamp: isoTime,
+      scope: 'public',
+      adapterId: 'gemini',
+      model: 'Local HTML File',
+    };
+    return {
+      record: {
+        id: nextId,
+        turns: [syntheticUserTurn, syntheticAssistantTurn],
+        ratedAt: isoTime,
+        fileName: nextFileName,
+        filePath: nextPath,
+        isExternalFile: true,
+      },
+    };
+  }
+
+  const safeId = sanitizeId(reportId);
+  const metaPath = path.join(metaDir, `${safeId}.json`);
+  if (!fs.existsSync(metaPath)) return null;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as RatedThreadRecord & {
+      htmlFileName?: string;
+    };
+    const updatedTurns = (parsed.turns || []).map((turn) =>
+      turn.role === 'user' ? { ...turn, threadName: trimmedName } : turn,
+    );
+    const updatedRecord: RatedThreadRecord = {
+      ...parsed,
+      turns: updatedTurns,
+      ratedAt: new Date().toISOString(),
+    };
+    const saved = saveStoredReport(updatedRecord, customReportsDir);
+    return { record: saved.record };
+  } catch {
+    return null;
+  }
+}
+

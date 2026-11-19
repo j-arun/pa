@@ -8,10 +8,11 @@ import {
   PanelBottom,
   PanelLeft,
   PanelRight,
+  Pencil,
   Plus,
   Settings,
   Sparkles,
-  Star,
+  Trash2,
   X,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -37,7 +38,6 @@ import type {
   PromptDomain,
   RatedThreadRecord,
   ThemeMode,
-  ThreadRating,
   WorkbenchSettings,
 } from './types/workbench';
 import {
@@ -68,12 +68,6 @@ import {
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from './utils/notify';
-
-const RATING_STAR_COUNT: Record<ThreadRating, number> = {
-  red: 1,
-  yellow: 2,
-  green: 3,
-};
 
 const THEME_CYCLE: ThemeMode[] = [
   'arctic-sky',
@@ -164,6 +158,14 @@ export default function App() {
     preview: string;
     isError: boolean;
   } | null>(null);
+  const [reportContextMenu, setReportContextMenu] = useState<{
+    recordId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [editingReportId, setEditingReportId] = useState<string | null>(null);
+  const [editingReportName, setEditingReportName] = useState('');
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
   const [isChatBarOpen, setIsChatBarOpen] = useState(true);
@@ -628,6 +630,116 @@ export default function App() {
     });
     pushContextLog('info', 'Started new thread; stage cleared');
   }, [pushContextLog]);
+
+  useEffect(() => {
+    if (!reportContextMenu) return;
+    const closeMenu = () => setReportContextMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setReportContextMenu(null);
+      }
+    };
+    window.addEventListener('pointerdown', closeMenu);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', closeMenu);
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', closeMenu);
+    };
+  }, [reportContextMenu]);
+
+  useEffect(() => {
+    if (editingReportId) {
+      window.requestAnimationFrame(() => {
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+      });
+    }
+  }, [editingReportId]);
+
+  const handleDeleteSidebarReport = useCallback(
+    (recordId: string) => {
+      setReportContextMenu(null);
+      if (editingReportId === recordId) {
+        setEditingReportId(null);
+        setEditingReportName('');
+      }
+      setRatedThreads((previous) => previous.filter((item) => item.id !== recordId));
+      if (activeReportExchangeId === recordId) {
+        setActiveReportExchangeId(null);
+      }
+      setTurns((previous) =>
+        previous.some((t) => t.id === recordId || t.exchangeId === recordId)
+          ? []
+          : previous,
+      );
+      const query = settings.reportsDir
+        ? `?dir=${encodeURIComponent(settings.reportsDir)}`
+        : '';
+      void fetch(`/api/reports/${encodeURIComponent(recordId)}${query}`, {
+        method: 'DELETE',
+      }).catch(() => undefined);
+      pushContextLog('info', 'Report deleted from session and local folder');
+    },
+    [activeReportExchangeId, editingReportId, pushContextLog, settings.reportsDir],
+  );
+
+  const handleRenameReportCommit = useCallback(
+    async (recordId: string, rawNewName: string) => {
+      const nextName = rawNewName.trim();
+      setEditingReportId(null);
+      setEditingReportName('');
+      if (!nextName) return;
+
+      setRatedThreads((previous) =>
+        previous.map((item) =>
+          item.id === recordId
+            ? {
+                ...item,
+                ratedAt: new Date().toISOString(),
+                turns: item.turns.map((turn) =>
+                  turn.role === 'user' ? { ...turn, threadName: nextName } : turn,
+                ),
+              }
+            : item,
+        ),
+      );
+      setTurns((previous) =>
+        previous.some((t) => t.id === recordId)
+          ? previous.map((turn) =>
+              turn.role === 'user' ? { ...turn, threadName: nextName } : turn,
+            )
+          : previous,
+      );
+
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(recordId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: nextName,
+            reportsDir: settings.reportsDir,
+          }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { record?: RatedThreadRecord };
+        if (data.record) {
+          const updatedRecord = data.record;
+          setRatedThreads((previous) =>
+            previous.map((item) => (item.id === recordId ? updatedRecord : item)),
+          );
+          if (activeReportExchangeId === recordId && updatedRecord.id !== recordId) {
+            setActiveReportExchangeId(updatedRecord.id);
+          }
+        }
+      } catch {
+        // Local state already updated
+      }
+      pushContextLog('info', `Renamed report to "${nextName}"`);
+    },
+    [activeReportExchangeId, pushContextLog, settings.reportsDir],
+  );
 
   const activeReportRecord = useMemo(() => {
     if (!activeReportExchangeId) return null;
@@ -1166,24 +1278,14 @@ export default function App() {
                 className="border-t border-slate-200/80 dark:border-slate-800/80 shrink-0"
               />
 
-              <div className="px-2.5 flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
-                <span>Reference Reports</span>
-                <span className="tabular-nums">{ratedThreads.length}</span>
-              </div>
-
               <div
-                aria-label="Reference HTML Reports"
+                aria-label="Reports"
                 className="flex-1 min-h-0 overflow-y-auto fluent-scroll space-y-1 pr-0.5"
               >
-                {ratedThreads.length === 0 ? (
-                  <p className="px-2.5 py-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
-                    Completed HTML reports will appear here automatically.
-                  </p>
-                ) : (
+                {ratedThreads.length > 0 &&
                   ratedThreads.map((record, index) => {
                     const qTurn = record.turns.find((turn) => turn.role === 'user');
                     const rating = qTurn?.threadRating;
-                    const starCount = rating ? RATING_STAR_COUNT[rating] : 0;
                     const ratingOption = rating
                       ? THREAD_RATING_OPTIONS.find((opt) => opt.id === rating)
                       : undefined;
@@ -1194,18 +1296,66 @@ export default function App() {
                     const isPublicThread = threadScope === 'public';
                     const displayLabel = formatSidebarThreadLabel(qTurn, index);
                     const isActiveReport = activeReportExchangeId === record.id;
+                    const isEditing = editingReportId === record.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={record.id}
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-sky-400 dark:border-sky-500 shadow-xs"
+                        >
+                          <FileCode2
+                            className="w-3.5 h-3.5 shrink-0"
+                            style={{
+                              color: isPublicThread ? 'var(--pa-accent)' : '#94a3b8',
+                            }}
+                          />
+                          <input
+                            ref={renameInputRef}
+                            type="text"
+                            value={editingReportName}
+                            aria-label="Edit report name"
+                            onChange={(e) => setEditingReportName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void handleRenameReportCommit(record.id, editingReportName);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setEditingReportId(null);
+                                setEditingReportName('');
+                              }
+                            }}
+                            onBlur={() => {
+                              void handleRenameReportCommit(record.id, editingReportName);
+                            }}
+                            className="flex-1 min-w-0 bg-transparent text-xs font-medium text-slate-900 dark:text-white focus:outline-none"
+                          />
+                        </div>
+                      );
+                    }
 
                     return (
                       <button
                         key={record.id}
                         type="button"
                         onClick={() => {
+                          setReportContextMenu(null);
                           setIsSettingsOpen(false);
                           setIsPromptBuilderOpen(false);
                           setIsReferenceContextOpen(false);
                           setActiveReportExchangeId(record.id);
                         }}
-                        title={`${isPublicThread ? 'Public' : 'Private'} HTML report "${displayLabel}"${ratingOption ? ` · ${ratingOption.description}` : ''}`}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setReportContextMenu({
+                            recordId: record.id,
+                            x: Math.min(e.clientX, window.innerWidth - 196),
+                            y: Math.min(e.clientY, window.innerHeight - 108),
+                          });
+                        }}
+                        title={`${isPublicThread ? 'Public' : 'Private'} "${displayLabel}"${ratingOption ? ` · ${ratingOption.description}` : ''} (Right-click to edit or delete)`}
                         className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
                           isPublicThread
                             ? 'font-semibold text-slate-900 dark:text-white'
@@ -1225,23 +1375,9 @@ export default function App() {
                           }}
                         />
                         <span className="truncate flex-1 tabular-nums">{displayLabel}</span>
-                        {starCount > 0 && (
-                          <span
-                            aria-hidden="true"
-                            className="inline-flex items-center gap-0.5 text-amber-500 dark:text-amber-400 shrink-0"
-                          >
-                            {Array.from({ length: starCount }).map((_, starIdx) => (
-                              <Star
-                                key={starIdx}
-                                className="w-2.5 h-2.5 fill-current stroke-[2.2]"
-                              />
-                            ))}
-                          </span>
-                        )}
                       </button>
                     );
-                  })
-                )}
+                  })}
               </div>
             </div>
 
@@ -1716,6 +1852,42 @@ export default function App() {
             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
           >
             <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Left-Rail Report Right-Click Context Menu */}
+      {reportContextMenu && (
+        <div
+          role="menu"
+          aria-label="Report actions"
+          style={{ left: reportContextMenu.x, top: reportContextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="fixed z-50 w-44 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl p-1.5 space-y-0.5"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = ratedThreads.find((r) => r.id === reportContextMenu.recordId);
+              const qTurn = target?.turns.find((t) => t.role === 'user');
+              setEditingReportId(reportContextMenu.recordId);
+              setEditingReportName(qTurn?.threadName?.trim() || '');
+              setReportContextMenu(null);
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+          >
+            <Pencil className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+            <span>Edit Name</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleDeleteSidebarReport(reportContextMenu.recordId)}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors text-left"
+          >
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Delete</span>
           </button>
         </div>
       )}

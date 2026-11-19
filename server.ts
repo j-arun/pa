@@ -21,6 +21,7 @@ import {
   deleteStoredReport,
   listStoredReports,
   readStoredReportHtml,
+  renameStoredReport,
   saveStoredReport,
 } from './server/reportStore.ts';
 
@@ -145,6 +146,34 @@ async function startServer() {
           err instanceof Error
             ? err.message
             : 'Unable to delete report from local filesystem.',
+      });
+    }
+  });
+
+  app.patch('/api/reports/:id', (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const { name, reportsDir } = req.body as {
+        name?: string;
+        reportsDir?: string;
+      };
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Report name cannot be empty.' });
+      }
+      const targetDir =
+        (typeof reportsDir === 'string' && reportsDir.trim()) ||
+        readLocalConfigFile().config.reportsDir;
+      const result = renameStoredReport(reportId, name, targetDir);
+      if (!result) {
+        return res.status(404).json({ error: 'Report not found on disk.' });
+      }
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to rename report on local filesystem.',
       });
     }
   });

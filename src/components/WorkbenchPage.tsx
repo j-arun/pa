@@ -576,7 +576,6 @@ export function WorkbenchPage({
     card: EventCardItem;
     openedAt: number;
   } | null>(null);
-  const [flashSecondsLeft, setFlashSecondsLeft] = useState(60);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -667,17 +666,9 @@ export function WorkbenchPage({
   useEffect(() => {
     if (!flashedEvent) return;
     const FLASH_DURATION_MS = 60_000;
-    const updateRemaining = () => {
-      const elapsed = Date.now() - flashedEvent.openedAt;
-      if (elapsed >= FLASH_DURATION_MS) {
-        setFlashedEvent(null);
-        setFlashSecondsLeft(0);
-        return;
-      }
-      setFlashSecondsLeft(Math.max(1, Math.ceil((FLASH_DURATION_MS - elapsed) / 1000)));
-    };
-    updateRemaining();
-    const intervalId = window.setInterval(updateRemaining, 250);
+    const timeoutId = window.setTimeout(() => {
+      setFlashedEvent(null);
+    }, FLASH_DURATION_MS);
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setFlashedEvent(null);
@@ -685,13 +676,12 @@ export function WorkbenchPage({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [flashedEvent]);
 
   const openEventFlash = (card: EventCardItem) => {
-    setFlashSecondsLeft(60);
     setFlashedEvent({ card, openedAt: Date.now() });
   };
 
@@ -1495,7 +1485,7 @@ export function WorkbenchPage({
         </AnimatePresence>
       </div>
 
-      {/* 1-Minute Auto-Closing Flash Modal for "How it will happen" */}
+      {/* 1-Minute Auto-Closing Flash Popup for "How it will happen" */}
       <AnimatePresence>
         {flashedEvent && (
           <motion.div
@@ -1503,33 +1493,42 @@ export function WorkbenchPage({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.2 }}
             onClick={() => setFlashedEvent(null)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4 sm:p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 backdrop-blur-sm p-4 sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="event-flash-title"
           >
             <motion.div
               key={`event-how-flash-${flashedEvent.card.id}-${flashedEvent.openedAt}`}
-              initial={{ opacity: 0, scale: 0.94, y: 14 }}
+              initial={{ opacity: 0, scale: 0.78, y: 22 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              exit={{ opacity: 0, scale: 0.72, y: 14 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg rounded-3xl border border-white/90 dark:border-slate-700/90 bg-white/96 dark:bg-slate-900/96 backdrop-blur-2xl shadow-[0_28px_70px_-18px_rgba(15,23,42,0.38)] overflow-hidden"
+              className="relative w-full max-w-xl rounded-[28px] border border-white/95 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl shadow-[0_32px_90px_-18px_rgba(15,23,42,0.45),0_0_0_1px_rgba(255,255,255,0.5)_inset] overflow-hidden"
             >
-              <div className="p-5 sm:p-6 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <EventCategoryEmblem icon={flashedEvent.card.icon} />
+              {/* Soft Top Ambient Accent Glow */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-80 h-32 rounded-full blur-3xl opacity-25 dark:opacity-20"
+                style={{ backgroundColor: 'var(--pa-accent)' }}
+              />
+
+              <div className="relative p-6 sm:p-7 space-y-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="p-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/70 shrink-0 shadow-2xs">
+                      <EventCategoryEmblem icon={flashedEvent.card.icon} />
+                    </div>
                     <div className="min-w-0">
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         {flashedEvent.card.category || 'Event'}
                       </div>
                       <h2
                         id="event-flash-title"
-                        className="font-display text-base sm:text-lg font-semibold leading-snug text-slate-900 dark:text-white"
+                        className="font-display text-lg sm:text-xl font-bold leading-snug text-slate-900 dark:text-white"
                       >
                         {flashedEvent.card.title}
                       </h2>
@@ -1538,69 +1537,73 @@ export function WorkbenchPage({
                   <button
                     type="button"
                     onClick={() => setFlashedEvent(null)}
-                    aria-label="Close event flash"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors shrink-0"
+                    aria-label="Dismiss flash"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/75 dark:border-sky-800/60 px-3 py-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-sky-50/85 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 px-4 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
                       When it will happen
                     </div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                      {flashedEvent.card.when ||
-                        flashedEvent.card.dateRange ||
-                        flashedEvent.card.timeframe ||
-                        'Timing detailed in report'}
+                    <div className="mt-1 inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                      <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                      <span>
+                        {flashedEvent.card.when ||
+                          flashedEvent.card.dateRange ||
+                          flashedEvent.card.timeframe ||
+                          'Timing detailed in report'}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/75 dark:border-emerald-800/60 px-3 py-2">
+                  <div className="rounded-2xl bg-emerald-50/85 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 px-4 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                       Probability &amp; Rating
                     </div>
-                    <div className="mt-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200 tabular-nums">
-                      {flashedEvent.card.probability ||
-                        flashedEvent.card.likelihood ||
-                        'Not specified'}
+                    <div className="mt-1 inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-emerald-800 dark:text-emerald-200 tabular-nums">
+                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        {flashedEvent.card.probability ||
+                          flashedEvent.card.likelihood ||
+                          'Not specified'}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     How it will happen
                   </div>
                   <div
-                    className="rounded-2xl bg-slate-50/90 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 p-4 text-sm leading-relaxed text-slate-800 dark:text-slate-100 max-h-64 overflow-y-auto fluent-scroll whitespace-pre-line"
-                    style={{ fontFamily: 'var(--pa-font-body)' }}
+                    className="rounded-2xl bg-gradient-to-br from-slate-50/95 to-sky-50/40 dark:from-slate-950/75 dark:to-slate-900/80 border border-slate-200/85 dark:border-slate-800 border-l-4 p-4 sm:p-5 text-[15px] leading-relaxed text-slate-800 dark:text-slate-100 max-h-64 overflow-y-auto fluent-scroll whitespace-pre-line shadow-2xs"
+                    style={{
+                      fontFamily: 'var(--pa-font-body)',
+                      borderLeftColor: 'var(--pa-accent)',
+                    }}
                   >
                     {flashedEvent.card.how || flashedEvent.card.summary}
                   </div>
                 </div>
               </div>
 
-              {/* 1-Minute Auto-Close Progress Bar & Controls */}
-              <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-[var(--pa-accent)] transition-[width] duration-300 ease-linear"
-                  style={{ width: `${Math.max(0, Math.min(100, (flashSecondsLeft / 60) * 100))}%` }}
+              {/* Smooth Progress Bar (auto-retracts when complete) */}
+              <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800/90 overflow-hidden">
+                <motion.div
+                  key={`flash-bar-${flashedEvent.card.id}-${flashedEvent.openedAt}`}
+                  initial={{ scaleX: 1 }}
+                  animate={{ scaleX: 0 }}
+                  transition={{ duration: 60, ease: 'linear' }}
+                  className="h-full w-full"
+                  style={{
+                    transformOrigin: 'left',
+                    backgroundColor: 'var(--pa-accent)',
+                  }}
                 />
-              </div>
-              <div className="px-5 py-3 bg-slate-50/90 dark:bg-slate-950/80 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                  Auto-closes in {flashSecondsLeft}s
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setFlashedEvent(null)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
-                >
-                  Close
-                </button>
               </div>
             </motion.div>
           </motion.div>
