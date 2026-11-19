@@ -940,8 +940,24 @@ export function WorkbenchPage({
             <div className="my-auto py-4 space-y-8">
               <div className="flex items-center gap-4 sm:gap-5">
                 <ScopeIntroIllustration scope={scope} />
-                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance">
-                  What&apos;s up in{' '}
+                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-2.5 flex-wrap">
+                  <motion.span
+                    role="img"
+                    aria-label="What's up"
+                    animate={{
+                      rotate: [-10, 14, -8, 12, -10],
+                      y: [0, -3, 0, -2, 0],
+                      scale: [1, 1.08, 1, 1.05, 1],
+                    }}
+                    transition={{
+                      duration: 2.2,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }}
+                    className="inline-block text-2xl sm:text-3xl leading-none select-none origin-bottom-right"
+                  >
+                    🤙
+                  </motion.span>
                   <span
                     className={`tabular-nums ${
                       scope === 'private'
@@ -949,9 +965,8 @@ export function WorkbenchPage({
                         : 'text-sky-700 dark:text-sky-300'
                     }`}
                   >
-                    {activePeriodFullLabel}
+                    {activePeriodFullLabel} ..
                   </span>
-                  ?
                 </h1>
               </div>
 
