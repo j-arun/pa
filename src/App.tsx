@@ -4,6 +4,7 @@ import {
   Cloud,
   Lock,
   Palette,
+  PanelBottom,
   PanelLeft,
   PanelRight,
   Settings,
@@ -28,6 +29,7 @@ import type {
   ConversationTurn,
   LlmContextLogEntry,
   LlmContextTelemetry,
+  PromptDomain,
   RatedThreadRecord,
   ThemeMode,
   ThreadRating,
@@ -64,6 +66,13 @@ const THEME_CYCLE: ThemeMode[] = [
   'emerald-mist',
   'royal-amethyst',
 ];
+
+function extractMajorTemplate(template: string): string {
+  return template
+    .replace(/(?:\r?\n)*[A-Za-z ]*request:\s*\{\{prompt\}\}/gi, '')
+    .replace(/\{\{prompt\}\}/g, '')
+    .trim();
+}
 
 function appendCachedContext(
   instruction: string,
@@ -115,6 +124,7 @@ export default function App() {
   } | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(true);
+  const [isChatBarOpen, setIsChatBarOpen] = useState(() => loadConversation().length === 0);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -466,12 +476,22 @@ export default function App() {
     const publicCachedContext = settings.contextCache.publicText.trim();
     const targetCachedContext =
       scope === 'private' ? privateCachedContext : publicCachedContext;
-    const targetSystemInstruction = appendCachedContext(
+    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+    const majorTemplate = extractMajorTemplate(
+      promptTemplates[effectiveDomain]?.[promptStyle] ?? '',
+    );
+    const dedupeSources = [text, ...targetHistory.map((turn) => turn.content)];
+    const baseWithContext = appendCachedContext(
       scope === 'private'
         ? settings.privateLlm.systemInstruction
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
       targetCachedContext,
-      [text, ...targetHistory.map((turn) => turn.content)],
+      dedupeSources,
+    );
+    const targetSystemInstruction = appendCachedContext(
+      baseWithContext,
+      majorTemplate,
+      dedupeSources,
     );
     const systemInstructionByScope = {
       private: scope === 'private' ? targetSystemInstruction : '',
@@ -712,6 +732,9 @@ export default function App() {
           speech.speakText(selectedReply.id, selectedReply.content);
         }
       }
+      if (hasAnySuccess) {
+        setIsChatBarOpen(false);
+      }
     } finally {
       setIsSending(false);
     }
@@ -841,6 +864,7 @@ export default function App() {
                         setIsReferenceContextOpen(false);
                         setScope(threadScope);
                         setTurns(record.turns);
+                        setIsChatBarOpen(false);
                         setTelemetry({
                           phase: 'Idle',
                           isThinking: false,
@@ -852,8 +876,8 @@ export default function App() {
                       title={`${displayLabel} · ${isPublicThread ? 'Public' : 'Private'} · ${ratingOption?.description ?? `${starCount} stars`}`}
                       className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors text-left ${
                         isPublicThread
-                          ? 'font-semibold text-slate-900 dark:text-slate-100'
-                          : 'font-normal text-slate-500 dark:text-slate-400'
+                          ? 'font-bold text-slate-950 dark:text-white'
+                          : 'font-light text-slate-500 dark:text-slate-400'
                       } ${
                         isActiveThread
                           ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
@@ -1020,7 +1044,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Theme & Agent Session Sidebar Controls */}
+          {/* Zone 3: Theme, Chat Bar & Agent Session Sidebar Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
@@ -1030,6 +1054,46 @@ export default function App() {
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
             >
               <Palette className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen) {
+                  setIsSettingsOpen(false);
+                  setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen(false);
+                  setIsChatBarOpen(true);
+                } else {
+                  setIsChatBarOpen((prev) => !prev);
+                }
+              }}
+              aria-label={isChatBarOpen ? 'Hide Chat Bar' : 'Show Chat Bar'}
+              title={isChatBarOpen ? 'Hide Chat Bar' : 'Show Chat Bar'}
+              aria-pressed={
+                !isSettingsOpen &&
+                !isPromptBuilderOpen &&
+                !isReferenceContextOpen &&
+                isChatBarOpen
+              }
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
+                !isSettingsOpen &&
+                !isPromptBuilderOpen &&
+                !isReferenceContextOpen &&
+                isChatBarOpen
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              style={
+                !isSettingsOpen &&
+                !isPromptBuilderOpen &&
+                !isReferenceContextOpen &&
+                isChatBarOpen
+                  ? { color: 'var(--pa-accent-text)' }
+                  : undefined
+              }
+            >
+              <PanelBottom className="w-4 h-4" />
             </button>
 
             <button
@@ -1107,7 +1171,18 @@ export default function App() {
               turns={turns}
               activePromptDomain={activePromptDomain}
               promptStyle={promptStyle}
-              promptTemplates={promptTemplates}
+              isChatBarOpen={isChatBarOpen}
+              onToggleChatBar={() => setIsChatBarOpen((prev) => !prev)}
+              onOpenChatBar={() => setIsChatBarOpen(true)}
+              onPromptDomainChange={(activeDomain) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  promptBuilder: {
+                    ...previous.promptBuilder,
+                    activeDomain,
+                  },
+                }))
+              }
               onPromptStyleChange={(activeStyle) =>
                 setSettings((previous) => ({
                   ...previous,
@@ -1123,6 +1198,7 @@ export default function App() {
               onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
               onClearConversation={() => {
                 setTurns([]);
+                setIsChatBarOpen(true);
                 setTelemetry({
                   phase: 'Idle',
                   isThinking: false,

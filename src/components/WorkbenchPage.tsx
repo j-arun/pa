@@ -8,6 +8,7 @@ import {
   FileSearch,
   GripHorizontal,
   Hourglass,
+  PanelBottom,
   Plus,
   Settings as SettingsIcon,
   SlidersHorizontal,
@@ -22,7 +23,6 @@ import type {
   ConversationTurn,
   PromptDomain,
   PromptStyle,
-  PromptTemplates,
   ThreadRating,
   WorkbenchSettings,
 } from '../types/workbench';
@@ -115,7 +115,10 @@ interface WorkbenchPageProps {
   turns: ConversationTurn[];
   activePromptDomain: PromptDomain;
   promptStyle: PromptStyle;
-  promptTemplates: PromptTemplates;
+  isChatBarOpen: boolean;
+  onToggleChatBar: () => void;
+  onOpenChatBar: () => void;
+  onPromptDomainChange: (domain: PromptDomain) => void;
   onPromptStyleChange: (style: PromptStyle) => void;
   isSending: boolean;
   speech: UseSpeechIOResult;
@@ -124,16 +127,6 @@ interface WorkbenchPageProps {
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
   onOpenSettings: () => void;
-}
-
-function buildPrompt(draft: string, template: string): string {
-  const prompt = draft.trim();
-  const normalizedTemplate = template.trim();
-  if (!normalizedTemplate) return prompt;
-  if (normalizedTemplate.includes('{{prompt}}')) {
-    return normalizedTemplate.replace(/\{\{prompt\}\}/g, () => prompt);
-  }
-  return `${normalizedTemplate}\n\n${prompt}`;
 }
 
 function ScopeModeSvg({
@@ -251,30 +244,6 @@ function ConversationReplyCard({
     replyTurn.scope === 'private'
       ? 'Private · Ollama'
       : `Public · ${replyTurn.adapterId === 'claude' ? 'Claude' : replyTurn.adapterId === 'fable' ? 'Fable' : 'Gemini'}`;
-  const modelName = replyTurn.model.trim();
-  const modelPrefix = `${replyTurn.adapterId}/`;
-  const qualifiedModelName = modelName
-    ? modelName.toLowerCase().startsWith(modelPrefix.toLowerCase())
-      ? modelName
-      : `${modelPrefix}${modelName}`
-    : replyTurn.adapterId;
-  const metrics = [
-    replyTurn.durationMs !== undefined
-      ? `${(replyTurn.durationMs / 1000).toFixed(2)}s`
-      : null,
-    replyTurn.inputTokenCount !== undefined
-      ? `Prompt size: ${replyTurn.inputTokenCount.toLocaleString()} tokens - ${qualifiedModelName}`
-      : `Prompt size unavailable - ${qualifiedModelName}`,
-    replyTurn.tokenCount !== undefined ? `${replyTurn.tokenCount} tokens` : null,
-    replyTurn.inputTokenCount !== undefined || replyTurn.outputTokenCount !== undefined
-      ? `in ${replyTurn.inputTokenCount ?? '—'} / out ${replyTurn.outputTokenCount ?? '—'}`
-      : null,
-    replyTurn.tokensPerSecond !== undefined
-      ? `${replyTurn.tokensPerSecond.toFixed(1)} tok/s`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
 
   if (replyTurn.role === 'error') {
     return (
@@ -283,9 +252,6 @@ function ConversationReplyCard({
           <span>
             {providerLabel} · Error · {formatTime(replyTurn.timestamp)}
           </span>
-          {replyTurn.durationMs !== undefined && (
-            <span>{(replyTurn.durationMs / 1000).toFixed(2)}s</span>
-          )}
         </div>
         <p className="text-sm leading-relaxed break-words">{replyTurn.content}</p>
         {replyTurn.scope === 'private' && (
@@ -304,21 +270,18 @@ function ConversationReplyCard({
 
   return (
     <div
-      className="min-w-0 rounded-2xl px-4 py-3.5 border-l-4"
+      className="min-w-0 rounded-2xl px-5 py-4 border-l-4"
       style={{
         backgroundColor: 'var(--pa-a-bg)',
         borderLeftColor: 'var(--pa-a-accent)',
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 mb-2">
+      <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="text-[11px] font-semibold tabular-nums" style={{ color: 'var(--pa-a-accent)' }}>
-          {providerLabel} · {replyTurn.model} · {formatTime(replyTurn.timestamp)}
+          {providerLabel} · {formatTime(replyTurn.timestamp)}
         </div>
-        {metrics && (
-          <div className="text-[10px] text-slate-500 dark:text-slate-400">{metrics}</div>
-        )}
       </div>
-      <div className="max-h-[65vh] overflow-y-auto fluent-scroll pr-2 text-sm leading-relaxed break-words">
+      <div className="text-[15px] leading-[1.7] break-words">
         <MessageContent text={replyTurn.content} />
       </div>
       <div className="mt-3 flex items-center gap-2 flex-wrap">
@@ -376,7 +339,10 @@ export function WorkbenchPage({
   turns,
   activePromptDomain,
   promptStyle,
-  promptTemplates,
+  isChatBarOpen,
+  onToggleChatBar,
+  onOpenChatBar,
+  onPromptDomainChange,
   onPromptStyleChange,
   isSending,
   speech,
@@ -455,9 +421,6 @@ export function WorkbenchPage({
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
-  const activeTemplate = promptTemplates[activePromptDomain][promptStyle];
-  const composedPrompt = buildPrompt(draft, activeTemplate);
-  const activeDomainShortLabel = getPromptDomainShortLabel(activePromptDomain);
   const parsedThreadYear = threadYear ? Number(threadYear) : undefined;
   const isComposerMetadataReady =
     threadName.trim().length > 0 &&
@@ -528,14 +491,14 @@ export function WorkbenchPage({
       threadNameInputRef.current?.focus();
       return;
     }
-    if (!draft.trim() || isSending || parsedThreadYear === undefined) return;
-    const promptToSend = composedPrompt;
+    const questionText = draft.trim();
+    if (!questionText || isSending || parsedThreadYear === undefined) return;
     const submittedThreadName = threadName.trim();
     setDraft('');
     setThreadName('');
     setMetadataNotice(null);
     onSendMessage({
-      text: promptToSend,
+      text: questionText,
       inputMode: 'text',
       threadName: submittedThreadName,
       threadMonth,
@@ -546,19 +509,20 @@ export function WorkbenchPage({
 
   const handleStarterPromptClick = (promptText: string) => {
     if (!isComposerMetadataReady || parsedThreadYear === undefined) {
+      onOpenChatBar();
       setDraft(promptText);
       setMetadataNotice(
         'Starter prompt loaded. Enter Thread Name, Month, and Year below to send.',
       );
-      threadNameInputRef.current?.focus();
+      window.requestAnimationFrame(() => threadNameInputRef.current?.focus());
       return;
     }
-    const promptToSend = buildPrompt(promptText, activeTemplate);
+    const questionText = promptText.trim();
     const submittedThreadName = threadName.trim();
     setThreadName('');
     setMetadataNotice(null);
     onSendMessage({
-      text: promptToSend,
+      text: questionText,
       inputMode: 'text',
       threadName: submittedThreadName,
       threadMonth,
@@ -996,7 +960,7 @@ export function WorkbenchPage({
                             className={`font-display text-sm sm:text-base ${
                               isPublicThread
                                 ? 'font-bold text-slate-950 dark:text-white'
-                                : 'font-medium text-slate-700 dark:text-slate-200'
+                                : 'font-light text-slate-600 dark:text-slate-300'
                             }`}
                           >
                             {combinedTitle}
@@ -1376,90 +1340,131 @@ export function WorkbenchPage({
             </>
           )}
 
-          <div ref={ladderEndRef} />
-        </div>
-      </div>
-
-      {/* Horizontal Drag Splitter for Bottom Chat Panel */}
-      <div
-        role="separator"
-        tabIndex={0}
-        aria-orientation="horizontal"
-        aria-label="Drag up or down to move or resize chat panel"
-        aria-valuemin={200}
-        aria-valuemax={540}
-        aria-valuenow={chatPanelHeight}
-        title="Drag up or down to move chat panel (double-click to reset)"
-        onPointerDown={(e) => {
-          e.preventDefault();
-          startChatPanelResize(e.clientY, chatPanelHeight);
-        }}
-        onDoubleClick={() => setChatPanelHeight(264)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setChatPanelHeight((prev) => Math.min(540, prev + 20));
-          } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setChatPanelHeight((prev) => Math.max(200, prev - 20));
-          }
-        }}
-        className="relative z-20 h-3 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/45 hover:bg-sky-500/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-colors group select-none"
-      >
-        <div
-          className={`inline-flex items-center justify-center rounded-full px-3 py-0.5 transition-colors ${
-            isDraggingChatPanel
-              ? 'text-sky-600 dark:text-sky-400'
-              : 'text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400'
-          }`}
-        >
-          <GripHorizontal className="h-3.5 w-3.5" />
-        </div>
-      </div>
-
-      {/* Bottom Movable Chat Panel */}
-      <div
-        style={{ '--pa-chat-height': `${chatPanelHeight}px` } as React.CSSProperties}
-        className="relative z-10 shrink-0 px-4 sm:px-8 pb-4 pt-1.5 flex flex-col min-h-[200px] md:h-[var(--pa-chat-height)]"
-      >
-        <div className="max-w-4xl w-full mx-auto flex-1 min-h-0 flex flex-col">
-          {copyError && (
-            <div
-              role="alert"
-              className="mb-2 shrink-0 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/55 dark:text-red-200"
-            >
-              {copyError}
-            </div>
-          )}
-
-          {privateNeedsModel && (
-            <div className="mb-2 shrink-0 flex items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-amber-50/90 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
-              <span>No Windows Ollama model selected yet.</span>
+          {!isChatBarOpen && (
+            <div className="pt-2 pb-1 flex justify-center">
               <button
                 type="button"
-                onClick={onOpenSettings}
-                className="font-medium underline whitespace-nowrap shrink-0"
+                onClick={onOpenChatBar}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200/90 bg-white/90 px-4 py-2 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
               >
-                Select Ollama Model
+                <PanelBottom className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
+                <span>{exchanges.length > 0 ? 'Open Chat Bar' : 'Show Chat Bar'}</span>
               </button>
             </div>
           )}
 
-          <div className="mb-1.5 shrink-0 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-1">
-            <span className="font-semibold text-slate-800 dark:text-slate-100">
-              Domain: {activeDomainShortLabel}
-            </span>
-            {composerCombinedPreview && (
-              <>
-                <span aria-hidden="true" className="text-slate-400">
-                  ·
-                </span>
-                <span className="font-medium text-sky-700 dark:text-sky-300">
-                  {composerCombinedPreview}
-                </span>
-              </>
-            )}
+          <div ref={ladderEndRef} />
+        </div>
+      </div>
+
+      {isChatBarOpen && (
+        <>
+          {/* Horizontal Drag Splitter for Bottom Chat Panel */}
+          <div
+            role="separator"
+            tabIndex={0}
+            aria-orientation="horizontal"
+            aria-label="Drag up or down to move or resize chat panel"
+            aria-valuemin={200}
+            aria-valuemax={540}
+            aria-valuenow={chatPanelHeight}
+            title="Drag up or down to move chat panel (double-click to reset)"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startChatPanelResize(e.clientY, chatPanelHeight);
+            }}
+            onDoubleClick={() => setChatPanelHeight(264)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setChatPanelHeight((prev) => Math.min(540, prev + 20));
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setChatPanelHeight((prev) => Math.max(200, prev - 20));
+              }
+            }}
+            className="relative z-20 h-3 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/45 hover:bg-sky-500/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 transition-colors group select-none"
+          >
+            <div
+              className={`inline-flex items-center justify-center rounded-full px-3 py-0.5 transition-colors ${
+                isDraggingChatPanel
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400'
+              }`}
+            >
+              <GripHorizontal className="h-3.5 w-3.5" />
+            </div>
           </div>
+
+          {/* Bottom Movable Chat Bar */}
+          <div
+            style={{ '--pa-chat-height': `${chatPanelHeight}px` } as React.CSSProperties}
+            className="relative z-10 shrink-0 px-4 sm:px-8 pb-4 pt-1.5 flex flex-col min-h-[200px] md:h-[var(--pa-chat-height)]"
+          >
+            <div className="max-w-4xl w-full mx-auto flex-1 min-h-0 flex flex-col">
+              {copyError && (
+                <div
+                  role="alert"
+                  className="mb-2 shrink-0 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/55 dark:text-red-200"
+                >
+                  {copyError}
+                </div>
+              )}
+
+              {privateNeedsModel && (
+                <div className="mb-2 shrink-0 flex items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-amber-50/90 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+                  <span>No Windows Ollama model selected yet.</span>
+                  <button
+                    type="button"
+                    onClick={onOpenSettings}
+                    className="font-medium underline whitespace-nowrap shrink-0"
+                  >
+                    Select Ollama Model
+                  </button>
+                </div>
+              )}
+
+              <div className="mb-1.5 shrink-0 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300 px-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-800 dark:text-slate-100">
+                      Domain:
+                    </span>
+                    <select
+                      aria-label="Prompt Domain"
+                      value={activePromptDomain}
+                      onChange={(e) => onPromptDomainChange(e.target.value as PromptDomain)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    >
+                      {PROMPT_DOMAINS.map((domain) => (
+                        <option key={domain} value={domain}>
+                          {getPromptDomainShortLabel(domain)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {composerCombinedPreview && (
+                    <>
+                      <span aria-hidden="true" className="text-slate-400">
+                        ·
+                      </span>
+                      <span className="font-medium text-sky-700 dark:text-sky-300">
+                        {composerCombinedPreview}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={onToggleChatBar}
+                  aria-label="Hide Chat Bar"
+                  title="Hide Chat Bar"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-200/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Hide</span>
+                </button>
+              </div>
 
           <section
             aria-label="Thread naming and period"
@@ -1623,6 +1628,8 @@ export function WorkbenchPage({
           </form>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
