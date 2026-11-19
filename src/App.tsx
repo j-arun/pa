@@ -1329,6 +1329,18 @@ export default function App() {
                       );
                     }
 
+                    const ratingStars =
+                      qTurn?.threadRating === 'red'
+                        ? '★'
+                        : qTurn?.threadRating === 'yellow'
+                          ? '★★'
+                          : qTurn?.threadRating === 'green'
+                            ? '★★★'
+                            : '';
+                    const baseLabel = ratingStars
+                      ? displayLabel.replace(/^★+\s+/, '')
+                      : displayLabel;
+
                     return (
                       <button
                         key={record.id}
@@ -1362,7 +1374,15 @@ export default function App() {
                               : 'hover:bg-white/55 dark:hover:bg-slate-800/55'
                         }`}
                       >
-                        <span className="truncate flex-1 tabular-nums">{displayLabel}</span>
+                        {ratingStars && (
+                          <span
+                            className="text-amber-500 dark:text-amber-400 shrink-0 mr-1.5"
+                            aria-hidden="true"
+                          >
+                            {ratingStars}
+                          </span>
+                        )}
+                        <span className="truncate flex-1 tabular-nums">{baseLabel}</span>
                       </button>
                     );
                   })}
@@ -1430,8 +1450,11 @@ export default function App() {
             >
               <Home className="w-4 h-4" />
             </button>
-            <span className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
-              <span>What&apos;s up</span>
+            <span
+              title="What's up"
+              className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
+            >
+              <WhatsAppSymbol className="w-6 h-6 shrink-0" />
               {(isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen || activeReportRecord) && (
                 <>
                   <span className="text-slate-400 dark:text-slate-500 font-normal">·</span>

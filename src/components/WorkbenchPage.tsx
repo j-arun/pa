@@ -38,6 +38,7 @@ import {
 } from '../utils/eventParser';
 import {
   PROMPT_DOMAINS,
+  THREAD_RATING_OPTIONS,
   formatShortYearMonth,
   getMonthNameFromNumber,
   getPromptDomainShortLabel,
@@ -692,6 +693,7 @@ export function WorkbenchPage({
   isSending,
   onSendMessage,
   onRetryExchange,
+  onUpdateExchangeMetadata,
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
@@ -1401,7 +1403,7 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Subtle Stage Footer Controls: Open HTML Report, Remove */}
+              {/* Subtle Stage Footer Controls: Open HTML Report, Remove, and 1-star / 2-star / 3-star Rating */}
               {activeAssistantReply && rootExchange && (
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1444,6 +1446,36 @@ export function WorkbenchPage({
                         <span>Remove</span>
                       </button>
                     )}
+                  </div>
+
+                  <div
+                    role="group"
+                    aria-label="Rate this period"
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200/85 dark:border-slate-700/80 bg-white/85 dark:bg-slate-900/80 p-1 shadow-2xs shrink-0"
+                  >
+                    {THREAD_RATING_OPTIONS.map((opt) => {
+                      const selected = rootExchange.questionTurn?.threadRating === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            onUpdateExchangeMetadata(rootExchange.id, {
+                              threadRating: selected ? undefined : opt.id,
+                            })
+                          }
+                          aria-pressed={selected}
+                          title={opt.description}
+                          className={`inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs font-semibold leading-none transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                            selected
+                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 shadow-2xs'
+                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100/80 dark:text-slate-500 dark:hover:text-amber-300 dark:hover:bg-slate-800/80'
+                          }`}
+                        >
+                          {opt.starGlyphs}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

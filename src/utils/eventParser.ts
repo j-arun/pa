@@ -997,7 +997,16 @@ export function formatSidebarThreadLabel(
 ): string {
   const reportName = qTurn?.threadName?.trim() || `Report #${fallbackIndex + 1}`;
   const periodPrefix = formatShortYearMonth(qTurn?.threadMonth, qTurn?.threadYear);
-  return periodPrefix ? `${periodPrefix}-${reportName}` : reportName;
+  const baseLabel = periodPrefix ? `${periodPrefix}-${reportName}` : reportName;
+  const starPrefix =
+    qTurn?.threadRating === 'red'
+      ? '★ '
+      : qTurn?.threadRating === 'yellow'
+        ? '★★ '
+        : qTurn?.threadRating === 'green'
+          ? '★★★ '
+          : '';
+  return `${starPrefix}${baseLabel}`;
 }
 
 export interface ThreadHtmlExchangeInput {

@@ -95,9 +95,9 @@ export const THREAD_RATING_OPTIONS: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { id: 'red', stars: '*', starGlyphs: '★', label: 'Red', description: '1 star' },
-  { id: 'yellow', stars: '**', starGlyphs: '★★', label: 'Yellow', description: '2 stars' },
-  { id: 'green', stars: '***', starGlyphs: '★★★', label: 'Green', description: '3 stars' },
+  { id: 'red', stars: '*', starGlyphs: '★', label: 'Red', description: '1 star · Bad' },
+  { id: 'yellow', stars: '**', starGlyphs: '★★', label: 'Yellow', description: '2 stars · Average' },
+  { id: 'green', stars: '***', starGlyphs: '★★★', label: 'Green', description: '3 stars · Very Good' },
 ];
 
 export function getPromptDomainShortLabel(domain?: PromptDomain): string {
