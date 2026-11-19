@@ -897,34 +897,75 @@ export function WorkbenchPage({
                 </h1>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 place-items-center pt-4 pb-6">
                 {DOMAIN_HOME_CARDS.map((card, idx) => (
-                  <motion.button
+                  <div
                     key={card.domain}
-                    type="button"
-                    disabled={isSending}
-                    onClick={() => handleDomainCardClick(card)}
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.28, delay: idx * 0.06 }}
-                    whileHover={{ y: -4 }}
-                    className="group fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 text-left flex flex-col justify-between min-h-[210px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)] disabled:opacity-50"
+                    className={`flex flex-col items-center ${idx % 2 === 1 ? 'sm:mt-6' : ''}`}
                   >
-                    <div className="space-y-4">
-                      <EventCategoryEmblem icon={card.icon} />
-                      <div className="space-y-1.5">
-                        <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-white">
-                          {card.label}
-                        </h2>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                          {card.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="pt-5 text-xs font-medium text-sky-700 dark:text-sky-300 group-hover:translate-x-0.5 transition-transform">
-                      Open {card.label} thread →
-                    </div>
-                  </motion.button>
+                    <motion.button
+                      type="button"
+                      disabled={isSending}
+                      onClick={() => handleDomainCardClick(card)}
+                      aria-label={card.label}
+                      initial={{ opacity: 0, scale: 0.84, y: 24 }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                        y: [0, -18, 0, -9, 0],
+                        rotateZ:
+                          idx % 2 === 0
+                            ? [-0.8, 0.8, -0.4, 0.5, -0.8]
+                            : [0.8, -0.8, 0.4, -0.5, 0.8],
+                      }}
+                      transition={{
+                        opacity: { duration: 0.26, delay: idx * 0.06 },
+                        scale: { type: 'spring', stiffness: 260, damping: 18, delay: idx * 0.06 },
+                        y: {
+                          duration: 2.3 + idx * 0.22,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                          delay: idx * 0.35,
+                        },
+                        rotateZ: {
+                          duration: 3.1 + idx * 0.25,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                          delay: idx * 0.35,
+                        },
+                      }}
+                      whileHover={{ scale: 1.07 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="group fluent-3d-bubble relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center gap-2.5 px-4 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-3 left-10 right-10 h-3 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[2px]"
+                      />
+                      <span className="scale-125 transition-transform duration-200 group-hover:scale-[1.32]">
+                        <EventCategoryEmblem icon={card.icon} />
+                      </span>
+                      <span className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                        {card.label}
+                      </span>
+                    </motion.button>
+
+                    {/* Reactive Shadow beneath Jumping Bubble */}
+                    <motion.div
+                      aria-hidden="true"
+                      animate={{
+                        scaleX: [1, 0.72, 1, 0.84, 1],
+                        opacity: [0.26, 0.12, 0.26, 0.18, 0.26],
+                      }}
+                      transition={{
+                        duration: 2.3 + idx * 0.22,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                        delay: idx * 0.35,
+                      }}
+                      className="mt-3 h-2.5 w-24 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
+                    />
+                  </div>
                 ))}
               </div>
             </div>
