@@ -388,11 +388,27 @@ export class FableAdapter implements ILlmAdapter {
       throw new Error('Fable returned an empty response payload.');
     }
 
-    const durationMs = Date.now() - started;
-    const inputTokens = payload.usage?.input_tokens ?? payload.usage?.prompt_tokens;
-    const outputTokens = payload.usage?.output_tokens ?? payload.usage?.completion_tokens;
+    const durationMs = Math.max(1, Date.now() - started);
+    const promptCharCount =
+      (request.options.systemInstruction?.length ?? 0) +
+      request.history.reduce((sum, turn) => sum + turn.content.length, 0) +
+      request.message.length;
+    const rawInput = payload.usage?.input_tokens ?? payload.usage?.prompt_tokens;
+    const rawOutput = payload.usage?.output_tokens ?? payload.usage?.completion_tokens;
+    const inputTokens =
+      typeof rawInput === 'number' && rawInput > 0
+        ? rawInput
+        : Math.max(1, Math.round(promptCharCount / 4));
+    const outputTokens =
+      typeof rawOutput === 'number' && rawOutput > 0
+        ? rawOutput
+        : Math.max(1, Math.round(text.length / 4));
+    const tokenCount =
+      typeof payload.usage?.total_tokens === 'number' && payload.usage.total_tokens > 0
+        ? payload.usage.total_tokens
+        : inputTokens + outputTokens;
     const tokensPerSecond =
-      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
+      outputTokens > 0 && durationMs > 0
         ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
         : undefined;
 
@@ -405,11 +421,7 @@ export class FableAdapter implements ILlmAdapter {
         ? 'Anthropic Messages v1'
         : 'OpenAI-compatible Chat Completions',
       durationMs,
-      tokenCount:
-        payload.usage?.total_tokens ??
-        (inputTokens !== undefined || outputTokens !== undefined
-          ? (inputTokens ?? 0) + (outputTokens ?? 0)
-          : undefined),
+      tokenCount,
       inputTokens,
       outputTokens,
       tokensPerSecond,

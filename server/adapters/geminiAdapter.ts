@@ -182,12 +182,51 @@ export class GeminiAdapter implements ILlmAdapter {
       throw new Error('Gemini returned an empty response.');
     }
 
-    const durationMs = Date.now() - started;
-    const inputTokens = response.usageMetadata?.promptTokenCount;
-    const outputTokens = response.usageMetadata?.candidatesTokenCount;
+    const durationMs = Math.max(1, Date.now() - started);
+    const usage = response.usageMetadata as
+      | {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+          thoughtsTokenCount?: number;
+          totalTokenCount?: number;
+        }
+      | undefined;
+    const promptCharCount =
+      (request.options.systemInstruction?.length ?? 0) +
+      request.history.reduce((sum, turn) => sum + turn.content.length, 0) +
+      request.message.length;
+    const estimatedInputTokens = Math.max(1, Math.round(promptCharCount / 4));
+    const estimatedOutputTokens = Math.max(1, Math.round(text.length / 4));
+
+    const inputTokens =
+      typeof usage?.promptTokenCount === 'number' && usage.promptTokenCount > 0
+        ? usage.promptTokenCount
+        : estimatedInputTokens;
+    const rawCandidates =
+      typeof usage?.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : undefined;
+    const thoughtsTokens =
+      typeof usage?.thoughtsTokenCount === 'number' ? usage.thoughtsTokenCount : 0;
+    const rawTotal =
+      typeof usage?.totalTokenCount === 'number' && usage.totalTokenCount > 0
+        ? usage.totalTokenCount
+        : undefined;
+
+    const outputTokens =
+      typeof rawCandidates === 'number' && rawCandidates > 0
+        ? rawCandidates
+        : rawTotal !== undefined && rawTotal > inputTokens
+          ? rawTotal - inputTokens
+          : estimatedOutputTokens;
+    const tokenCount =
+      rawTotal !== undefined
+        ? rawTotal
+        : inputTokens + outputTokens + thoughtsTokens;
+    const effectiveGeneratedTokens =
+      (typeof rawCandidates === 'number' && rawCandidates > 0 ? rawCandidates : outputTokens) +
+      thoughtsTokens;
     const tokensPerSecond =
-      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
-        ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
+      effectiveGeneratedTokens > 0 && durationMs > 0
+        ? Number((effectiveGeneratedTokens / (durationMs / 1000)).toFixed(1))
         : undefined;
 
     return {
@@ -197,7 +236,7 @@ export class GeminiAdapter implements ILlmAdapter {
       model,
       protocol: this.protocol,
       durationMs,
-      tokenCount: response.usageMetadata?.totalTokenCount,
+      tokenCount,
       inputTokens,
       outputTokens,
       tokensPerSecond,

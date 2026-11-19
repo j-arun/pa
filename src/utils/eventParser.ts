@@ -54,6 +54,19 @@ function inferCategoryAndIcon(
   hintText: string,
   fallbackDomain?: PromptDomain,
 ): { category: string; icon: EventCardIconType } {
+  switch (fallbackDomain) {
+    case 'astrology':
+      return { category: 'Career', icon: 'briefcase' };
+    case 'finance':
+      return { category: 'Family', icon: 'layers' };
+    case 'general':
+      return { category: 'Love', icon: 'heart' };
+    case 'health':
+      return { category: 'Health', icon: 'shield' };
+    default:
+      break;
+  }
+
   const lower = hintText.toLowerCase();
   if (/(relationship|love|romance|partner|marriage|couple|affection|dating)/.test(lower)) {
     return {
@@ -80,18 +93,7 @@ function inferCategoryAndIcon(
     };
   }
 
-  switch (fallbackDomain) {
-    case 'health':
-      return { category: 'Health', icon: 'shield' };
-    case 'general':
-      return { category: 'Love', icon: 'heart' };
-    case 'finance':
-      return { category: 'Family', icon: 'layers' };
-    case 'astrology':
-      return { category: 'Career', icon: 'briefcase' };
-    default:
-      return { category: 'General', icon: 'sparkles' };
-  }
+  return { category: 'General', icon: 'sparkles' };
 }
 
 function inferIconFromText(text: string, fallbackIndex: number): EventCardIconType {

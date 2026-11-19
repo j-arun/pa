@@ -256,9 +256,19 @@ function EventCategoryEmblem({ icon }: { icon: EventCardIconType }) {
     case 'layers':
       return (
         <svg viewBox="0 0 36 36" className="w-9 h-9 shrink-0" aria-hidden="true">
-          <path d="M18 5L31 12L18 19L5 12L18 5Z" fill="#F59E0B" />
-          <path d="M6 18L18 24.5L30 18L31 20L18 27L5 20L6 18Z" fill="#D97706" />
-          <path d="M6 23.5L18 30L30 23.5L31 25.5L18 32.5L5 25.5L6 23.5Z" fill="#B45309" opacity="0.75" />
+          <path
+            d="M6.5 17.5L18 7.5L29.5 17.5V29.5C29.5 30.6 28.6 31.5 27.5 31.5H8.5C7.4 31.5 6.5 30.6 6.5 29.5V17.5Z"
+            fill="#F59E0B"
+          />
+          <path
+            d="M4.5 18L18 6L31.5 18"
+            stroke="#D97706"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <rect x="14.5" y="20.5" width="7" height="11" rx="1.8" fill="#FFFBEB" />
         </svg>
       );
     case 'calendar':
@@ -1300,14 +1310,19 @@ export function WorkbenchPage({
                         const isHealthCard =
                           evt.icon === 'shield' ||
                           /(health|wellness|vitality|medical|energy|fitness)/.test(lowerHint);
-                        const resolvedIcon = isRelationshipCard
-                          ? 'heart'
+                        const threadDomain = activeQuestionTurn?.promptDomain;
+                        const resolvedIcon = threadDomain
+                          ? getDomainIconFromPromptDomain(threadDomain)
+                          : isRelationshipCard
+                            ? 'heart'
+                            : isHealthCard
+                              ? 'shield'
+                              : evt.icon;
+                        const topDomainLabel = threadDomain
+                          ? getPromptDomainShortLabel(threadDomain)
                           : isHealthCard
-                            ? 'shield'
-                            : evt.icon;
-                        const topDomainLabel = isHealthCard
-                          ? 'Health'
-                          : evt.category || (isRelationshipCard ? 'Relationship' : 'Event');
+                            ? 'Health'
+                            : evt.category || (isRelationshipCard ? 'Relationship' : 'Event');
                         const { probabilityLine, ratingLine } =
                           splitProbabilityAndRating(displayProbability);
 

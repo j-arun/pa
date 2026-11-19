@@ -238,18 +238,28 @@ export class OllamaAdapter implements ILlmAdapter {
         throw new Error(`Ollama model "${model}" returned an empty message payload.`);
       }
 
-      const durationMs = Date.now() - started;
+      const durationMs = Math.max(1, Date.now() - started);
+      const promptCharCount =
+        (request.options.systemInstruction?.length ?? 0) +
+        request.history.reduce((sum, turn) => sum + turn.content.length, 0) +
+        request.message.length;
       const inputTokens =
-        typeof streamed.promptEvalCount === 'number' ? streamed.promptEvalCount : undefined;
+        typeof streamed.promptEvalCount === 'number' && streamed.promptEvalCount > 0
+          ? streamed.promptEvalCount
+          : Math.max(1, Math.round(promptCharCount / 4));
       const outputTokens =
-        typeof streamed.evalCount === 'number' ? streamed.evalCount : undefined;
-      const tokenCount =
-        typeof inputTokens === 'number' || typeof outputTokens === 'number'
-          ? (inputTokens || 0) + (outputTokens || 0)
-          : undefined;
+        typeof streamed.evalCount === 'number' && streamed.evalCount > 0
+          ? streamed.evalCount
+          : Math.max(1, Math.round(replyText.length / 4));
+      const tokenCount = inputTokens + outputTokens;
       let tokensPerSecond: number | undefined;
-      if (typeof outputTokens === 'number' && outputTokens > 0) {
-        if (typeof streamed.evalDuration === 'number' && streamed.evalDuration > 0) {
+      if (outputTokens > 0) {
+        if (
+          typeof streamed.evalCount === 'number' &&
+          streamed.evalCount > 0 &&
+          typeof streamed.evalDuration === 'number' &&
+          streamed.evalDuration > 0
+        ) {
           tokensPerSecond = Number((outputTokens / (streamed.evalDuration / 1e9)).toFixed(1));
         } else if (durationMs > 0) {
           tokensPerSecond = Number((outputTokens / (durationMs / 1000)).toFixed(1));

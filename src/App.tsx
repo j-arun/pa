@@ -189,6 +189,7 @@ export default function App() {
     historyTurnsUsed: 0,
     lastError: '',
   });
+  const [sessionTokens, setSessionTokens] = useState<number>(0);
   const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const isContextRailVisible = isContextRailOpen;
@@ -755,6 +756,60 @@ export default function App() {
     return null;
   }, [activeReportExchangeId, ratedThreads, turns]);
 
+  const displayedTelemetry = useMemo<LlmContextTelemetry>(() => {
+    if (
+      telemetry.isThinking ||
+      telemetry.totalTokens !== undefined ||
+      telemetry.durationMs !== undefined
+    ) {
+      return telemetry;
+    }
+
+    const sourceTurns = activeReportRecord?.turns ?? turns;
+    const latestAssistant = [...sourceTurns]
+      .reverse()
+      .find((t) => t.role === 'assistant');
+    if (!latestAssistant) {
+      return telemetry;
+    }
+
+    const inputTokens = latestAssistant.inputTokenCount;
+    const outputTokens = latestAssistant.outputTokenCount;
+    const totalTokens =
+      latestAssistant.tokenCount ??
+      (inputTokens !== undefined || outputTokens !== undefined
+        ? (inputTokens ?? 0) + (outputTokens ?? 0)
+        : undefined);
+    const durationMs = latestAssistant.durationMs;
+    const effectiveOutput = outputTokens ?? totalTokens;
+    const tokensPerSecond =
+      latestAssistant.tokensPerSecond ??
+      (effectiveOutput !== undefined &&
+      effectiveOutput > 0 &&
+      durationMs !== undefined &&
+      durationMs > 0
+        ? Number((effectiveOutput / (durationMs / 1000)).toFixed(1))
+        : undefined);
+
+    if (
+      totalTokens === undefined &&
+      tokensPerSecond === undefined &&
+      durationMs === undefined
+    ) {
+      return telemetry;
+    }
+
+    return {
+      ...telemetry,
+      phase: 'Ready',
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      tokensPerSecond,
+      durationMs,
+    };
+  }, [activeReportRecord, telemetry, turns]);
+
   const activeCarefulDates = useMemo<CarefulDateItem[]>(() => {
     const items: CarefulDateItem[] = [];
     const seen = new Set<string>();
@@ -853,6 +908,11 @@ export default function App() {
 
     setIsSending(true);
     const requestStartedAt = Date.now();
+    const fullPromptChars =
+      targetSystemInstruction.length +
+      targetHistory.reduce((sum, item) => sum + item.content.length, 0) +
+      userTurn.content.trim().length;
+    const estimatedInputTokens = Math.max(1, Math.round(fullPromptChars / 4));
     setNowMs(requestStartedAt);
     setTelemetry((prev) => ({
       ...prev,
@@ -861,7 +921,7 @@ export default function App() {
       startedAtMs: requestStartedAt,
       promptChars: userTurn.content.trim().length,
       historyTurnsUsed: targetHistory.length,
-      inputTokens: undefined,
+      inputTokens: estimatedInputTokens,
       outputTokens: undefined,
       totalTokens: undefined,
       tokensPerSecond: undefined,
@@ -939,18 +999,26 @@ export default function App() {
         throw new Error(payload.error || 'Adapter returned an error.');
       }
 
-      const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStart);
-      const inputTokens = payload.inputTokens;
-      const outputTokens = payload.outputTokens ?? payload.tokenCount;
+      const elapsedMs = Math.max(1, payload.durationMs ?? Date.now() - requestStart);
+      const estimatedOutputTokens = Math.max(1, Math.round(payload.text.length / 4));
+      const inputTokens =
+        typeof payload.inputTokens === 'number' && payload.inputTokens > 0
+          ? payload.inputTokens
+          : estimatedInputTokens;
+      const outputTokens =
+        typeof payload.outputTokens === 'number' && payload.outputTokens > 0
+          ? payload.outputTokens
+          : typeof payload.tokenCount === 'number' && payload.tokenCount > inputTokens
+            ? payload.tokenCount - inputTokens
+            : estimatedOutputTokens;
       const totalTokens =
-        inputTokens !== undefined && outputTokens !== undefined
-          ? inputTokens + outputTokens
-          : payload.tokenCount ?? outputTokens ?? inputTokens;
+        typeof payload.tokenCount === 'number' && payload.tokenCount > 0
+          ? payload.tokenCount
+          : inputTokens + outputTokens;
       const tokensPerSecond =
-        payload.tokensPerSecond ??
-        (outputTokens !== undefined && elapsedMs > 0
-          ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
-          : undefined);
+        typeof payload.tokensPerSecond === 'number' && payload.tokensPerSecond > 0
+          ? payload.tokensPerSecond
+          : Number((outputTokens / (elapsedMs / 1000)).toFixed(1));
       const { cleanMarkdown, events, carefulDates } = parseResponseEventsAndReport(
         payload.text,
         effectiveDomain,
@@ -999,6 +1067,7 @@ export default function App() {
         assistantTurn,
       ]);
 
+      setSessionTokens((prev) => prev + totalTokens);
       setTelemetry((prev) => ({
         ...prev,
         phase: 'Ready',
@@ -1390,7 +1459,7 @@ export default function App() {
                     ? 'Reference Context'
                     : activeReportRecord
                       ? 'Reference Report'
-                      : 'Personal Assistant'}
+                      : "What's Up"}
             </span>
 
             <span
@@ -1561,8 +1630,8 @@ export default function App() {
               onClick={() => {
                 setIsContextRailOpen((prev) => !prev);
               }}
-              aria-label={isContextRailVisible ? 'Hide Careful Dates by Domain' : 'Show Careful Dates by Domain'}
-              title={isContextRailVisible ? 'Hide Careful Dates by Domain' : 'Show Careful Dates by Domain'}
+              aria-label={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
+              title={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
               aria-pressed={isContextRailVisible}
               className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
                 isContextRailVisible
@@ -1779,39 +1848,52 @@ export default function App() {
               <span className="truncate font-medium">{connectedEngineText}</span>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
               <span
                 className={
-                  telemetry.phase === 'Thinking'
+                  displayedTelemetry.phase === 'Thinking'
                     ? 'text-sky-600 dark:text-sky-400 font-semibold'
-                    : telemetry.phase === 'Error'
+                    : displayedTelemetry.phase === 'Error'
                       ? 'text-red-600 dark:text-red-400 font-semibold'
-                      : telemetry.phase === 'Ready'
+                      : displayedTelemetry.phase === 'Ready'
                         ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
                         : 'text-slate-500 dark:text-slate-400'
                 }
               >
-                {telemetry.isThinking && telemetry.startedAtMs
-                  ? `Thinking ${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                  : telemetry.phase}
+                {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                  ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                  : displayedTelemetry.phase}
               </span>
-              <span className="hidden sm:inline text-slate-300 dark:text-slate-700">|</span>
-              <span className="hidden sm:inline">
-                Tokens: {telemetry.totalTokens !== undefined ? telemetry.totalTokens.toLocaleString() : '—'}
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <span
+                title={
+                  displayedTelemetry.totalTokens !== undefined
+                    ? `Input: ${displayedTelemetry.inputTokens?.toLocaleString() ?? '—'} · Output: ${displayedTelemetry.outputTokens?.toLocaleString() ?? '—'} · Total: ${displayedTelemetry.totalTokens.toLocaleString()}${sessionTokens > 0 ? ` · Session: ${sessionTokens.toLocaleString()}` : ''}`
+                    : 'Total tokens (input + output)'
+                }
+              >
+                Tokens:{' '}
+                {displayedTelemetry.isThinking && displayedTelemetry.inputTokens !== undefined
+                  ? `~${displayedTelemetry.inputTokens.toLocaleString()} in`
+                  : displayedTelemetry.totalTokens !== undefined
+                    ? displayedTelemetry.totalTokens.toLocaleString()
+                    : sessionTokens > 0
+                      ? sessionTokens.toLocaleString()
+                      : '—'}
               </span>
-              <span className="hidden md:inline text-slate-300 dark:text-slate-700">|</span>
-              <span className="hidden md:inline">
-                {telemetry.tokensPerSecond !== undefined
-                  ? `${telemetry.tokensPerSecond.toFixed(1)} tok/s`
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <span>
+                {displayedTelemetry.tokensPerSecond !== undefined
+                  ? `${displayedTelemetry.tokensPerSecond.toFixed(1)} tok/s`
                   : '— tok/s'}
               </span>
-              <span className="hidden lg:inline text-slate-300 dark:text-slate-700">|</span>
-              <span className="hidden lg:inline">
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <span>
                 Time:{' '}
-                {telemetry.isThinking && telemetry.startedAtMs
-                  ? `${((Math.max(0, nowMs - telemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                  : telemetry.durationMs !== undefined
-                    ? `${(telemetry.durationMs / 1000).toFixed(2)}s`
+                {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                  ? `${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                  : displayedTelemetry.durationMs !== undefined
+                    ? `${(displayedTelemetry.durationMs / 1000).toFixed(2)}s`
                     : '—'}
               </span>
               <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
@@ -1825,18 +1907,21 @@ export default function App() {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/70 dark:border-slate-800/70 select-text">
               <span>
                 Prompt Size:{' '}
-                {telemetry.promptChars > 0
-                  ? `${telemetry.promptChars.toLocaleString()} ch (${telemetry.historyTurnsUsed}t)`
+                {displayedTelemetry.promptChars > 0
+                  ? `${displayedTelemetry.promptChars.toLocaleString()} ch (${displayedTelemetry.historyTurnsUsed}t)`
                   : '—'}
               </span>
               <span>
-                Input: {telemetry.inputTokens !== undefined ? telemetry.inputTokens.toLocaleString() : '—'}
+                Input: {displayedTelemetry.inputTokens !== undefined ? displayedTelemetry.inputTokens.toLocaleString() : '—'}
               </span>
               <span>
-                Output: {telemetry.outputTokens !== undefined ? telemetry.outputTokens.toLocaleString() : '—'}
+                Output: {displayedTelemetry.outputTokens !== undefined ? displayedTelemetry.outputTokens.toLocaleString() : '—'}
               </span>
-              <span className={telemetry.lastError ? 'text-red-600 dark:text-red-400 truncate' : 'truncate'}>
-                Status: {telemetry.lastError || 'Healthy · No active errors'}
+              <span>
+                Session: {sessionTokens.toLocaleString()} tok
+              </span>
+              <span className={displayedTelemetry.lastError ? 'text-red-600 dark:text-red-400 truncate' : 'truncate'}>
+                Status: {displayedTelemetry.lastError || 'Healthy · No active errors'}
               </span>
             </div>
           )}

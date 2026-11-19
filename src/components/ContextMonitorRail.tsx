@@ -66,7 +66,7 @@ export function ContextMonitorRail({
 
   return (
     <motion.aside
-      aria-label="Careful Dates by Domain"
+      aria-label="Care Must Be Taken"
       initial={{ opacity: 0, x: 28, scale: 0.96 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 28, scale: 0.96 }}
@@ -79,7 +79,7 @@ export function ContextMonitorRail({
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
             <h2 className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-              Careful Dates by Domain
+              Care Must Be Taken
             </h2>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums truncate">
@@ -91,8 +91,8 @@ export function ContextMonitorRail({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close Careful Dates drawer"
-          title="Close Careful Dates"
+          aria-label="Close Care Must Be Taken"
+          title="Close Care Must Be Taken"
           className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors shrink-0"
         >
           <X className="w-4 h-4" />

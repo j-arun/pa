@@ -247,15 +247,21 @@ export class ClaudeAdapter implements ILlmAdapter {
       throw new Error('Claude returned an empty response payload.');
     }
 
-    const durationMs = Date.now() - started;
-    const inputTokens = payload.usage?.input_tokens;
-    const outputTokens = payload.usage?.output_tokens;
-    const tokenCount =
-      typeof inputTokens === 'number' || typeof outputTokens === 'number'
-        ? (inputTokens || 0) + (outputTokens || 0)
-        : undefined;
+    const durationMs = Math.max(1, Date.now() - started);
+    const promptCharCount =
+      (request.options.systemInstruction?.length ?? 0) +
+      messages.reduce((sum, msg) => sum + msg.content.length, 0);
+    const inputTokens =
+      typeof payload.usage?.input_tokens === 'number' && payload.usage.input_tokens > 0
+        ? payload.usage.input_tokens
+        : Math.max(1, Math.round(promptCharCount / 4));
+    const outputTokens =
+      typeof payload.usage?.output_tokens === 'number' && payload.usage.output_tokens > 0
+        ? payload.usage.output_tokens
+        : Math.max(1, Math.round(text.length / 4));
+    const tokenCount = inputTokens + outputTokens;
     const tokensPerSecond =
-      typeof outputTokens === 'number' && outputTokens > 0 && durationMs > 0
+      outputTokens > 0 && durationMs > 0
         ? Number((outputTokens / (durationMs / 1000)).toFixed(1))
         : undefined;
 
