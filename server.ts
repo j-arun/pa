@@ -226,9 +226,7 @@ async function startServer() {
       const hasScheme = /^https?:\/\//i.test(rawHost);
       const baseHost = hasScheme ? rawHost.replace(/\/+$/, '') : `http://${rawHost}`;
       const urlObj = new URL(baseHost);
-      if (Number.isFinite(rawPort) && rawPort > 0 && rawPort <= 65535 && !urlObj.port) {
-        urlObj.port = String(Math.round(rawPort));
-      } else if (Number.isFinite(rawPort) && rawPort > 0 && rawPort <= 65535) {
+      if (!urlObj.port && Number.isFinite(rawPort) && rawPort > 0 && rawPort <= 65535) {
         urlObj.port = String(Math.round(rawPort));
       }
       const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
@@ -266,7 +264,7 @@ async function startServer() {
         contentType.includes('text/html') &&
         (rawBody.includes('<div id="root"') ||
           rawBody.includes('/src/main.tsx') ||
-          rawBody.includes('Personal Assistant'));
+          rawBody.includes('<title>Personal Assistant'));
 
       if (looksLikeSpaShell) {
         return res.status(502).json({

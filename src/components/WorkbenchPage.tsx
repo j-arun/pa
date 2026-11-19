@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FileCode2,
   Hourglass,
+  Megaphone,
   MessageSquarePlus,
   Plus,
   RotateCcw,
@@ -212,6 +213,48 @@ function EventCategoryEmblem({ icon }: { icon: EventCardIconType }) {
         </svg>
       );
   }
+}
+
+function WhisperIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="7" r="3" />
+      <path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5" />
+      <path d="M15.5 9.5c1 .9 1 2.6 0 3.5" />
+      <path d="M18.5 7.5c1.8 1.9 1.8 5.6 0 7.5" />
+    </svg>
+  );
+}
+
+function ScopeBubbleBadge({ turnScope }: { turnScope: ConversationScope }) {
+  const isPrivate = turnScope === 'private';
+  return (
+    <span
+      title={isPrivate ? 'Private question (Whisper)' : 'Public question (Loudspeaker)'}
+      aria-label={isPrivate ? 'Whisper (Private)' : 'Loudspeaker (Public)'}
+      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+        isPrivate
+          ? 'text-emerald-700 dark:text-emerald-300'
+          : 'text-sky-700 dark:text-sky-300'
+      }`}
+    >
+      {isPrivate ? (
+        <WhisperIcon className="w-4 h-4 shrink-0" />
+      ) : (
+        <Megaphone className="w-4 h-4 shrink-0" />
+      )}
+      <span>{isPrivate ? 'Whisper' : 'Loudspeaker'}</span>
+    </span>
+  );
 }
 
 function FluentPeekCompanion({ caption }: { caption: string }) {
@@ -528,10 +571,10 @@ export function WorkbenchPage({
             </div>
           )}
 
-          {/* STAGE 2: Jumping 3D Fluent Speech Bubble (Oval/Capsule with Tail, NOT a Rectangle) */}
+          {/* STAGE 2: Jumping Round 3D Speech Bubble */}
           {isWaitingForReply && activeQuestionTurn && (
             <div className="my-auto py-8 flex flex-col items-center justify-center text-center">
-              <div className="relative flex flex-col items-center max-w-2xl w-full">
+              <div className="relative flex flex-col items-center">
                 <motion.div
                   key={`jumping-${activeQuestionTurn.id}`}
                   initial={{ opacity: 0, scale: 0.82, y: 42 }}
@@ -555,31 +598,40 @@ export function WorkbenchPage({
                       ease: 'easeInOut',
                     },
                   }}
-                  className="relative max-w-xl w-full flex flex-col items-center"
+                  className="relative flex flex-col items-center"
                 >
-                  <div className="fluent-3d-bubble relative w-full px-10 py-7 sm:px-12 sm:py-8 text-center">
+                  <div className="fluent-3d-bubble relative w-[280px] sm:w-[320px] aspect-square px-8 py-8 flex flex-col items-center justify-center text-center gap-2.5 overflow-hidden">
                     <div
                       aria-hidden="true"
-                      className="pointer-events-none absolute top-2.5 left-12 right-12 h-3 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[2px]"
+                      className="pointer-events-none absolute top-4 left-16 right-16 h-4 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[3px]"
                     />
-                    <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 mb-1.5">
-                      {activeProviderLabel}
+                    <ScopeBubbleBadge turnScope={activeQuestionTurn.scope} />
+                    <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                      {[
+                        getPromptDomainShortLabel(activeQuestionTurn.promptDomain),
+                        formatShortYearMonth(
+                          activeQuestionTurn.threadMonth,
+                          activeQuestionTurn.threadYear,
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </div>
                     <p
-                      className="text-lg sm:text-xl font-semibold leading-snug text-slate-900 dark:text-white break-words"
+                      className="text-base sm:text-lg font-semibold leading-snug text-slate-900 dark:text-white break-words line-clamp-5"
                       style={{ fontFamily: 'var(--pa-font-body)' }}
                     >
                       {activeQuestionTurn.content}
                     </p>
                   </div>
-                  {/* 3D Thought/Speech Bubble Tail Beads */}
-                  <div className="flex flex-col items-start self-start ml-16 -mt-1.5 space-y-1.5" aria-hidden="true">
+                  {/* Round Speech Bubble Tail Beads */}
+                  <div className="flex flex-col items-start self-start ml-16 -mt-2 space-y-1.5" aria-hidden="true">
                     <span className="fluent-3d-bubble-tail w-5 h-5 rounded-full block" />
                     <span className="fluent-3d-bubble-tail w-3 h-3 rounded-full -ml-2 block" />
                   </div>
                 </motion.div>
 
-                {/* Reactive Floor Shadow beneath Jumping 3D Bubble */}
+                {/* Reactive Floor Shadow beneath Jumping Round Bubble */}
                 <motion.div
                   aria-hidden="true"
                   animate={{
@@ -591,7 +643,7 @@ export function WorkbenchPage({
                     repeat: Infinity,
                     ease: 'easeInOut',
                   }}
-                  className="mt-2 h-3.5 w-48 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
+                  className="mt-2 h-3.5 w-44 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
                 />
 
                 <div className="mt-5 inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -602,7 +654,7 @@ export function WorkbenchPage({
             </div>
           )}
 
-          {/* STAGE 3: Response Arrived — Settled 3D Speech Bubble with In-Bubble Retry + Sliding Event Cards */}
+          {/* STAGE 3: Response Arrived — Settled Round 3D Speech Bubble + Sliding Event Cards */}
           {!isWaitingForReply && activeExchange && (
             <div className="my-auto py-4 space-y-6">
               {/* Follow-up Turn Switcher when >1 turn exists in this thread */}
@@ -628,64 +680,54 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Settled 3D Fluent Speech Bubble with In-Bubble Retry */}
+              {/* Settled Round 3D Fluent Speech Bubble with Whisper/Loudspeaker + Domain + Period + Question + Retry */}
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <motion.div
                   key={`settled-${activeExchange.id}`}
                   initial={{ opacity: 0, y: -12, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                  className="relative max-w-2xl"
+                  className="relative flex flex-col items-start"
                 >
-                  <div className="fluent-3d-bubble relative px-8 py-5 sm:px-10 sm:py-5">
+                  <div className="fluent-3d-bubble relative w-[275px] sm:w-[310px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
                     <div
                       aria-hidden="true"
-                      className="pointer-events-none absolute top-2 left-10 right-10 h-2.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                      className="pointer-events-none absolute top-4 left-14 right-14 h-3.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
                     />
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        <span className="font-semibold text-sky-700 dark:text-sky-300">
-                          {rootExchange?.questionTurn?.threadName?.trim() ||
-                            activeQuestionTurn?.threadName?.trim() ||
-                            'Active Thread'}
-                        </span>
-                        {activeQuestionTurn?.promptDomain && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span>{getPromptDomainShortLabel(activeQuestionTurn.promptDomain)}</span>
-                          </>
-                        )}
-                        {(activeQuestionTurn?.threadMonth || activeQuestionTurn?.threadYear) && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="tabular-nums">
-                              {formatShortYearMonth(
-                                activeQuestionTurn?.threadMonth,
-                                activeQuestionTurn?.threadYear,
-                              )}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                    <ScopeBubbleBadge turnScope={activeQuestionTurn?.scope ?? scope} />
 
-                      <button
-                        type="button"
-                        onClick={() => onRetryExchange(activeExchange.id)}
-                        disabled={isSending}
-                        title="Retry this exact question with the active LLM provider"
-                        className="inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-700 disabled:opacity-45 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>Retry</span>
-                      </button>
+                    <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                      {[
+                        getPromptDomainShortLabel(activeQuestionTurn?.promptDomain),
+                        formatShortYearMonth(
+                          activeQuestionTurn?.threadMonth,
+                          activeQuestionTurn?.threadYear,
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </div>
 
-                    <h1 className="font-display text-base sm:text-lg font-semibold leading-snug text-slate-900 dark:text-white pr-2">
+                    <h1
+                      title={activeQuestionTurn?.content}
+                      className="font-display text-sm sm:text-base font-semibold leading-snug text-slate-900 dark:text-white line-clamp-4 break-words"
+                    >
                       {activeQuestionTurn?.content || 'Assistant Events'}
                     </h1>
+
+                    <button
+                      type="button"
+                      onClick={() => onRetryExchange(activeExchange.id)}
+                      disabled={isSending}
+                      title="Retry this exact question"
+                      className="mt-1 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 px-3 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-700 disabled:opacity-45 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Retry</span>
+                    </button>
                   </div>
-                  {/* Speech bubble tail */}
-                  <div className="flex items-center gap-1.5 ml-12 -mt-1" aria-hidden="true">
+                  {/* Round Speech bubble tail */}
+                  <div className="flex items-center gap-1.5 ml-14 -mt-2" aria-hidden="true">
                     <span className="fluent-3d-bubble-tail w-4 h-4 rounded-full block" />
                     <span className="fluent-3d-bubble-tail w-2.5 h-2.5 rounded-full mt-2 block" />
                   </div>
@@ -957,17 +999,19 @@ export function WorkbenchPage({
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="pointer-events-auto w-full max-w-[430px] rounded-3xl border border-white/90 dark:border-slate-700/85 bg-white/92 dark:bg-slate-900/92 backdrop-blur-2xl shadow-[0_24px_60px_-16px_rgba(15,23,42,0.22)] p-4 space-y-2.5"
             >
-              {/* Composer Header */}
+              {/* Composer Header with Domain Name */}
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                     {hasActiveThread
-                      ? `Follow-up · ${rootExchange?.questionTurn?.threadName?.trim() || 'Active Thread'}`
-                      : 'Ask Personal Assistant'}
+                      ? `Follow-up · ${getPromptDomainShortLabel(activePromptDomain)}`
+                      : `Ask Personal Assistant · ${getPromptDomainShortLabel(activePromptDomain)}`}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
-                    {activeProviderLabel}
-                    {activeRefPeriod ? ` · Period: ${activeRefPeriod}` : ''}
+                    {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()
+                      ? `${rootExchange.questionTurn.threadName.trim()} · `
+                      : ''}
+                    {activeRefPeriod ? `Period: ${activeRefPeriod}` : 'Choose a domain below'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -987,7 +1031,7 @@ export function WorkbenchPage({
                     type="button"
                     onClick={() => setShowComposerOptions((prev) => !prev)}
                     aria-expanded={showComposerOptions}
-                    title="Domain and prompt style"
+                    title="Prompt style"
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                       showComposerOptions
                         ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
@@ -995,7 +1039,7 @@ export function WorkbenchPage({
                     }`}
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
-                    <span>Options</span>
+                    <span>Style</span>
                   </button>
                   <button
                     type="button"
@@ -1022,6 +1066,40 @@ export function WorkbenchPage({
                 </div>
               )}
 
+              {/* Always-Visible Domain Selector inside the Chat Box */}
+              <div className="flex items-center gap-2">
+                <span
+                  id="composer-domain-label"
+                  className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 shrink-0"
+                >
+                  Domain
+                </span>
+                <div
+                  role="group"
+                  aria-labelledby="composer-domain-label"
+                  className="flex-1 grid grid-cols-4 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
+                >
+                  {PROMPT_DOMAINS.map((domain) => {
+                    const selected = activePromptDomain === domain;
+                    return (
+                      <button
+                        key={domain}
+                        type="button"
+                        onClick={() => onPromptDomainChange(domain)}
+                        aria-pressed={selected}
+                        className={`rounded-lg px-2 py-1 text-[11px] font-medium transition-colors truncate ${
+                          selected
+                            ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-white/75 dark:hover:bg-slate-800/75'
+                        }`}
+                      >
+                        {getPromptDomainShortLabel(domain)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Thread Name Input (shown for new thread; follow-ups update the active thread automatically) */}
               {!hasActiveThread && (
                 <input
@@ -1034,23 +1112,13 @@ export function WorkbenchPage({
                 />
               )}
 
-              {/* Collapsible Domain / Style Options (Month & Year come from Reference Context) */}
+              {/* Collapsible Prompt Style Selector */}
               {showComposerOptions && (
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
-                  <select
-                    aria-label="Prompt Domain"
-                    value={activePromptDomain}
-                    onChange={(e) => onPromptDomainChange(e.target.value as PromptDomain)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
-                  >
-                    {PROMPT_DOMAINS.map((domain) => (
-                      <option key={domain} value={domain}>
-                        Domain: {getPromptDomainShortLabel(domain)}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+                    Prompt Style
+                  </span>
+                  <div className="flex-1 inline-flex rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
                     {(['formal', 'classic'] as const).map((style) => (
                       <button
                         key={style}

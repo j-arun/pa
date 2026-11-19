@@ -74,7 +74,6 @@ const RATING_STAR_COUNT: Record<ThreadRating, number> = {
   green: 3,
 };
 
-const USER_AVATAR_SRC = '/src/assets/images/local_user_avatar_1794900004889.jpg';
 const THEME_CYCLE: ThemeMode[] = [
   'arctic-sky',
   'midnight-slate',
@@ -145,7 +144,6 @@ export default function App() {
   const promptStyle = settings.promptBuilder.activeStyle;
   const promptTemplates = settings.promptBuilder.templates;
   const [isSending, setIsSending] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
   const [configFileInfo, setConfigFileInfo] = useState<{
     filePath: string;
     platform: string;
@@ -1006,18 +1004,11 @@ export default function App() {
                   setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(null);
                 }}
-                title="Open Personal Assistant Event Stage"
-                className="w-full px-3 pt-2 pb-1 flex items-center gap-2.5 rounded-lg text-left hover:bg-white/65 dark:hover:bg-slate-800/65 transition-colors shrink-0"
+                title="Open Event Stage"
+                aria-label="Home"
+                className="px-3 pt-2 pb-1 inline-flex items-center justify-center rounded-lg hover:bg-white/65 dark:hover:bg-slate-800/65 transition-colors shrink-0 self-start"
               >
-                <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-                    Personal Assistant
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    WinUI 3 Fluent Edition
-                  </div>
-                </div>
+                <img src="/favicon.svg" alt="Assistant" className="w-8 h-8 shrink-0" />
               </button>
 
               <nav className="space-y-1 shrink-0" aria-label="Primary pages">
@@ -1161,53 +1152,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Account Profile Footer (Pulled from Windows / OS account profile) */}
-            <div className="pt-3 border-t border-slate-200/75 dark:border-slate-800/80 px-1 py-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSettingsOpen(true);
-                  setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen(false);
-                }}
-                title="View account profile in Settings"
-                className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/70 dark:hover:bg-slate-800/70 transition-colors text-left"
-              >
-                <div className="shrink-0">
-                  {settings.profile.avatarDataUrl ? (
-                    <img
-                      src={settings.profile.avatarDataUrl}
-                      alt={settings.profile.displayName || 'Account avatar'}
-                      referrerPolicy="no-referrer"
-                      className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                    />
-                  ) : !avatarError ? (
-                    <img
-                      src={USER_AVATAR_SRC}
-                      alt={settings.profile.displayName || 'Account avatar'}
-                      referrerPolicy="no-referrer"
-                      onError={() => setAvatarError(true)}
-                      className="w-9 h-9 rounded-full object-cover border border-slate-200 dark:border-slate-700"
-                    />
-                  ) : (
-                    <div
-                      className="w-9 h-9 rounded-full text-white flex items-center justify-center text-xs font-semibold"
-                      style={{ backgroundColor: 'var(--pa-accent)' }}
-                    >
-                      {(settings.profile.displayName || 'U').slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-                    {settings.profile.displayName || 'Windows User'}
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    Windows Account
-                  </div>
-                </div>
-              </button>
-            </div>
           </aside>
 
           {/* Left Rail Drag Splitter */}

@@ -3,10 +3,11 @@ import {
   CalendarClock,
   CheckCircle2,
   RefreshCw,
+  Save,
   Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ConversationScope,
   WorkbenchSettings,
@@ -17,6 +18,10 @@ import {
   estimateTokens,
   formatShortYearMonth,
 } from '../utils/promptTemplates';
+import {
+  buildReferenceContextUrl,
+  fetchReferenceContextFromApi,
+} from '../utils/referenceContextFetch';
 
 interface ReferenceContextPageProps {
   scope: ConversationScope;
@@ -44,16 +49,16 @@ export function ReferenceContextPage({
     scope === 'private'
       ? settings.contextCache.privateText
       : settings.contextCache.publicText;
-
-  const [selectedMonth, setSelectedMonth] = useState<number>(
-    settings.contextCache.activeMonth ?? new Date().getMonth() + 1,
-  );
-  const [selectedYear, setSelectedYear] = useState<number>(
+  const savedMonth = settings.contextCache.activeMonth ?? new Date().getMonth() + 1;
+  const savedYear =
     settings.contextCache.activeYear ??
-      Math.min(2090, Math.max(1990, new Date().getFullYear())),
-  );
+    Math.min(2090, Math.max(1990, new Date().getFullYear()));
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(savedMonth);
+  const [selectedYear, setSelectedYear] = useState<number>(savedYear);
   const [draftText, setDraftText] = useState(savedText);
   const [isApplying, setIsApplying] = useState(false);
+  const [isSavingManual, setIsSavingManual] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: 'info' | 'success' | 'warning' | 'error';
@@ -61,8 +66,13 @@ export function ReferenceContextPage({
     message: string;
   } | null>(null);
 
+  const lastSyncedTextRef = useRef(savedText);
+
   useEffect(() => {
-    setDraftText(savedText);
+    if (savedText !== lastSyncedTextRef.current) {
+      lastSyncedTextRef.current = savedText;
+      setDraftText(savedText);
+    }
   }, [savedText]);
 
   useEffect(() => {
@@ -75,16 +85,11 @@ export function ReferenceContextPage({
   }, [settings.contextCache.activeMonth, settings.contextCache.activeYear]);
 
   const apiCfg = settings.referenceContextApi;
-  const resolvedEndpointPreview = `${
-    /^https?:\/\//i.test(apiCfg.hostname)
-      ? apiCfg.hostname.replace(/\/+$/, '')
-      : `http://${apiCfg.hostname || 'localhost'}`
-  }:${apiCfg.port || 3000}${
-    apiCfg.path.startsWith('/') ? apiCfg.path : `/${apiCfg.path}`
-  }?${(apiCfg.queryTemplate || 'date={month}/{year}&variant=compact')
-    .replace(/^\?/, '')
-    .replace(/\{month\}/gi, String(selectedMonth))
-    .replace(/\{year\}/gi, String(selectedYear))}`;
+  const resolvedEndpointPreview = buildReferenceContextUrl(
+    apiCfg,
+    selectedMonth,
+    selectedYear,
+  );
 
   const activePeriodLabel = formatShortYearMonth(selectedMonth, selectedYear);
   const savedPeriodLabel = formatShortYearMonth(
@@ -94,78 +99,105 @@ export function ReferenceContextPage({
   const publicTokens = estimateTokens(settings.contextCache.publicText);
   const privateTokens = estimateTokens(settings.contextCache.privateText);
 
+  const hasUnsavedChanges =
+    draftText !== savedText ||
+    selectedMonth !== savedMonth ||
+    selectedYear !== savedYear ||
+    settings.contextCache.publicText !== settings.contextCache.privateText;
+
+  const isBusy = isApplying || isSavingManual || isClearing;
+
   const handleApplyMonthYear = async () => {
     setIsApplying(true);
     setFeedback(null);
 
     try {
-      const response = await fetch('/api/reference-context/fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: selectedMonth,
-          year: selectedYear,
-          apiConfig: settings.referenceContextApi,
-        }),
+      const result = await fetchReferenceContextFromApi({
+        month: selectedMonth,
+        year: selectedYear,
+        apiConfig: settings.referenceContextApi,
       });
 
-      const payload = (await response.json()) as {
-        text?: string;
-        url?: string;
-        fetchedAt?: string;
-        error?: string;
-      };
-
-      if (!response.ok || payload.error) {
-        const errMessage =
-          payload.error ||
-          `Reference Context REST endpoint is not available at ${resolvedEndpointPreview}.`;
-        setFeedback({
-          type: 'error',
-          title: 'Reference Context API endpoint unavailable',
-          message: errMessage,
-        });
-        onContextLog?.('error', errMessage);
-        return;
-      }
-
-      const plainText = typeof payload.text === 'string' ? payload.text : '';
-      const fetchedAt = payload.fetchedAt || new Date().toISOString();
+      const plainText = result.text;
+      lastSyncedTextRef.current = plainText;
       setDraftText(plainText);
 
       const saved = await onApplyFetchedContext({
         text: plainText,
         month: selectedMonth,
         year: selectedYear,
-        fetchedAt,
+        fetchedAt: result.fetchedAt,
       });
 
       const tokenCount = estimateTokens(plainText);
+      const viaLabel = result.via === 'browser' ? ' (direct browser fetch)' : '';
       onContextLog?.(
         'success',
-        `Loaded & applied ${activePeriodLabel} reference context (${tokenCount.toLocaleString()} est. tokens) to both Public & Private.`,
+        `Loaded & applied ${activePeriodLabel} reference context (${tokenCount.toLocaleString()} est. tokens) to both Public & Private${viaLabel}.`,
       );
 
       setFeedback({
         type: saved ? 'success' : 'warning',
-        title: `Applied ${activePeriodLabel} to Public & Private`,
+        title: `Fetched & applied ${activePeriodLabel} to Public & Private`,
         message: saved
-          ? `Fetched plain text (${tokenCount.toLocaleString()} estimated tokens) from ${payload.url || resolvedEndpointPreview} and automatically populated both Public and Private contexts.`
-          : `Fetched ${tokenCount.toLocaleString()} estimated tokens into Public and Private in browser storage, though local disk config sync reported an error.`,
+          ? `Loaded ${tokenCount.toLocaleString()} estimated tokens from ${result.url}${viaLabel} into both Public and Private. You can edit the text below anytime and click Save / Update to override.`
+          : `Loaded ${tokenCount.toLocaleString()} estimated tokens into browser storage for Public and Private, though local disk config sync reported an error.`,
       });
     } catch (error) {
-      const msg =
+      const baseMsg =
         error instanceof Error
           ? error.message
           : `Reference Context REST endpoint is not available at ${resolvedEndpointPreview}.`;
+      const msg = `${baseMsg} You can also type or paste reference text directly below and click Save / Update.`;
       setFeedback({
         type: 'error',
         title: 'Reference Context API endpoint unavailable',
         message: msg,
       });
-      onContextLog?.('error', msg);
+      onContextLog?.('error', baseMsg);
     } finally {
       setIsApplying(false);
+    }
+  };
+
+  const handleManualSave = async () => {
+    setIsSavingManual(true);
+    setFeedback(null);
+
+    try {
+      const nowIso = new Date().toISOString();
+      lastSyncedTextRef.current = draftText;
+      const saved = await onApplyFetchedContext({
+        text: draftText,
+        month: selectedMonth,
+        year: selectedYear,
+        fetchedAt: nowIso,
+      });
+
+      const tokenCount = estimateTokens(draftText);
+      onContextLog?.(
+        'success',
+        `Saved manual reference context (${activePeriodLabel}, ${tokenCount.toLocaleString()} est. tokens) to both Public & Private.`,
+      );
+
+      setFeedback({
+        type: saved ? 'success' : 'warning',
+        title: `Saved & updated ${activePeriodLabel} for Public & Private`,
+        message: saved
+          ? `Manually saved ${draftText.length.toLocaleString()} characters (${tokenCount.toLocaleString()} estimated tokens) for both Public and Private connections.`
+          : `Saved ${tokenCount.toLocaleString()} estimated tokens in browser storage for Public and Private, though local disk config sync reported an error.`,
+      });
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : 'Failed to save reference context.';
+      setFeedback({
+        type: 'error',
+        title: 'Could not save reference context',
+        message: msg,
+      });
+      onContextLog?.('error', msg);
+    } finally {
+      setIsSavingManual(false);
     }
   };
 
@@ -173,6 +205,7 @@ export function ReferenceContextPage({
     setIsClearing(true);
     try {
       await onClearAllReferenceContext();
+      lastSyncedTextRef.current = '';
       setDraftText('');
       onContextLog?.('info', 'Cleared reference context for both Public and Private.');
       setFeedback({
@@ -202,7 +235,7 @@ export function ReferenceContextPage({
               Reference Context
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              Select a Month and Year and click Apply to fetch plain-text reference context from your configured REST endpoint and apply it automatically to both Public and Private chats.
+              Select a Month and Year and click Apply to fetch plain-text reference context from your REST endpoint, or type, paste, and edit the text below and click Save / Update manually. Both actions sync to Public and Private chats.
             </p>
           </div>
 
@@ -264,7 +297,7 @@ export function ReferenceContextPage({
             <button
               type="button"
               onClick={() => void handleApplyMonthYear()}
-              disabled={isApplying || isClearing}
+              disabled={isBusy}
               className="inline-flex items-center gap-2 rounded-xl bg-[var(--pa-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--pa-accent-hover)] disabled:pointer-events-none disabled:opacity-45 whitespace-nowrap shrink-0"
             >
               <RefreshCw className={`h-4 w-4 ${isApplying ? 'animate-spin' : ''}`} />
@@ -313,42 +346,64 @@ export function ReferenceContextPage({
           </div>
         </div>
 
-        {/* Populated Reference Text Viewer */}
+        {/* Editable Reference Text Editor + Manual Save / Update + Clear Context */}
         <section className="rounded-3xl border border-slate-200/85 bg-white/75 p-5 shadow-sm backdrop-blur-xl dark:border-slate-700/75 dark:bg-slate-900/65 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Populated Reference Text (Public &amp; Private)
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Reference Context Text (Public &amp; Private)
+                </h2>
+                {hasUnsavedChanges && (
+                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    · Unsaved changes
+                  </span>
+                )}
+              </div>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Automatically populated from the REST endpoint when you click Apply above
+                Auto-populated from the REST endpoint when you click Apply, or type, paste, and edit directly here and click Save / Update.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleClearContext()}
-              disabled={
-                isApplying ||
-                isClearing ||
-                (!draftText &&
-                  !settings.contextCache.publicText &&
-                  !settings.contextCache.privateText)
-              }
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-red-50 hover:text-red-700 disabled:pointer-events-none disabled:opacity-45 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-red-950/40 dark:hover:text-red-300 whitespace-nowrap shrink-0"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>{isClearing ? 'Clearing…' : 'Clear context'}</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => void handleManualSave()}
+                disabled={isBusy}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 disabled:pointer-events-none disabled:opacity-45 ${
+                  hasUnsavedChanges
+                    ? 'bg-[var(--pa-accent)] text-white shadow-sm hover:bg-[var(--pa-accent-hover)]'
+                    : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200'
+                }`}
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>{isSavingManual ? 'Saving…' : 'Save / Update'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleClearContext()}
+                disabled={
+                  isBusy ||
+                  (!draftText &&
+                    !settings.contextCache.publicText &&
+                    !settings.contextCache.privateText)
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-red-50 hover:text-red-700 disabled:pointer-events-none disabled:opacity-45 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-red-950/40 dark:hover:text-red-300 whitespace-nowrap shrink-0"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>{isClearing ? 'Clearing…' : 'Clear context'}</span>
+              </button>
+            </div>
           </div>
 
           <textarea
             aria-label="Reference context plain text"
             value={draftText}
-            readOnly
+            onChange={(e) => setDraftText(e.target.value)}
             rows={14}
-            placeholder="Select Month & Year and click Apply above to load plain-text reference context from your REST API..."
-            className="w-full min-h-[280px] max-h-[520px] resize-y rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 font-mono text-[13px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 fluent-scroll"
+            placeholder="Select Month & Year and click Apply above to load from your REST API, or write / paste your reference text here and click Save / Update..."
+            className="w-full min-h-[280px] max-h-[520px] resize-y rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 font-mono text-[13px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-slate-700 dark:bg-slate-950/65 dark:text-slate-100 dark:placeholder:text-slate-500 fluent-scroll"
           />
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">

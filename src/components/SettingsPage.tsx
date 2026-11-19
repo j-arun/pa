@@ -32,6 +32,10 @@ import {
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from '../utils/notify';
+import {
+  buildReferenceContextUrl,
+  fetchReferenceContextFromApi,
+} from '../utils/referenceContextFetch';
 
 const FONT_OPTIONS: Array<{
   id: FontOption;
@@ -160,6 +164,9 @@ export function SettingsPage({
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceFeedback, setMaintenanceFeedback] = useState<string | null>(null);
   const [refApiTesting, setRefApiTesting] = useState(false);
+  const [refPortInput, setRefPortInput] = useState(
+    String(settings.referenceContextApi.port || 3000),
+  );
   const [refApiTestFeedback, setRefApiTestFeedback] = useState<{
     ok: boolean;
     message: string;
@@ -216,6 +223,7 @@ export function SettingsPage({
 
   useEffect(() => {
     setDraft(settings);
+    setRefPortInput(String(settings.referenceContextApi.port || 3000));
     setHasUnsavedChanges(false);
   }, [settings]);
 
@@ -1639,16 +1647,37 @@ export function SettingsPage({
                     type="number"
                     min={1}
                     max={65535}
-                    value={draft.referenceContextApi.port}
+                    value={refPortInput}
                     onChange={(e) => {
-                      const val = Math.max(1, Math.min(65535, Math.round(Number(e.target.value) || 3000)));
-                      updateDraft((prev) => ({
-                        ...prev,
-                        referenceContextApi: {
-                          ...prev.referenceContextApi,
-                          port: val,
-                        },
-                      }));
+                      const raw = e.target.value;
+                      setRefPortInput(raw);
+                      const parsed = Number(raw);
+                      if (raw.trim() !== '' && Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535) {
+                        updateDraft((prev) => ({
+                          ...prev,
+                          referenceContextApi: {
+                            ...prev.referenceContextApi,
+                            port: Math.round(parsed),
+                          },
+                        }));
+                      }
+                    }}
+                    onBlur={() => {
+                      const parsed = Number(refPortInput);
+                      const valid =
+                        refPortInput.trim() !== '' && Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535
+                          ? Math.round(parsed)
+                          : draft.referenceContextApi.port || 3000;
+                      setRefPortInput(String(valid));
+                      if (valid !== draft.referenceContextApi.port) {
+                        updateDraft((prev) => ({
+                          ...prev,
+                          referenceContextApi: {
+                            ...prev.referenceContextApi,
+                            port: valid,
+                          },
+                        }));
+                      }
                     }}
                     placeholder="3000"
                     className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
@@ -1712,18 +1741,11 @@ export function SettingsPage({
                     Resolved GET Request Preview
                   </div>
                   <div className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all">
-                    {`${
-                      /^https?:\/\//i.test(draft.referenceContextApi.hostname)
-                        ? draft.referenceContextApi.hostname.replace(/\/+$/, '')
-                        : `http://${draft.referenceContextApi.hostname || 'localhost'}`
-                    }:${draft.referenceContextApi.port || 3000}${
-                      draft.referenceContextApi.path.startsWith('/')
-                        ? draft.referenceContextApi.path
-                        : `/${draft.referenceContextApi.path}`
-                    }?${(draft.referenceContextApi.queryTemplate || 'date={month}/{year}&variant=compact')
-                      .replace(/^\?/, '')
-                      .replace(/\{month\}/gi, String(draft.contextCache.activeMonth ?? 4))
-                      .replace(/\{year\}/gi, String(draft.contextCache.activeYear ?? 2026))}`}
+                    {buildReferenceContextUrl(
+                      draft.referenceContextApi,
+                      draft.contextCache.activeMonth ?? 4,
+                      draft.contextCache.activeYear ?? 2026,
+                    )}
                   </div>
                 </div>
 
@@ -1734,31 +1756,15 @@ export function SettingsPage({
                     setRefApiTesting(true);
                     setRefApiTestFeedback(null);
                     try {
-                      const res = await fetch('/api/reference-context/fetch', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          month: draft.contextCache.activeMonth ?? 4,
-                          year: draft.contextCache.activeYear ?? 2026,
-                          apiConfig: draft.referenceContextApi,
-                        }),
+                      const result = await fetchReferenceContextFromApi({
+                        month: draft.contextCache.activeMonth ?? 4,
+                        year: draft.contextCache.activeYear ?? 2026,
+                        apiConfig: draft.referenceContextApi,
                       });
-                      const data = (await res.json()) as {
-                        text?: string;
-                        error?: string;
-                        url?: string;
-                      };
-                      if (!res.ok || data.error) {
-                        setRefApiTestFeedback({
-                          ok: false,
-                          message: data.error || 'Reference Context endpoint is not available.',
-                        });
-                      } else {
-                        setRefApiTestFeedback({
-                          ok: true,
-                          message: `Endpoint reachable (${(data.text || '').length.toLocaleString()} chars returned).`,
-                        });
-                      }
+                      setRefApiTestFeedback({
+                        ok: true,
+                        message: `Endpoint reachable (${result.text.length.toLocaleString()} chars returned${result.via === 'browser' ? ' via direct browser fetch' : ''}).`,
+                      });
                     } catch (err) {
                       setRefApiTestFeedback({
                         ok: false,
