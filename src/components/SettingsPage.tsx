@@ -1572,7 +1572,7 @@ export function SettingsPage({
                     const sent =
                       perm === 'granted' &&
                       showDesktopNotification(
-                        'Personal Assistant · Notification Test',
+                        'WhatsApp · Notification Test',
                         'Reply chime and notifications are ready.',
                       );
                     setNotifyFeedback(

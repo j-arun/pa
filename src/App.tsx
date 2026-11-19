@@ -1,5 +1,4 @@
 import {
-  Bell,
   BookOpen,
   Cloud,
   Home,
@@ -22,6 +21,7 @@ import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { ReferenceContextPage } from './components/ReferenceContextPage';
 import { ReportDocumentPage } from './components/ReportDocumentPage';
 import { SettingsPage } from './components/SettingsPage';
+import { WhatsAppSymbol } from './components/WhatsAppSymbol';
 import {
   WorkbenchPage,
   type SendThreadMessagePayload,
@@ -1091,7 +1091,7 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(false);
       }
-      const replyTitle = `Personal Assistant · ${targetScope === 'private' ? 'Private' : 'Public'} reply ready`;
+      const replyTitle = `WhatsApp · ${targetScope === 'private' ? 'Private' : 'Public'} reply ready`;
       const cleanedPreview = cleanMarkdown.replace(/\s+/g, ' ').trim();
       const shortPreview =
         cleanedPreview.length > 110 ? `${cleanedPreview.slice(0, 107)}...` : cleanedPreview;
@@ -1147,7 +1147,7 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(true);
       }
-      const errTitle = 'Personal Assistant · Response Error';
+      const errTitle = 'WhatsApp · Response Error';
       const shortPreview =
         errorMessage.length > 110 ? `${errorMessage.slice(0, 107)}...` : errorMessage;
       setReplyToast({ title: errTitle, preview: shortPreview, isError: true });
@@ -1432,16 +1432,21 @@ export default function App() {
             >
               <Home className="w-4 h-4" />
             </button>
-            <span className="font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
-              {isSettingsOpen
-                ? 'Settings'
-                : isPromptBuilderOpen
-                  ? 'Prompt Builder'
-                  : isReferenceContextOpen
-                    ? 'Reference Context'
-                    : activeReportRecord
-                      ? 'Reference Report'
-                      : "What's Up"}
+            <span className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
+              {isSettingsOpen ? (
+                'Settings'
+              ) : isPromptBuilderOpen ? (
+                'Prompt Builder'
+              ) : isReferenceContextOpen ? (
+                'Reference Context'
+              ) : activeReportRecord ? (
+                'Reference Report'
+              ) : (
+                <>
+                  <span>WhatsApp</span>
+                  <WhatsAppSymbol className="w-5 h-5 shrink-0" />
+                </>
+              )}
             </span>
 
             <span
@@ -1918,12 +1923,11 @@ export default function App() {
           className="fixed top-16 right-4 z-40 max-w-sm rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl px-4 py-3 flex items-start gap-3"
         >
           <div
-            className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 text-white"
-            style={{
-              backgroundColor: replyToast.isError ? '#dc2626' : 'var(--pa-accent)',
-            }}
+            className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+              replyToast.isError ? 'ring-2 ring-red-500/80' : ''
+            }`}
           >
-            <Bell className="w-3.5 h-3.5" />
+            <WhatsAppSymbol className="w-7 h-7" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">

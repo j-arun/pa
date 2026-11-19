@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { WhatsAppSymbol } from './WhatsAppSymbol';
 import type {
   AnyAdapterId,
   ConversationScope,
@@ -1496,8 +1497,9 @@ export function WorkbenchPage({
               {/* Composer Header with Domain Name */}
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    {`What's Up · ${getPromptDomainShortLabel(activePromptDomain)}`}
+                  <div className="inline-flex items-center gap-1.5 font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    <span>{`WhatsApp · ${getPromptDomainShortLabel(activePromptDomain)}`}</span>
+                    <WhatsAppSymbol className="w-4 h-4 shrink-0" />
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
                     {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()
