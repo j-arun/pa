@@ -11,8 +11,17 @@ export function refreshDotEnvIfNeeded(): void {
 
   for (const filename of ['.env', '.env.local']) {
     const filePath = path.resolve(process.cwd(), filename);
-    if (fs.existsSync(filePath)) {
-      dotenv.config({ path: filePath, override: false, quiet: true });
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const parsed = dotenv.parse(fs.readFileSync(filePath, 'utf8'));
+      for (const [key, value] of Object.entries(parsed)) {
+        const trimmed = value.trim();
+        if (trimmed) {
+          process.env[key] = trimmed;
+        }
+      }
+    } catch {
+      // Ignore transient file read errors while .env is being saved
     }
   }
 }
