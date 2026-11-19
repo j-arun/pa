@@ -18,6 +18,24 @@ export type AnyAdapterId = PrivateAdapterId | PublicAdapterId;
 
 export type GeminiThinkingPreset = 'LOW' | 'MEDIUM' | 'HIGH';
 
+export type EventCardIconType =
+  | 'layers'
+  | 'calendar'
+  | 'compass'
+  | 'sparkles'
+  | 'briefcase'
+  | 'heart'
+  | 'shield';
+
+export interface EventCardItem {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  timeframe?: string;
+  icon: EventCardIconType;
+}
+
 export interface ConversationTurn {
   id: string;
   exchangeId?: string;
@@ -36,6 +54,8 @@ export interface ConversationTurn {
   publicCachedContext?: string;
   role: 'user' | 'assistant' | 'error';
   content: string;
+  eventCards?: EventCardItem[];
+  htmlReport?: string;
   timestamp: string;
   inputMode?: 'text' | 'voice';
   scope: ConversationScope;

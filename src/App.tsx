@@ -2,6 +2,7 @@ import {
   Bell,
   BookOpen,
   Cloud,
+  FileCode2,
   Lock,
   Palette,
   PanelBottom,
@@ -12,10 +13,11 @@ import {
   Star,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { ReferenceContextPage } from './components/ReferenceContextPage';
+import { ReportDocumentPage } from './components/ReportDocumentPage';
 import { SettingsPage } from './components/SettingsPage';
 import {
   WorkbenchPage,
@@ -47,6 +49,11 @@ import {
   saveSettings,
 } from './utils/storage';
 import { THREAD_RATING_OPTIONS } from './utils/promptTemplates';
+import {
+  EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
+  buildThreadHtmlDocument,
+  parseResponseEventsAndReport,
+} from './utils/eventParser';
 import {
   playReplyChime,
   requestDesktopNotificationPermission,
@@ -95,6 +102,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
   const [isReferenceContextOpen, setIsReferenceContextOpen] = useState(false);
+  const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
@@ -123,8 +131,8 @@ export default function App() {
     isError: boolean;
   } | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
-  const [isContextRailOpen, setIsContextRailOpen] = useState(true);
-  const [isChatBarOpen, setIsChatBarOpen] = useState(() => loadConversation().length === 0);
+  const [isContextRailOpen, setIsContextRailOpen] = useState(false);
+  const [isChatBarOpen, setIsChatBarOpen] = useState(true);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -345,14 +353,21 @@ export default function App() {
   }, [ratedThreads]);
 
   useEffect(() => {
-    const ratedUserTurns = turns.filter((turn) => turn.role === 'user' && turn.threadRating);
-    if (ratedUserTurns.length === 0) return;
+    const completedUserTurns = turns.filter((turn) => {
+      if (turn.role !== 'user') return false;
+      const hasReply = turns.some(
+        (candidate) =>
+          candidate.exchangeId === turn.id && candidate.role === 'assistant',
+      );
+      return hasReply || Boolean(turn.threadRating);
+    });
+    if (completedUserTurns.length === 0) return;
 
     setRatedThreads((prevRated) => {
       let changed = false;
       const nextRated = [...prevRated];
 
-      for (const userTurn of ratedUserTurns) {
+      for (const userTurn of completedUserTurns) {
         const snapshot = turns.filter(
           (turn) => turn.id === userTurn.id || turn.exchangeId === userTurn.id,
         );
@@ -367,7 +382,7 @@ export default function App() {
             changed = true;
           }
         } else {
-          nextRated.push({
+          nextRated.unshift({
             id: userTurn.id,
             turns: snapshot,
             ratedAt: new Date().toISOString(),
@@ -426,14 +441,62 @@ export default function App() {
             : turn,
         ),
       );
-      if ('threadRating' in patch && patch.threadRating === undefined) {
-        setRatedThreads((prevRated) =>
-          prevRated.filter((item) => item.id !== exchangeId),
-        );
-      }
+      setRatedThreads((prevRated) =>
+        prevRated.map((item) =>
+          item.id === exchangeId
+            ? {
+                ...item,
+                turns: item.turns.map((turn) =>
+                  turn.id === exchangeId && turn.role === 'user'
+                    ? { ...turn, ...patch }
+                    : turn,
+                ),
+              }
+            : item,
+        ),
+      );
     },
     [],
   );
+
+  const handleSaveHtmlReport = useCallback((exchangeId: string, nextHtml: string) => {
+    setTurns((previous) =>
+      previous.map((turn) =>
+        turn.exchangeId === exchangeId && turn.role === 'assistant'
+          ? { ...turn, htmlReport: nextHtml }
+          : turn,
+      ),
+    );
+    setRatedThreads((prevRated) =>
+      prevRated.map((record) =>
+        record.id === exchangeId
+          ? {
+              ...record,
+              turns: record.turns.map((turn) =>
+                turn.exchangeId === exchangeId && turn.role === 'assistant'
+                  ? { ...turn, htmlReport: nextHtml }
+                  : turn,
+              ),
+            }
+          : record,
+      ),
+    );
+  }, []);
+
+  const activeReportRecord = useMemo(() => {
+    if (!activeReportExchangeId) return null;
+    const fromSaved = ratedThreads.find((r) => r.id === activeReportExchangeId);
+    if (fromSaved) return fromSaved;
+    const matchingTurns = turns.filter(
+      (t) => t.id === activeReportExchangeId || t.exchangeId === activeReportExchangeId,
+    );
+    if (matchingTurns.length === 0) return null;
+    return {
+      id: activeReportExchangeId,
+      turns: matchingTurns,
+      ratedAt: matchingTurns[0].timestamp,
+    };
+  }, [activeReportExchangeId, ratedThreads, turns]);
 
   const handleSendMessage = async ({
     text,
@@ -488,11 +551,17 @@ export default function App() {
       targetCachedContext,
       dedupeSources,
     );
-    const targetSystemInstruction = appendCachedContext(
+    const baseWithTemplate = appendCachedContext(
       baseWithContext,
       majorTemplate,
       dedupeSources,
     );
+    const targetSystemInstruction = [
+      baseWithTemplate,
+      EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     const systemInstructionByScope = {
       private: scope === 'private' ? targetSystemInstruction : '',
       public: scope === 'public' ? targetSystemInstruction : '',
@@ -518,6 +587,8 @@ export default function App() {
     };
 
     setTurns((prev) => [...prev, userTurn]);
+    setActiveReportExchangeId(null);
+    setIsChatBarOpen(false);
     setIsSending(true);
     const requestStartedAt = Date.now();
     setNowMs(requestStartedAt);
@@ -629,12 +700,18 @@ export default function App() {
           (outputTokens !== undefined && elapsedMs > 0
             ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
             : undefined);
-        const assistantTurn: ConversationTurn = {
+        const { cleanMarkdown, events } = parseResponseEventsAndReport(
+          payload.text,
+          effectiveDomain,
+        );
+        const nowIso = new Date().toISOString();
+        const preliminaryReplyTurn: ConversationTurn = {
           id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           exchangeId: userTurn.id,
           role: 'assistant',
-          content: payload.text,
-          timestamp: new Date().toISOString(),
+          content: cleanMarkdown,
+          eventCards: events,
+          timestamp: nowIso,
           scope: payload.scope || targetScope,
           adapterId: payload.adapterId || targetAdapterId,
           model: payload.model || targetModel,
@@ -644,6 +721,19 @@ export default function App() {
           outputTokenCount: outputTokens,
           tokensPerSecond,
           adapterProtocol: payload.protocol,
+        };
+        const htmlReport = buildThreadHtmlDocument({
+          title: threadName || 'Assistant Report',
+          question: text,
+          replies: [preliminaryReplyTurn],
+          domain: effectiveDomain,
+          month: threadMonth,
+          year: threadYear,
+          createdAt: nowIso,
+        });
+        const assistantTurn: ConversationTurn = {
+          ...preliminaryReplyTurn,
+          htmlReport,
         };
 
         setTurns((prev) => [...prev, assistantTurn]);
@@ -756,8 +846,9 @@ export default function App() {
                   setIsSettingsOpen(false);
                   setIsPromptBuilderOpen(false);
                   setIsReferenceContextOpen(false);
+                  setActiveReportExchangeId(null);
                 }}
-                title="Open Personal Assistant workspace"
+                title="Open Personal Assistant Event Stage"
                 className="w-full px-3 pt-2 pb-1 flex items-center gap-2.5 rounded-lg text-left hover:bg-white/65 dark:hover:bg-slate-800/65 transition-colors shrink-0"
               >
                 <img src="/favicon.svg" alt="Personal Assistant" className="w-7 h-7 shrink-0" />
@@ -778,6 +869,7 @@ export default function App() {
                     setIsSettingsOpen(false);
                     setIsPromptBuilderOpen(false);
                     setIsReferenceContextOpen(true);
+                    setActiveReportExchangeId(null);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isReferenceContextOpen
@@ -795,6 +887,7 @@ export default function App() {
                     setIsSettingsOpen(true);
                     setIsPromptBuilderOpen(false);
                     setIsReferenceContextOpen(false);
+                    setActiveReportExchangeId(null);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isSettingsOpen
@@ -812,6 +905,7 @@ export default function App() {
                     setIsSettingsOpen(false);
                     setIsPromptBuilderOpen(true);
                     setIsReferenceContextOpen(false);
+                    setActiveReportExchangeId(null);
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isPromptBuilderOpen
@@ -830,79 +924,79 @@ export default function App() {
                 className="border-t border-slate-200/80 dark:border-slate-800/80 shrink-0"
               />
 
+              <div className="px-2.5 flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+                <span>Reference Reports</span>
+                <span className="tabular-nums">{ratedThreads.length}</span>
+              </div>
+
               <div
-                aria-label="Rated threads"
+                aria-label="Reference HTML Reports"
                 className="flex-1 min-h-0 overflow-y-auto fluent-scroll space-y-1 pr-0.5"
               >
-                {ratedThreads.map((record, index) => {
-                  const qTurn = record.turns.find((turn) => turn.role === 'user');
-                  const rating = qTurn?.threadRating ?? 'green';
-                  const starCount = RATING_STAR_COUNT[rating];
-                  const ratingOption = THREAD_RATING_OPTIONS.find(
-                    (opt) => opt.id === rating,
-                  );
-                  const threadScope =
-                    qTurn?.scope ??
-                    record.turns.find((turn) => turn.role === 'assistant')?.scope ??
-                    'private';
-                  const isPublicThread = threadScope === 'public';
-                  const displayLabel =
-                    qTurn?.threadName?.trim() || `Thread #${index + 1}`;
-                  const isActiveThread =
-                    !isSettingsOpen &&
-                    !isPromptBuilderOpen &&
-                    !isReferenceContextOpen &&
-                    turns.some((turn) => turn.id === record.id);
+                {ratedThreads.length === 0 ? (
+                  <p className="px-2.5 py-2 text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+                    Completed HTML reports will appear here automatically.
+                  </p>
+                ) : (
+                  ratedThreads.map((record, index) => {
+                    const qTurn = record.turns.find((turn) => turn.role === 'user');
+                    const rating = qTurn?.threadRating;
+                    const starCount = rating ? RATING_STAR_COUNT[rating] : 0;
+                    const ratingOption = rating
+                      ? THREAD_RATING_OPTIONS.find((opt) => opt.id === rating)
+                      : undefined;
+                    const threadScope =
+                      qTurn?.scope ??
+                      record.turns.find((turn) => turn.role === 'assistant')?.scope ??
+                      'public';
+                    const isPublicThread = threadScope === 'public';
+                    const displayLabel =
+                      qTurn?.threadName?.trim() || `Report #${index + 1}`;
+                    const isActiveReport = activeReportExchangeId === record.id;
 
-                  return (
-                    <button
-                      key={record.id}
-                      type="button"
-                      onClick={() => {
-                        setIsSettingsOpen(false);
-                        setIsPromptBuilderOpen(false);
-                        setIsReferenceContextOpen(false);
-                        setScope(threadScope);
-                        setTurns(record.turns);
-                        setIsChatBarOpen(false);
-                        setTelemetry({
-                          phase: 'Idle',
-                          isThinking: false,
-                          promptChars: 0,
-                          historyTurnsUsed: 0,
-                          lastError: '',
-                        });
-                      }}
-                      title={`${displayLabel} · ${isPublicThread ? 'Public' : 'Private'} · ${ratingOption?.description ?? `${starCount} stars`}`}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors text-left ${
-                        isPublicThread
-                          ? 'font-bold text-slate-950 dark:text-white'
-                          : 'font-light text-slate-500 dark:text-slate-400'
-                      } ${
-                        isActiveThread
-                          ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                          : 'hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`inline-flex items-center gap-0.5 w-8 shrink-0 ${
+                    return (
+                      <button
+                        key={record.id}
+                        type="button"
+                        onClick={() => {
+                          setIsSettingsOpen(false);
+                          setIsPromptBuilderOpen(false);
+                          setIsReferenceContextOpen(false);
+                          setActiveReportExchangeId(record.id);
+                        }}
+                        title={`Open HTML report "${displayLabel}" in Browser / HTML Editor${ratingOption ? ` · ${ratingOption.description}` : ''}`}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors text-left ${
                           isPublicThread
-                            ? 'text-amber-500 dark:text-amber-400'
-                            : 'text-amber-500/70 dark:text-amber-400/70'
+                            ? 'font-semibold text-slate-900 dark:text-white'
+                            : 'font-normal text-slate-600 dark:text-slate-300'
+                        } ${
+                          isActiveReport
+                            ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
+                            : 'hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
                         }`}
                       >
-                        {Array.from({ length: starCount }).map((_, starIdx) => (
-                          <Star
-                            key={starIdx}
-                            className="w-2.5 h-2.5 fill-current stroke-[2.2]"
-                          />
-                        ))}
-                      </span>
-                      <span className="truncate">{displayLabel}</span>
-                    </button>
-                  );
-                })}
+                        <FileCode2
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: 'var(--pa-accent)' }}
+                        />
+                        <span className="truncate flex-1">{displayLabel}</span>
+                        {starCount > 0 && (
+                          <span
+                            aria-hidden="true"
+                            className="inline-flex items-center gap-0.5 text-amber-500 dark:text-amber-400 shrink-0"
+                          >
+                            {Array.from({ length: starCount }).map((_, starIdx) => (
+                              <Star
+                                key={starIdx}
+                                className="w-2.5 h-2.5 fill-current stroke-[2.2]"
+                              />
+                            ))}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -1007,7 +1101,9 @@ export default function App() {
                   ? 'Prompt Builder'
                   : isReferenceContextOpen
                     ? 'Reference Context'
-                    : 'Personal Assistant'}
+                    : activeReportRecord
+                      ? 'Reference Report'
+                      : 'Personal Assistant'}
             </span>
           </div>
 
@@ -1059,27 +1155,35 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen) {
+                if (
+                  isSettingsOpen ||
+                  isPromptBuilderOpen ||
+                  isReferenceContextOpen ||
+                  activeReportExchangeId
+                ) {
                   setIsSettingsOpen(false);
                   setIsPromptBuilderOpen(false);
                   setIsReferenceContextOpen(false);
+                  setActiveReportExchangeId(null);
                   setIsChatBarOpen(true);
                 } else {
                   setIsChatBarOpen((prev) => !prev);
                 }
               }}
-              aria-label={isChatBarOpen ? 'Hide Chat Bar' : 'Show Chat Bar'}
-              title={isChatBarOpen ? 'Hide Chat Bar' : 'Show Chat Bar'}
+              aria-label={isChatBarOpen ? 'Minimize Chat Panel' : 'Show Chat Panel'}
+              title={isChatBarOpen ? 'Minimize Chat Panel' : 'Show Chat Panel'}
               aria-pressed={
                 !isSettingsOpen &&
                 !isPromptBuilderOpen &&
                 !isReferenceContextOpen &&
+                !activeReportExchangeId &&
                 isChatBarOpen
               }
               className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
                 !isSettingsOpen &&
                 !isPromptBuilderOpen &&
                 !isReferenceContextOpen &&
+                !activeReportExchangeId &&
                 isChatBarOpen
                   ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -1088,6 +1192,7 @@ export default function App() {
                 !isSettingsOpen &&
                 !isPromptBuilderOpen &&
                 !isReferenceContextOpen &&
+                !activeReportExchangeId &&
                 isChatBarOpen
                   ? { color: 'var(--pa-accent-text)' }
                   : undefined
@@ -1164,6 +1269,27 @@ export default function App() {
               onSaveReferenceContext={handleSaveReferenceContext}
               onContextLog={pushContextLog}
             />
+          ) : activeReportRecord ? (
+            <ReportDocumentPage
+              exchangeId={activeReportRecord.id}
+              questionTurn={
+                activeReportRecord.turns.find((t) => t.role === 'user') ?? null
+              }
+              replyTurns={activeReportRecord.turns.filter(
+                (t) => t.role !== 'user',
+              )}
+              onSaveHtmlReport={handleSaveHtmlReport}
+              onViewEventCards={(exchangeId) => {
+                const record = ratedThreads.find((r) => r.id === exchangeId);
+                if (record) {
+                  const qTurn = record.turns.find((t) => t.role === 'user');
+                  if (qTurn?.scope) setScope(qTurn.scope);
+                  setTurns(record.turns);
+                }
+                setActiveReportExchangeId(null);
+              }}
+              onClose={() => setActiveReportExchangeId(null)}
+            />
           ) : (
             <WorkbenchPage
               scope={scope}
@@ -1206,7 +1332,7 @@ export default function App() {
                   historyTurnsUsed: 0,
                   lastError: '',
                 });
-                pushContextLog('info', 'Started new thread; screen cleared');
+                pushContextLog('info', 'Started new thread; stage cleared');
               }}
               onDeleteExchange={(exchangeId) => {
                 setTurns((previous) =>
@@ -1222,7 +1348,14 @@ export default function App() {
               onOpenSettings={() => {
                 setIsReferenceContextOpen(false);
                 setIsPromptBuilderOpen(false);
+                setActiveReportExchangeId(null);
                 setIsSettingsOpen(true);
+              }}
+              onOpenReportViewer={(exchangeId) => {
+                setIsSettingsOpen(false);
+                setIsPromptBuilderOpen(false);
+                setIsReferenceContextOpen(false);
+                setActiveReportExchangeId(exchangeId);
               }}
             />
           )}
@@ -1230,6 +1363,7 @@ export default function App() {
           {!isSettingsOpen &&
             !isPromptBuilderOpen &&
             !isReferenceContextOpen &&
+            !activeReportRecord &&
             isContextRailVisible && (
             <>
               {/* Right Rail Drag Splitter */}
