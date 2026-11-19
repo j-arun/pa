@@ -86,6 +86,64 @@ function splitProbabilityAndRating(rawValue?: string): {
   return { probabilityLine: cleaned };
 }
 
+function getEventRatingSortScore(evt: EventCardItem): number {
+  const raw = (evt.probability || evt.likelihood || '').toLowerCase().trim();
+  if (!raw) return -1;
+
+  const { ratingLine } = splitProbabilityAndRating(raw);
+  const ratingFocus = (ratingLine || raw).toLowerCase();
+
+  const checkTier = (text: string): number => {
+    if (
+      /\b(?:highly\s+likely|very\s+likely|very\s+high|extremely\s+likely|near\s+certain|almost\s+certain|certain)\b/.test(
+        text,
+      )
+    ) {
+      return 5000;
+    }
+    if (/\b(?:moderate[-\s]+to[-\s]+high|moderate[-\s]+high|moderately\s+high)\b/.test(text)) {
+      return 3200;
+    }
+    if (/\b(?:low[-\s]+to[-\s]+moderate|low[-\s]+moderate)\b/.test(text)) {
+      return 1600;
+    }
+    if (/\b(?:unlikely|very\s+low|low|slight|rare|improbable)\b/.test(text)) {
+      return 1000;
+    }
+    if (/\b(?:high|likely|strong|very\s+probable)\b/.test(text)) {
+      return 4000;
+    }
+    if (/\b(?:moderate|medium|possible|probable|fair)\b/.test(text)) {
+      return 2200;
+    }
+    return 0;
+  };
+
+  const tierScore = checkTier(ratingFocus) || checkTier(raw);
+
+  let ratingBonus = 0;
+  const ratingNumMatch =
+    raw.match(/\brating\b\s*[:#\-]?\s*(\d+(?:\.\d+)?)(?:\s*\/\s*(\d+))?/i) ??
+    raw.match(/\b(\d+(?:\.\d+)?)\s*\/\s*(5|10)\b/);
+  if (ratingNumMatch) {
+    const value = Number(ratingNumMatch[1]);
+    const scale = ratingNumMatch[2] ? Number(ratingNumMatch[2]) : value <= 5 ? 5 : 10;
+    if (Number.isFinite(value) && scale > 0) {
+      ratingBonus = Math.min(1, value / scale) * 900;
+    }
+  }
+
+  let pctBonus = 0;
+  const pctMatches = Array.from(raw.matchAll(/(\d{1,3})\s*%/g))
+    .map((m) => Number(m[1]))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 100);
+  if (pctMatches.length > 0) {
+    pctBonus = Math.max(...pctMatches);
+  }
+
+  return tierScore + ratingBonus + pctBonus;
+}
+
 const DOMAIN_HOME_CARDS: Array<{
   domain: PromptDomain;
   label: string;
@@ -253,18 +311,9 @@ function EventCategoryEmblem({ icon }: { icon: EventCardIconType }) {
     case 'shield':
       return (
         <svg viewBox="0 0 36 36" className="w-9 h-9 shrink-0" aria-hidden="true">
-          <path
-            d="M18 4.5L29 9V17.5C29 24.4 24.3 29.8 18 32C11.7 29.8 7 24.4 7 17.5V9L18 4.5Z"
-            fill="#10B981"
-          />
-          <path
-            d="M14 18.2L16.8 21L22.5 14.8"
-            stroke="#FFFFFF"
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
+          <rect x="4" y="4" width="28" height="28" rx="9" fill="#10B981" />
+          <rect x="15.25" y="9.5" width="5.5" height="17" rx="1.8" fill="#FFFFFF" />
+          <rect x="9.5" y="15.25" width="17" height="5.5" rx="1.8" fill="#FFFFFF" />
         </svg>
       );
     case 'sparkles':
@@ -698,7 +747,11 @@ export function WorkbenchPage({
         : Array.isArray(activeAssistantReply.eventCards)
           ? activeAssistantReply.eventCards
           : [];
-    return raw.map((evt, idx) => normalizeEventCardItem(evt, idx));
+    return raw
+      .map((evt, idx) => normalizeEventCardItem(evt, idx))
+      .map((evt, idx) => ({ evt, idx, score: getEventRatingSortScore(evt) }))
+      .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx))
+      .map((entry) => entry.evt);
   }, [activeAssistantReply, activeQuestionTurn?.promptDomain]);
 
   useEffect(() => {
