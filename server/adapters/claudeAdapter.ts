@@ -1,4 +1,8 @@
 import { postJsonConfigurable } from './httpClient.ts';
+import {
+  normalizeAnthropicEndpointUrl,
+  resolveServerEnvSecret,
+} from './envKeys.ts';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -39,19 +43,24 @@ export class ClaudeAdapter implements ILlmAdapter {
   readonly protocol = 'Anthropic Messages v1';
 
   private resolveEndpoint(options?: AdapterRuntimeOptions): string {
-    return (
+    return normalizeAnthropicEndpointUrl(
       options?.endpointUrl?.trim() ||
-      process.env.ANTHROPIC_API_URL?.trim() ||
-      'https://api.anthropic.com/v1/messages'
+        process.env.ANTHROPIC_API_URL?.trim() ||
+        'https://api.anthropic.com/v1/messages',
     );
   }
 
   private resolveApiKey(options?: AdapterRuntimeOptions): string {
     return (
       options?.apiKey?.trim() ||
-      process.env.ANTHROPIC_API_KEY?.trim() ||
-      process.env.CLAUDE_API_KEY?.trim() ||
-      ''
+      resolveServerEnvSecret([
+        'ANTHROPIC_API_KEY',
+        'CLAUDE_API_KEY',
+        'FABLE_API_KEY',
+        'VITE_ANTHROPIC_API_KEY',
+        'VITE_CLAUDE_API_KEY',
+        'VITE_FABLE_API_KEY',
+      ])
     );
   }
 
@@ -90,7 +99,14 @@ export class ClaudeAdapter implements ILlmAdapter {
         2,
       ),
       configuredOnServer: Boolean(
-        process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_API_KEY?.trim(),
+        resolveServerEnvSecret([
+          'ANTHROPIC_API_KEY',
+          'CLAUDE_API_KEY',
+          'FABLE_API_KEY',
+          'VITE_ANTHROPIC_API_KEY',
+          'VITE_CLAUDE_API_KEY',
+          'VITE_FABLE_API_KEY',
+        ]),
       ),
     };
   }
@@ -107,7 +123,8 @@ export class ClaudeAdapter implements ILlmAdapter {
         reachable: false,
         configured: false,
         statusLabel: 'Server Env Unset',
-        detail: `Adapter contract ready (${endpoint}). Provide apiKey or x-api-key per request, or configure ANTHROPIC_API_KEY or CLAUDE_API_KEY on the server.`,
+        detail:
+          'Not found in server process.env (ANTHROPIC_API_KEY, CLAUDE_API_KEY, or FABLE_API_KEY). Add them in AI Studio Secrets if using the cloud preview, or restart the local server after setting Windows/.env variables.',
         latencyMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       };

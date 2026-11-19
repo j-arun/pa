@@ -1,4 +1,8 @@
 import { postJsonConfigurable } from './httpClient.ts';
+import {
+  normalizeAnthropicEndpointUrl,
+  resolveServerEnvSecret,
+} from './envKeys.ts';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
@@ -84,16 +88,30 @@ export class FableAdapter implements ILlmAdapter {
   private resolveApiKey(endpoint: string, options?: AdapterRuntimeOptions): string {
     const raw =
       options?.apiKey?.trim() ||
-      process.env.FABLE_API_KEY?.trim() ||
-      (endpoint && this.usesAnthropicMessagesApi(endpoint)
-        ? process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_API_KEY?.trim()
-        : process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_API_KEY?.trim()) ||
-      '';
+      resolveServerEnvSecret(
+        endpoint && this.usesAnthropicMessagesApi(endpoint)
+          ? [
+              'FABLE_API_KEY',
+              'ANTHROPIC_API_KEY',
+              'CLAUDE_API_KEY',
+              'VITE_FABLE_API_KEY',
+              'VITE_ANTHROPIC_API_KEY',
+              'VITE_CLAUDE_API_KEY',
+            ]
+          : [
+              'FABLE_API_KEY',
+              'ANTHROPIC_API_KEY',
+              'CLAUDE_API_KEY',
+              'VITE_FABLE_API_KEY',
+              'VITE_ANTHROPIC_API_KEY',
+              'VITE_CLAUDE_API_KEY',
+            ],
+      );
     return raw.replace(/^Bearer\s+/i, '').trim();
   }
 
   private resolveEndpoint(options?: AdapterRuntimeOptions): string {
-    let endpoint = (
+    const endpoint = (
       options?.endpointUrl?.trim() ||
       process.env.FABLE_API_URL?.trim() ||
       DEFAULT_ANTHROPIC_ENDPOINT
@@ -101,28 +119,11 @@ export class FableAdapter implements ILlmAdapter {
 
     if (!endpoint) return DEFAULT_ANTHROPIC_ENDPOINT;
 
-    if (!/^https?:\/\//i.test(endpoint)) {
-      endpoint = `https://${endpoint}`;
-    }
-
     if (endpoint.replace(/\/+$/, '').toLowerCase() === RETIRED_FABLE_ENDPOINT) {
       return DEFAULT_ANTHROPIC_ENDPOINT;
     }
 
-    try {
-      const parsed = new URL(endpoint);
-      const cleanPath = parsed.pathname.replace(/\/+$/, '');
-      if (
-        parsed.hostname.toLowerCase() === 'api.anthropic.com' &&
-        (cleanPath === '' || cleanPath === '/v1')
-      ) {
-        parsed.pathname = '/v1/messages';
-        return parsed.toString();
-      }
-      return parsed.toString();
-    } catch {
-      return endpoint;
-    }
+    return normalizeAnthropicEndpointUrl(endpoint, DEFAULT_ANTHROPIC_ENDPOINT);
   }
 
   private usesAnthropicMessagesApi(endpoint: string): boolean {
@@ -287,7 +288,8 @@ export class FableAdapter implements ILlmAdapter {
         reachable: false,
         configured: false,
         statusLabel: 'Server Env Unset',
-        detail: 'Set FABLE_API_KEY, ANTHROPIC_API_KEY, or CLAUDE_API_KEY in server environment secrets.',
+        detail:
+          'Not found in server process.env (FABLE_API_KEY, ANTHROPIC_API_KEY, or CLAUDE_API_KEY). Add them in AI Studio Secrets if using the cloud preview, or restart the local server after setting Windows/.env variables.',
         latencyMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       };

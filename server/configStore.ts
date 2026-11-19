@@ -300,10 +300,26 @@ export function mergeConfigWithDefaults(
           ...DEFAULT_WORKBENCH_CONFIG.publicLlm.adapters.gemini,
           ...(parsed.publicLlm?.adapters?.gemini || {}),
         },
-        claude: {
-          ...DEFAULT_WORKBENCH_CONFIG.publicLlm.adapters.claude,
-          ...(parsed.publicLlm?.adapters?.claude || {}),
-        },
+        claude: (() => {
+          const mergedClaude = {
+            ...DEFAULT_WORKBENCH_CONFIG.publicLlm.adapters.claude,
+            ...(parsed.publicLlm?.adapters?.claude || {}),
+          };
+          const normalizedEndpoint = (mergedClaude.endpointUrl || '')
+            .trim()
+            .replace(/\/+$/, '')
+            .toLowerCase();
+          return {
+            ...mergedClaude,
+            endpointUrl:
+              !normalizedEndpoint ||
+              normalizedEndpoint === 'https://api.anthropic.com' ||
+              normalizedEndpoint === 'https://api.anthropic.com/v1' ||
+              normalizedEndpoint === 'https://api.anthropic.com/v1/message'
+                ? 'https://api.anthropic.com/v1/messages'
+                : mergedClaude.endpointUrl,
+          };
+        })(),
         fable: (() => {
           const mergedFable = {
             ...DEFAULT_WORKBENCH_CONFIG.publicLlm.adapters.fable,
@@ -323,7 +339,10 @@ export function mergeConfigWithDefaults(
                 : mergedFable.model,
             endpointUrl:
               !normalizedEndpoint ||
-              normalizedEndpoint === 'https://api.fable.ai/v1/chat/completions'
+              normalizedEndpoint === 'https://api.fable.ai/v1/chat/completions' ||
+              normalizedEndpoint === 'https://api.anthropic.com' ||
+              normalizedEndpoint === 'https://api.anthropic.com/v1' ||
+              normalizedEndpoint === 'https://api.anthropic.com/v1/message'
                 ? 'https://api.anthropic.com/v1/messages'
                 : mergedFable.endpointUrl,
           };
