@@ -35,6 +35,9 @@ export interface EventCardItem {
   dateRange?: string;
   likelihood?: string;
   timeframe?: string;
+  when?: string;
+  probability?: string;
+  how?: string;
   icon: EventCardIconType;
 }
 

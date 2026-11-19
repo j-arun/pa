@@ -15,12 +15,17 @@ import {
 
 export const EVENT_EXTRACTION_SYSTEM_DIRECTIVE = [
   'Response formatting rule:',
-  '1. Write your complete, thorough report (including Overview, full analysis, and any reference details) in clean Markdown first. This full report goes into the HTML Reference Document.',
-  '2. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing ONLY specific events from the detailed event breakdown (typically 3 to 6 concrete events). Do NOT include an Overview, Introduction, or Summary card in <pa_events>.',
-  '3. Keep each event card free of raw astrological jargon or tables; use clear everyday language.',
-  '4. Schema for each <pa_events> item: {"title":"Specific event headline","dateRange":"Exact date or range e.g. 2026-04-12 to 2026-04-24","likelihood":"Probability/likelihood e.g. High · 82%","summary":"1 to 2 concise sentences describing what happens.","category":"Relationship|Career|Health|Family|Finance|General","icon":"layers|calendar|compass|sparkles|briefcase|heart|shield"}.',
-  '5. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates or short date windows to be careful about across domains.',
-  '6. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range","note":"Brief caution note on what to watch out for.","severity":"high|caution|watch"}.',
+  '1. Write your complete, thorough report in clean Markdown first. This full report goes into the HTML Reference Document.',
+  '2. Structure Section 3 (the 3rd main heading/section of the report) as "## 3. Detailed <Domain> Event Breakdown" (for example: "## 3. Detailed Relationship Event Breakdown", "## 3. Detailed Career Event Breakdown", "## 3. Detailed Family Event Breakdown", or "## 3. Detailed Health Event Breakdown").',
+  '3. Inside Section 3, list every specific event as a numbered event subheading (e.g. "### Event 1: <Specific Event Heading>", "### Event 2: <Specific Event Heading>", etc.) and include all three labeled items under each event:',
+  '   - **When it will happen:** Exact date or date range (e.g. 2026-11-12 to 2026-11-19)',
+  '   - **Probability Rating:** Clear rating and percentage (e.g. High · 84%)',
+  '   - **How it will happen:** Complete, practical everyday explanation of how the event unfolds.',
+  '4. Keep each event free of raw astrological tables; use clear everyday language.',
+  '5. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing EVERY event listed in Section 3 (matching all Event 1..N items). Do NOT include Overview, Introduction, or Summary cards in <pa_events>.',
+  '6. Schema for each <pa_events> item: {"title":"Event 1: Specific event heading","when":"Exact date or range","probability":"Probability rating e.g. High · 82%","how":"Full explanation of how it will happen.","category":"Relationship|Love|Career|Family|Health|General","icon":"heart|shield|briefcase|layers|calendar|compass|sparkles"}.',
+  '7. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates or short date windows to be careful about across domains.',
+  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range","note":"Brief caution note on what to watch out for.","severity":"high|caution|watch"}.',
 ].join('\n');
 
 const VALID_ICONS: readonly EventCardIconType[] = [
@@ -45,22 +50,66 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => HTML_ENTITIES[char]);
 }
 
+function inferCategoryAndIcon(
+  hintText: string,
+  fallbackDomain?: PromptDomain,
+): { category: string; icon: EventCardIconType } {
+  const lower = hintText.toLowerCase();
+  if (/(relationship|love|romance|partner|marriage|couple|affection|dating)/.test(lower)) {
+    return {
+      category: lower.includes('relationship') ? 'Relationship' : 'Love',
+      icon: 'heart',
+    };
+  }
+  if (/(health|wellness|energy|rest|vital|fitness|medical|sleep|stress|body)/.test(lower)) {
+    return {
+      category: 'Health',
+      icon: 'shield',
+    };
+  }
+  if (/(career|work|job|project|business|team|lead|promotion|role|profession)/.test(lower)) {
+    return {
+      category: 'Career',
+      icon: 'briefcase',
+    };
+  }
+  if (/(family|home|parent|child|relative|household|domestic|money|finance|income|budget)/.test(lower)) {
+    return {
+      category: 'Family',
+      icon: 'layers',
+    };
+  }
+
+  switch (fallbackDomain) {
+    case 'health':
+      return { category: 'Health', icon: 'shield' };
+    case 'general':
+      return { category: 'Love', icon: 'heart' };
+    case 'finance':
+      return { category: 'Family', icon: 'layers' };
+    case 'astrology':
+      return { category: 'Career', icon: 'briefcase' };
+    default:
+      return { category: 'General', icon: 'sparkles' };
+  }
+}
+
 function inferIconFromText(text: string, fallbackIndex: number): EventCardIconType {
   const lower = text.toLowerCase();
-  if (/(date|month|year|schedule|plan|timeline|quarter|week|transition|period)/.test(lower)) {
-    return 'calendar';
-  }
-  if (/(career|work|job|project|business|team|lead|promotion|role)/.test(lower)) {
-    return 'briefcase';
+  if (/(relationship|love|family|partner|marriage|romance)/.test(lower)) {
+    return 'heart';
   }
   if (/(health|wellness|energy|rest|vital|fitness|medical|sleep)/.test(lower)) {
     return 'shield';
   }
-  if (/(love|relationship|family|partner|marriage|home|friend)/.test(lower)) {
-    return 'heart';
+  if (/(career|work|job|project|business|team|lead|promotion|role)/.test(lower)) {
+    return 'briefcase';
   }
-  if (/(money|finance|income|budget|invest|saving|expense)/.test(lower)) {
+  if (/(money|finance|income|budget|invest|saving|expense|domestic|home)/.test(lower)) {
     return 'layers';
+  }
+  if (/(date|month|year|schedule|plan|timeline|quarter|week|transition|period)/.test(lower)) {
+    return 'calendar';
   }
   if (/(focus|direction|path|goal|opportunity|strategy|priority)/.test(lower)) {
     return 'compass';
@@ -79,6 +128,15 @@ function cleanPlainSummary(raw: string): string {
     .trim();
 }
 
+function cleanLineKeepText(raw: string): string {
+  return raw
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   const sliced = text.slice(0, maxLength - 1);
@@ -86,7 +144,16 @@ function truncateText(text: string, maxLength: number): string {
   return `${(lastSpace > 42 ? sliced.slice(0, lastSpace) : sliced).trim()}…`;
 }
 
-function normalizeIcon(rawIcon: unknown, hintText: string, index: number): EventCardIconType {
+function normalizeIcon(
+  rawIcon: unknown,
+  hintText: string,
+  index: number,
+  fallbackDomain?: PromptDomain,
+): EventCardIconType {
+  const inferred = inferCategoryAndIcon(hintText, fallbackDomain);
+  if (inferred.icon === 'heart' || inferred.icon === 'shield') {
+    return inferred.icon;
+  }
   if (typeof rawIcon === 'string') {
     const cleaned = rawIcon.trim().toLowerCase() as EventCardIconType;
     if (VALID_ICONS.includes(cleaned)) return cleaned;
@@ -98,7 +165,7 @@ const DATE_RANGE_REGEX =
   /\b(?:\d{4}-\d{2}-\d{2}(?:\s*(?:to|–|-|through)\s*\d{4}-\d{2}-\d{2})?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*(?:to|–|-|through)\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+)?\d{1,2}(?:st|nd|rd|th)?)?(?:,?\s*\d{4})?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b/i;
 
 const LIKELIHOOD_REGEX =
-  /\b(?:(?:very\s+high|high|moderate-high|moderate|medium|low|strong|probable|likely)\s*(?:likelihood|probability|chance)?\s*(?:[:·(]\s*\d{1,3}%\)?)?|\d{1,3}%\s*(?:likelihood|probability|chance|confidence)?)\b/i;
+  /\b(?:(?:very\s+high|high|moderate-high|moderate|medium|low|strong|probable|likely)\s*(?:likelihood|probability|rating|chance)?\s*(?:[:·(\-]\s*\d{1,3}%\)?)?|\d{1,3}%\s*(?:likelihood|probability|rating|chance|confidence)?)\b/i;
 
 function extractDateAndLikelihood(text: string): {
   dateRange?: string;
@@ -118,11 +185,316 @@ function isOverviewHeading(heading: string): boolean {
   );
 }
 
+const WHEN_LABEL_REGEX =
+  /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:when(?:\s+it\s+(?:will\s+)?happen(?:s)?)?|timing|date(?:\s*range|\s*window|s)?|time\s*frame|timeframe|period|schedule)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+
+const PROB_LABEL_REGEX =
+  /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:probability(?:\s+rating)?|likelihood(?:\s+rating)?|chance|confidence|rating)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+
+const HOW_LABEL_REGEX =
+  /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:how(?:\s+it\s+(?:will\s+)?happen(?:s)?)?|what(?:\s+happens|\s+will\s+happen)?|details?|description|mechanism|explanation|breakdown|outcome)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+
+function parseEventHeadingLine(line: string, sectionHeadingLevel: number): string | null {
+  const headingMatch = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+  if (headingMatch) {
+    const level = headingMatch[1].length;
+    const text = cleanLineKeepText(headingMatch[2]);
+    if (!text) return null;
+    if (level > sectionHeadingLevel || /^event\s+\d+\b/i.test(text)) {
+      return text;
+    }
+    return null;
+  }
+
+  const boldEventMatch = line.match(
+    /^\s*(?:[-*•]\s*|\d+\.\s*)?(?:\*\*|__)(Event\s+\d+(?:\s*[:\-–—.]\s*[^*_]+)?)(?:\*\*|__)\s*:?\s*$/i,
+  );
+  if (boldEventMatch) {
+    return cleanLineKeepText(boldEventMatch[1]);
+  }
+
+  const plainEventMatch = line.match(
+    /^\s*(?:[-*•]\s*|\d+\.\s*)?(Event\s+\d+\s*[:\-–—]\s*.+)$/i,
+  );
+  if (plainEventMatch) {
+    return cleanLineKeepText(plainEventMatch[1]);
+  }
+
+  const boldNumberedMatch = line.match(
+    /^\s*(\d+\.\s+(?:\*\*|__)[^*_]+(?:\*\*|__))\s*:?\s*$/,
+  );
+  if (boldNumberedMatch) {
+    return cleanLineKeepText(boldNumberedMatch[1]);
+  }
+
+  return null;
+}
+
+function parseSingleEventBlock(
+  title: string,
+  bodyLines: string[],
+  sectionHeading: string,
+  index: number,
+  fallbackDomain?: PromptDomain,
+): EventCardItem {
+  const whenParts: string[] = [];
+  const probParts: string[] = [];
+  const howParts: string[] = [];
+  const fallbackHowParts: string[] = [];
+  let activeField: 'when' | 'prob' | 'how' | null = null;
+
+  for (const rawLine of bodyLines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || /^[-*_]{3,}$/.test(trimmed) || /^\|/.test(trimmed)) {
+      if (activeField === 'how' && howParts.length > 0) {
+        activeField = 'how';
+      }
+      continue;
+    }
+
+    const whenMatch = trimmed.match(WHEN_LABEL_REGEX);
+    if (whenMatch) {
+      const val = cleanLineKeepText(whenMatch[1]);
+      if (val) whenParts.push(val);
+      activeField = 'when';
+      continue;
+    }
+
+    const probMatch = trimmed.match(PROB_LABEL_REGEX);
+    if (probMatch) {
+      const val = cleanLineKeepText(probMatch[1]);
+      if (val) probParts.push(val);
+      activeField = 'prob';
+      continue;
+    }
+
+    const howMatch = trimmed.match(HOW_LABEL_REGEX);
+    if (howMatch) {
+      const val = cleanLineKeepText(howMatch[1]);
+      if (val) howParts.push(val);
+      activeField = 'how';
+      continue;
+    }
+
+    const cleanedLine = cleanLineKeepText(trimmed.replace(/^\s*(?:[-*•+])\s+/, ''));
+    if (!cleanedLine) continue;
+
+    if (activeField === 'how') {
+      howParts.push(cleanedLine);
+    } else if (activeField === 'when' && whenParts.length === 0) {
+      whenParts.push(cleanedLine);
+    } else if (activeField === 'prob' && probParts.length === 0) {
+      probParts.push(cleanedLine);
+    } else {
+      activeField = 'how';
+      fallbackHowParts.push(cleanedLine);
+    }
+  }
+
+  const combinedBodyText = cleanPlainSummary(bodyLines.join(' '));
+  const inferredMeta = extractDateAndLikelihood(`${title} ${combinedBodyText}`);
+
+  const whenText = whenParts.join(' ').trim() || inferredMeta.dateRange;
+  const probText = probParts.join(' ').trim() || inferredMeta.likelihood;
+  const fullHowText =
+    howParts.join('\n').trim() ||
+    fallbackHowParts.join('\n').trim() ||
+    combinedBodyText ||
+    title;
+
+  const { category, icon } = inferCategoryAndIcon(
+    `${sectionHeading} ${title} ${fullHowText}`,
+    fallbackDomain,
+  );
+
+  return {
+    id: `evt-${index + 1}`,
+    title,
+    summary: fullHowText,
+    how: fullHowText,
+    category,
+    dateRange: whenText,
+    when: whenText,
+    likelihood: probText,
+    probability: probText,
+    timeframe: whenText,
+    icon,
+  };
+}
+
+function extractBreakdownSectionEvents(
+  cleanMarkdown: string,
+  fallbackDomain?: PromptDomain,
+): { events: EventCardItem[]; sectionHeading: string } {
+  const lines = cleanMarkdown.split(/\r?\n/);
+
+  interface HeadingEntry {
+    lineIdx: number;
+    level: number;
+    text: string;
+  }
+
+  const allHeadings: HeadingEntry[] = [];
+  let inCodeFence = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+    const match = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+    if (match) {
+      allHeadings.push({
+        lineIdx: i,
+        level: match[1].length,
+        text: cleanLineKeepText(match[2]),
+      });
+    }
+  }
+
+  // Filter major report sections (not individual "Event 1" / "Event 2" headings)
+  const nonEventHeadings = allHeadings.filter(
+    (h) => !/^event\s+\d+\b/i.test(h.text),
+  );
+
+  // 1. Prefer an explicit "Detailed <Domain> Event Breakdown" or "Event Breakdown" heading
+  let targetHeading = nonEventHeadings.find((h) =>
+    /(?:detailed\s+.{0,40}\bevent\s+breakdown|\bevent\s+breakdown\b)/i.test(h.text),
+  );
+
+  // 2. Otherwise fall back to the 3rd major section heading in the report
+  if (!targetHeading && nonEventHeadings.length >= 3) {
+    const preferredLevel = nonEventHeadings.some((h) => h.level === 2)
+      ? 2
+      : nonEventHeadings.some((h) => h.level === 3)
+        ? 3
+        : nonEventHeadings[0].level;
+    const levelSections = nonEventHeadings.filter((h) => h.level === preferredLevel);
+    targetHeading = levelSections[2] ?? nonEventHeadings[2];
+  }
+
+  let sectionLines: string[] = [];
+  let sectionHeading = '';
+  let sectionLevel = 2;
+
+  if (targetHeading) {
+    sectionHeading = targetHeading.text;
+    sectionLevel = targetHeading.level;
+    const nextPeerHeading = allHeadings.find(
+      (h) =>
+        h.lineIdx > targetHeading!.lineIdx &&
+        h.level <= targetHeading!.level &&
+        !/^event\s+\d+\b/i.test(h.text),
+    );
+    const endIdx = nextPeerHeading ? nextPeerHeading.lineIdx : lines.length;
+    sectionLines = lines.slice(targetHeading.lineIdx + 1, endIdx);
+  } else {
+    // No structured sections found — check if inline Event 1..N blocks exist directly
+    sectionLines = lines;
+    sectionLevel = 2;
+  }
+
+  const eventBlocks: Array<{ title: string; bodyLines: string[] }> = [];
+  let currentTitle: string | null = null;
+  let currentBody: string[] = [];
+
+  for (const line of sectionLines) {
+    const detectedTitle = parseEventHeadingLine(line, sectionLevel);
+    if (detectedTitle) {
+      if (currentTitle) {
+        eventBlocks.push({ title: currentTitle, bodyLines: currentBody });
+      }
+      currentTitle = detectedTitle;
+      currentBody = [];
+      continue;
+    }
+    if (currentTitle !== null) {
+      currentBody.push(line);
+    }
+  }
+
+  if (currentTitle) {
+    eventBlocks.push({ title: currentTitle, bodyLines: currentBody });
+  }
+
+  const parsedBlocks = eventBlocks
+    .filter((b) => !isOverviewHeading(b.title))
+    .map((block, idx) =>
+      parseSingleEventBlock(
+        block.title,
+        block.bodyLines,
+        sectionHeading,
+        idx,
+        fallbackDomain,
+      ),
+    );
+
+  if (parsedBlocks.length > 0) {
+    return { events: parsedBlocks, sectionHeading };
+  }
+
+  // Markdown table fallback inside the 3rd / Event Breakdown section
+  const tableLines = sectionLines.filter((l) => /^\s*\|.*\|\s*$/.test(l));
+  if (tableLines.length >= 3) {
+    const parseRow = (row: string) =>
+      row
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((c) => cleanLineKeepText(c));
+    const headers = parseRow(tableLines[0]).map((h) => h.toLowerCase());
+    const dataRows = tableLines.slice(2);
+    const titleIdx = Math.max(
+      0,
+      headers.findIndex((h) => /event|title|name|milestone|heading/.test(h)),
+    );
+    const whenIdx = headers.findIndex((h) => /when|date|time|window|period/.test(h));
+    const probIdx = headers.findIndex((h) => /prob|likel|chance|rating|conf/.test(h));
+    const howIdx = headers.findIndex((h) => /how|detail|what|desc|summary|explain/.test(h));
+
+    const tableEvents: EventCardItem[] = [];
+    for (let r = 0; r < dataRows.length; r += 1) {
+      const cells = parseRow(dataRows[r]);
+      if (cells.length === 0 || cells.every((c) => !c)) continue;
+      const title = cells[titleIdx] || `Event ${r + 1}`;
+      const whenText = whenIdx >= 0 ? cells[whenIdx] : undefined;
+      const probText = probIdx >= 0 ? cells[probIdx] : undefined;
+      const howText =
+        howIdx >= 0
+          ? cells[howIdx]
+          : cells.filter((_, ci) => ci !== titleIdx && ci !== whenIdx && ci !== probIdx).join(' — ');
+      const { category, icon } = inferCategoryAndIcon(
+        `${sectionHeading} ${title} ${howText}`,
+        fallbackDomain,
+      );
+      tableEvents.push({
+        id: `evt-${r + 1}`,
+        title,
+        summary: howText || title,
+        how: howText || title,
+        category,
+        dateRange: whenText,
+        when: whenText,
+        likelihood: probText,
+        probability: probText,
+        timeframe: whenText,
+        icon,
+      });
+    }
+    if (tableEvents.length > 0) {
+      return { events: tableEvents, sectionHeading };
+    }
+  }
+
+  return { events: [], sectionHeading };
+}
+
 function extractFallbackEvents(
   cleanMarkdown: string,
   fallbackDomain?: PromptDomain,
 ): EventCardItem[] {
-  const defaultCategory = getPromptDomainShortLabel(fallbackDomain);
   const lines = cleanMarkdown.split(/\r?\n/);
   const sections: Array<{ heading: string; body: string[] }> = [];
   let currentHeading = '';
@@ -148,7 +520,6 @@ function extractFallbackEvents(
     sections.push({ heading: currentHeading, body: currentBody });
   }
 
-  // Prefer specific event sections/bullets over generic overview sections
   const specificSections = sections.filter((sec) => !isOverviewHeading(sec.heading));
   const targetSections = specificSections.length > 0 ? specificSections : sections;
 
@@ -161,49 +532,58 @@ function extractFallbackEvents(
 
     const bullets = sec.body
       .filter((line) => /^\s*(?:[-*•]|\d+\.)\s+/.test(line))
-      .map((line) => cleanPlainSummary(line.replace(/^\s*(?:[-*•]|\d+\.)\s+/, '')))
+      .map((line) => cleanLineKeepText(line.replace(/^\s*(?:[-*•]|\d+\.)\s+/, '')))
       .filter((text) => text.length >= 20);
 
-    if (bullets.length >= 2 && cards.length < 6) {
-      for (const bullet of bullets.slice(0, 6)) {
+    if (bullets.length >= 2 && cards.length < 12) {
+      for (const bullet of bullets) {
         const colonSplit = bullet.split(/:\s+/, 2);
-        const hasPrefixTitle = colonSplit.length === 2 && colonSplit[0].length <= 46;
-        const title = hasPrefixTitle ? colonSplit[0] : truncateText(bullet, 48);
+        const hasPrefixTitle = colonSplit.length === 2 && colonSplit[0].length <= 56;
+        const title = hasPrefixTitle ? colonSplit[0] : truncateText(bullet, 56);
         const body = hasPrefixTitle ? colonSplit[1] : bullet;
         const meta = extractDateAndLikelihood(bullet);
+        const { category, icon } = inferCategoryAndIcon(
+          `${sec.heading} ${title} ${body}`,
+          fallbackDomain,
+        );
         cards.push({
           id: `evt-fb-${cards.length + 1}`,
           title,
-          summary: truncateText(body, 175),
-          category:
-            sec.heading && !/event breakdown|detailed/i.test(sec.heading)
-              ? truncateText(sec.heading, 24)
-              : defaultCategory,
+          summary: body,
+          how: body,
+          category,
           dateRange: meta.dateRange,
+          when: meta.dateRange,
           likelihood: meta.likelihood,
+          probability: meta.likelihood,
           timeframe: meta.dateRange,
-          icon: inferIconFromText(`${title} ${body}`, cards.length),
+          icon,
         });
       }
       continue;
     }
 
-    const title = sec.heading || truncateText(summaryText, 46);
+    const title = sec.heading || truncateText(summaryText, 56);
     const body = summaryText || sec.heading;
     const meta = extractDateAndLikelihood(`${title} ${body}`);
+    const { category, icon } = inferCategoryAndIcon(
+      `${sec.heading} ${title} ${body}`,
+      fallbackDomain,
+    );
 
     cards.push({
       id: `evt-fb-${cards.length + 1}`,
-      title: truncateText(title, 56),
-      summary: truncateText(body, 175),
-      category: defaultCategory,
+      title,
+      summary: body,
+      how: body,
+      category,
       dateRange: meta.dateRange,
+      when: meta.dateRange,
       likelihood: meta.likelihood,
+      probability: meta.likelihood,
       timeframe: meta.dateRange,
-      icon: inferIconFromText(`${title} ${body}`, cards.length),
+      icon,
     });
-
-    if (cards.length >= 6) break;
   }
 
   if (cards.length === 0 && cleanMarkdown.trim()) {
@@ -215,20 +595,24 @@ function extractFallbackEvents(
     for (let i = 0; i < sentences.length && cards.length < 4; i += 2) {
       const chunk = sentences.slice(i, i + 2).join(' ');
       const meta = extractDateAndLikelihood(chunk);
+      const { category, icon } = inferCategoryAndIcon(chunk, fallbackDomain);
       cards.push({
         id: `evt-sent-${cards.length + 1}`,
-        title: truncateText(sentences[i], 48),
-        summary: truncateText(chunk, 175),
-        category: defaultCategory,
+        title: truncateText(sentences[i], 56),
+        summary: chunk,
+        how: chunk,
+        category,
         dateRange: meta.dateRange,
+        when: meta.dateRange,
         likelihood: meta.likelihood,
+        probability: meta.likelihood,
         timeframe: meta.dateRange,
-        icon: inferIconFromText(chunk, cards.length),
+        icon,
       });
     }
   }
 
-  return cards.slice(0, 8);
+  return cards.slice(0, 24);
 }
 
 function inferDomainFromLine(line: string, fallbackDomain?: PromptDomain): string {
@@ -295,7 +679,16 @@ export function parseResponseEventsAndReport(
     .replace(/<pa_caution_dates>[\s\S]*?<\/pa_caution_dates>/gi, '')
     .trim();
 
-  let parsedEvents: EventCardItem[] = [];
+  const normalizedMarkdown = cleanMarkdown || rawContent.trim();
+
+  // 1. Parse the 3rd / Detailed Event Breakdown section from the Markdown report
+  const { events: breakdownEvents, sectionHeading } = extractBreakdownSectionEvents(
+    normalizedMarkdown,
+    fallbackDomain,
+  );
+
+  // 2. Parse <pa_events> JSON if provided
+  let jsonEvents: EventCardItem[] = [];
   if (eventsMatch && eventsMatch[1]) {
     try {
       const jsonCandidate = eventsMatch[1]
@@ -312,48 +705,98 @@ export function parseResponseEventsAndReport(
               typeof item.title === 'string' && item.title.trim()
                 ? item.title.trim()
                 : `Event ${idx + 1}`;
-            const summary =
-              typeof item.summary === 'string' && item.summary.trim()
-                ? cleanPlainSummary(item.summary.trim())
-                : title;
-            const category =
+            const rawHow =
+              typeof item.how === 'string' && item.how.trim()
+                ? cleanLineKeepText(item.how.trim())
+                : typeof item.howItHappens === 'string' && item.howItHappens.trim()
+                  ? cleanLineKeepText(item.howItHappens.trim())
+                  : typeof item.summary === 'string' && item.summary.trim()
+                    ? cleanLineKeepText(item.summary.trim())
+                    : title;
+            const rawWhen =
+              typeof item.when === 'string' && item.when.trim()
+                ? item.when.trim()
+                : typeof item.dateRange === 'string' && item.dateRange.trim()
+                  ? item.dateRange.trim()
+                  : typeof item.timeframe === 'string' && item.timeframe.trim()
+                    ? item.timeframe.trim()
+                    : undefined;
+            const rawProb =
+              typeof item.probability === 'string' && item.probability.trim()
+                ? item.probability.trim()
+                : typeof item.probabilityRating === 'string' && item.probabilityRating.trim()
+                  ? item.probabilityRating.trim()
+                  : typeof item.likelihood === 'string' && item.likelihood.trim()
+                    ? item.likelihood.trim()
+                    : undefined;
+            const inferredMeta = extractDateAndLikelihood(`${title} ${rawHow}`);
+            const finalWhen = rawWhen || inferredMeta.dateRange;
+            const finalProb = rawProb || inferredMeta.likelihood;
+            const rawCat =
               typeof item.category === 'string' && item.category.trim()
                 ? item.category.trim()
-                : getPromptDomainShortLabel(fallbackDomain);
-            const rawDateRange =
-              typeof item.dateRange === 'string' && item.dateRange.trim()
-                ? item.dateRange.trim()
-                : typeof item.timeframe === 'string' && item.timeframe.trim()
-                  ? item.timeframe.trim()
-                  : undefined;
-            const rawLikelihood =
-              typeof item.likelihood === 'string' && item.likelihood.trim()
-                ? item.likelihood.trim()
-                : typeof item.probability === 'string' && item.probability.trim()
-                  ? item.probability.trim()
-                  : undefined;
-            const inferred = extractDateAndLikelihood(`${title} ${summary}`);
-            const finalDateRange = rawDateRange || inferred.dateRange;
-            const finalLikelihood = rawLikelihood || inferred.likelihood;
+                : '';
+            const inferredDomain = inferCategoryAndIcon(
+              `${sectionHeading} ${rawCat} ${title} ${rawHow}`,
+              fallbackDomain,
+            );
+            const category = rawCat || inferredDomain.category;
             return {
               id: `evt-${idx + 1}`,
-              title: truncateText(title, 64),
-              summary: truncateText(summary, 190),
-              category: truncateText(category, 28),
-              dateRange: finalDateRange ? truncateText(finalDateRange, 36) : undefined,
-              likelihood: finalLikelihood ? truncateText(finalLikelihood, 30) : undefined,
-              timeframe: finalDateRange ? truncateText(finalDateRange, 36) : undefined,
-              icon: normalizeIcon(item.icon, `${title} ${summary} ${category}`, idx),
+              title,
+              summary: rawHow,
+              how: rawHow,
+              category,
+              dateRange: finalWhen,
+              when: finalWhen,
+              likelihood: finalProb,
+              probability: finalProb,
+              timeframe: finalWhen,
+              icon: normalizeIcon(
+                item.icon,
+                `${sectionHeading} ${category} ${title} ${rawHow}`,
+                idx,
+                fallbackDomain,
+              ),
             };
           });
 
-        // Exclude generic overview cards if specific event cards exist
         const nonOverview = mapped.filter((evt) => !isOverviewHeading(evt.title));
-        parsedEvents = (nonOverview.length > 0 ? nonOverview : mapped).slice(0, 8);
+        jsonEvents = (nonOverview.length > 0 ? nonOverview : mapped).slice(0, 24);
       }
     } catch {
-      // Fall through to fallback extractor
+      // Fall through to breakdown / fallback extractor
     }
+  }
+
+  // Merge: prefer Markdown Event Breakdown blocks when present, backfilling missing fields from JSON
+  let finalEvents: EventCardItem[];
+  if (breakdownEvents.length > 0) {
+    finalEvents = breakdownEvents.map((evt, idx) => {
+      const jsonMatch =
+        jsonEvents[idx] ??
+        jsonEvents.find((j) =>
+          j.title.toLowerCase().includes(evt.title.toLowerCase().slice(0, 16)),
+        );
+      const whenVal = evt.when || evt.dateRange || jsonMatch?.when || jsonMatch?.dateRange;
+      const probVal =
+        evt.probability || evt.likelihood || jsonMatch?.probability || jsonMatch?.likelihood;
+      const howVal = evt.how || evt.summary || jsonMatch?.how || jsonMatch?.summary || evt.title;
+      return {
+        ...evt,
+        when: whenVal,
+        dateRange: whenVal,
+        timeframe: whenVal,
+        probability: probVal,
+        likelihood: probVal,
+        how: howVal,
+        summary: howVal,
+      };
+    });
+  } else if (jsonEvents.length > 0) {
+    finalEvents = jsonEvents;
+  } else {
+    finalEvents = extractFallbackEvents(normalizedMarkdown, fallbackDomain);
   }
 
   let parsedCarefulDates: CarefulDateItem[] = [];
@@ -400,14 +843,9 @@ export function parseResponseEventsAndReport(
     }
   }
 
-  const normalizedMarkdown = cleanMarkdown || rawContent.trim();
-
   return {
     cleanMarkdown: normalizedMarkdown,
-    events:
-      parsedEvents.length > 0
-        ? parsedEvents
-        : extractFallbackEvents(normalizedMarkdown, fallbackDomain),
+    events: finalEvents,
     carefulDates:
       parsedCarefulDates.length > 0
         ? parsedCarefulDates

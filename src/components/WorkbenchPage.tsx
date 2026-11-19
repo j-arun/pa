@@ -638,16 +638,16 @@ export function WorkbenchPage({
 
   const eventCards = useMemo<EventCardItem[]>(() => {
     if (!activeAssistantReply) return [];
-    if (
-      Array.isArray(activeAssistantReply.eventCards) &&
-      activeAssistantReply.eventCards.length > 0
-    ) {
-      return activeAssistantReply.eventCards;
-    }
-    return parseResponseEventsAndReport(
+    const parsedFromReport = parseResponseEventsAndReport(
       activeAssistantReply.content,
       activeQuestionTurn?.promptDomain,
     ).events;
+    if (parsedFromReport.length > 0) {
+      return parsedFromReport;
+    }
+    return Array.isArray(activeAssistantReply.eventCards)
+      ? activeAssistantReply.eventCards
+      : [];
   }, [activeAssistantReply, activeQuestionTurn?.promptDomain]);
 
   useEffect(() => {
@@ -1054,7 +1054,25 @@ export function WorkbenchPage({
                       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
                     >
                       {visibleEvents.map((evt, idx) => {
-                        const displayDate = evt.dateRange || evt.timeframe;
+                        const displayDate = evt.when || evt.dateRange || evt.timeframe;
+                        const displayProbability = evt.probability || evt.likelihood;
+                        const displayHow = evt.how || evt.summary;
+                        const lowerHint = `${evt.category} ${evt.title}`.toLowerCase();
+                        const isRelationshipCard =
+                          evt.icon === 'heart' ||
+                          /(relationship|love|romance|partner|marriage)/.test(lowerHint);
+                        const isHealthCard =
+                          evt.icon === 'shield' ||
+                          /(health|wellness|vitality|medical|energy|fitness)/.test(lowerHint);
+                        const resolvedIcon = isRelationshipCard
+                          ? 'heart'
+                          : isHealthCard
+                            ? 'shield'
+                            : evt.icon;
+                        const topDomainLabel = isHealthCard
+                          ? 'Health'
+                          : evt.category || (isRelationshipCard ? 'Relationship' : 'Event');
+
                         return (
                           <motion.article
                             key={evt.id}
@@ -1065,46 +1083,65 @@ export function WorkbenchPage({
                               delay: idx * 0.06,
                               ease: [0.16, 1, 0.3, 1],
                             }}
-                            className="fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-6 sm:p-7 flex flex-col justify-between min-h-[268px]"
+                            className="fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between min-h-[290px]"
                           >
-                            <div className="space-y-4">
+                            <div className="space-y-3.5">
+                              {/* Top Row: Left = Heart (Relationship) / Health on top | Right = Probability Rating */}
                               <div className="flex items-start justify-between gap-3">
-                                <EventCategoryEmblem icon={evt.icon} />
-                                {evt.likelihood && (
-                                  <div className="text-right tabular-nums">
-                                    <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                      Likelihood
-                                    </div>
-                                    <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
-                                      <Sparkles className="w-3 h-3" />
-                                      <span>{evt.likelihood}</span>
-                                    </div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <EventCategoryEmblem icon={resolvedIcon} />
+                                  <span
+                                    className={`text-xs font-semibold uppercase tracking-wide truncate ${
+                                      isHealthCard
+                                        ? 'text-emerald-700 dark:text-emerald-300'
+                                        : isRelationshipCard
+                                          ? 'text-rose-700 dark:text-rose-300'
+                                          : 'text-slate-700 dark:text-slate-200'
+                                    }`}
+                                  >
+                                    {topDomainLabel}
+                                  </span>
+                                </div>
+
+                                <div className="text-right tabular-nums shrink-0">
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                    Probability Rating
                                   </div>
-                                )}
+                                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center justify-end gap-1">
+                                    <Sparkles className="w-3 h-3 shrink-0" />
+                                    <span>{displayProbability || 'Not specified'}</span>
+                                  </div>
+                                </div>
                               </div>
 
-                              {displayDate && (
-                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 tabular-nums">
-                                  <CalendarRange className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{displayDate}</span>
-                                </div>
-                              )}
+                              {/* Card Heading (Event N: ...) */}
+                              <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
+                                {evt.title}
+                              </h2>
 
-                              <div className="space-y-1.5">
-                                <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
-                                  {evt.title}
-                                </h2>
-                                <p
-                                  className="text-[14px] leading-relaxed text-slate-600 dark:text-slate-300"
+                              {/* 1. When it will happen */}
+                              <div className="rounded-xl bg-sky-50/75 dark:bg-sky-950/35 border border-sky-200/70 dark:border-sky-800/60 px-3 py-2">
+                                <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
+                                  When it will happen
+                                </div>
+                                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                                  <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                  <span>{displayDate || 'Timing detailed below'}</span>
+                                </div>
+                              </div>
+
+                              {/* 2. How it will happen (all details from breakdown preserved) */}
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                  How it will happen
+                                </div>
+                                <div
+                                  className="text-[13.5px] leading-relaxed text-slate-700 dark:text-slate-200 max-h-52 overflow-y-auto fluent-scroll pr-1 whitespace-pre-line"
                                   style={{ fontFamily: 'var(--pa-font-body)' }}
                                 >
-                                  {evt.summary}
-                                </p>
+                                  {displayHow}
+                                </div>
                               </div>
-                            </div>
-
-                            <div className="pt-5 text-xs font-medium text-slate-400 dark:text-slate-500 flex items-center justify-between gap-2 tabular-nums">
-                              <span>{evt.category}</span>
                             </div>
                           </motion.article>
                         );
