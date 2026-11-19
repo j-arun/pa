@@ -12,6 +12,7 @@ import {
   Settings as SettingsIcon,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -222,6 +223,7 @@ interface WorkbenchPageProps {
   isSending: boolean;
   speech: UseSpeechIOResult;
   onSendMessage: (payload: SendThreadMessagePayload) => void;
+  onCancelRequest: () => void;
   onRetryExchange: (exchangeId: string) => void;
   onUpdateExchangeMetadata: (exchangeId: string, patch: ThreadMetadataPatch) => void;
   onClearConversation: () => void;
@@ -823,6 +825,7 @@ export function WorkbenchPage({
   onPromptStyleChange,
   isSending,
   onSendMessage,
+  onCancelRequest,
   onRetryExchange,
   onUpdateExchangeMetadata,
   onClearConversation,
@@ -1212,6 +1215,15 @@ export function WorkbenchPage({
                     >
                       {activeQuestionTurn.content}
                     </p>
+                    <button
+                      type="button"
+                      onClick={onCancelRequest}
+                      aria-label="Cancel request"
+                      title="Cancel request"
+                      className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 dark:bg-slate-800/95 border border-rose-200/90 dark:border-rose-700/80 text-rose-600 dark:text-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/70 transition-colors shadow-xs shrink-0 cursor-pointer"
+                    >
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                    </button>
                   </div>
                   {/* Round Speech Bubble Tail Beads */}
                   <div className="flex flex-col items-start self-start ml-14 -mt-2 space-y-1.5" aria-hidden="true">

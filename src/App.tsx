@@ -157,6 +157,10 @@ export default function App() {
   const skipNextAutoPersistRef = useRef(false);
   const persistDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const replyToastTimerRef = useRef<number | null>(null);
+  const activeRequestAbortRef = useRef<{
+    exchangeId: string;
+    controller: AbortController;
+  } | null>(null);
   const [replyToast, setReplyToast] = useState<{
     title: string;
     preview: string;
@@ -662,6 +666,11 @@ export default function App() {
   );
 
   const handleStartNewThread = useCallback(() => {
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.controller.abort();
+      activeRequestAbortRef.current = null;
+      setIsSending(false);
+    }
     const rootUserTurn = turns.find((turn) => turn.role === 'user');
     if (rootUserTurn) {
       const finalizedTurns = turns.map((turn) =>
@@ -1059,6 +1068,15 @@ export default function App() {
             requestTimeoutSeconds: timeoutSec,
           };
 
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.controller.abort();
+    }
+    const abortController = new AbortController();
+    activeRequestAbortRef.current = {
+      exchangeId: userTurn.id,
+      controller: abortController,
+    };
+
     try {
       if (targetScope === 'private' && !settings.privateLlm.selectedModel.trim()) {
         throw new Error('Select a private Ollama model in Settings to get the Private response.');
@@ -1067,6 +1085,7 @@ export default function App() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           scope: targetScope,
           adapterId: targetAdapterId,
@@ -1152,6 +1171,10 @@ export default function App() {
         createdAt: nowIso,
       });
 
+      if (abortController.signal.aborted) {
+        return;
+      }
+
       const assistantTurn: ConversationTurn = {
         ...preliminaryReplyTurn,
         htmlReport,
@@ -1215,6 +1238,13 @@ export default function App() {
 
       setIsChatBarOpen(false);
     } catch (err) {
+      if (
+        abortController.signal.aborted ||
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        return;
+      }
       const errorMessage = err instanceof Error ? err.message : 'Request failed.';
       const errorTurn: ConversationTurn = {
         id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1250,9 +1280,38 @@ export default function App() {
       if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
       replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
     } finally {
-      setIsSending(false);
+      if (activeRequestAbortRef.current?.exchangeId === userTurn.id) {
+        activeRequestAbortRef.current = null;
+        setIsSending(false);
+      } else if (!activeRequestAbortRef.current) {
+        setIsSending(false);
+      }
     }
   };
+
+  const handleCancelRequest = useCallback(() => {
+    const active = activeRequestAbortRef.current;
+    if (!active) {
+      setIsSending(false);
+      return;
+    }
+    active.controller.abort();
+    activeRequestAbortRef.current = null;
+    setIsSending(false);
+
+    const cancelledId = active.exchangeId;
+    setTurns((prev) =>
+      prev.filter((t) => t.id !== cancelledId && t.exchangeId !== cancelledId),
+    );
+    setTelemetry((prev) => ({
+      ...prev,
+      phase: 'Idle',
+      isThinking: false,
+      startedAtMs: undefined,
+      lastError: '',
+    }));
+    pushContextLog('info', 'Request cancelled by user');
+  }, [pushContextLog]);
 
   const handleSendMessage = async ({
     text,
@@ -1891,6 +1950,7 @@ export default function App() {
               isSending={isSending}
               speech={speech}
               onSendMessage={(payload) => void handleSendMessage(payload)}
+              onCancelRequest={handleCancelRequest}
               onRetryExchange={(exchangeId) => void handleRetryExchange(exchangeId)}
               onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
               onClearConversation={handleStartNewThread}

@@ -293,14 +293,27 @@ async function startServer() {
           ? { ...options, apiKey: requestApiKey }
           : options || {};
 
+      let clientClosed = false;
+      req.on('close', () => {
+        if (!res.writableEnded) {
+          clientClosed = true;
+        }
+      });
+
       const reply = await adapter.sendMessage({
         message: message.trim(),
         history: safeHistory,
         options: requestOptions,
       });
 
+      if (clientClosed || res.writableEnded || res.headersSent) {
+        return;
+      }
       return res.json(reply);
     } catch (err) {
+      if (res.writableEnded || res.headersSent) {
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Adapter request failed.';
       const status =
         message.includes('not configured') || message.includes('No Private Ollama model')
