@@ -2,6 +2,7 @@ import {
   BookOpen,
   Cloud,
   Home,
+  Info,
   Lock,
   Palette,
   PanelBottom,
@@ -127,6 +128,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
   const [isReferenceContextOpen, setIsReferenceContextOpen] = useState(false);
+  const [aboutDateLabel, setAboutDateLabel] = useState<string | null>(null);
   const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
@@ -1758,6 +1760,31 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
+                setAboutDateLabel((prev) => {
+                  if (prev) return null;
+                  const now = new Date();
+                  const dd = String(now.getDate()).padStart(2, '0');
+                  const mm = String(now.getMonth() + 1).padStart(2, '0');
+                  const yyyy = now.getFullYear();
+                  return `${dd}/${mm}/${yyyy} · 19:18`;
+                });
+              }}
+              aria-label="About"
+              title="About"
+              aria-expanded={Boolean(aboutDateLabel)}
+              className={`p-2 rounded-lg border transition-colors shrink-0 ${
+                aboutDateLabel
+                  ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
+                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              style={aboutDateLabel ? { color: 'var(--pa-accent)' } : undefined}
+            >
+              <Info className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
                 if (
                   isSettingsOpen ||
                   isPromptBuilderOpen ||
@@ -2187,6 +2214,29 @@ export default function App() {
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Minimal Two-Line About Modal */}
+      {aboutDateLabel && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="About this application"
+          onClick={() => setAboutDateLabel(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 backdrop-blur-xs p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-2xl border border-white/90 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl px-6 py-5 text-center space-y-2"
+          >
+            <p className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
+              Designed by Arun, fully developed by Google Gemini AI Studio
+            </p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+              {aboutDateLabel}
+            </p>
+          </div>
         </div>
       )}
     </div>
