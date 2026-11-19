@@ -36,27 +36,47 @@ import {
   PROMPT_DOMAINS,
   THREAD_RATING_OPTIONS,
   formatShortYearMonth,
+  getMonthNameFromNumber,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
 
-const STARTER_CARDS: Array<{
-  prompt: string;
-  footer: string;
+const DOMAIN_HOME_CARDS: Array<{
+  domain: PromptDomain;
+  label: string;
+  description: string;
+  buildPrompt: (periodLabel: string) => string;
   icon: EventCardIconType;
 }> = [
   {
-    prompt: 'Detail the key relationship events, date windows, and likelihoods for this period.',
-    footer: 'Relationship Events',
-    icon: 'heart',
-  },
-  {
-    prompt: 'Break down the major career and financial events with specific dates and probability.',
-    footer: 'Career & Planning',
+    domain: 'astrology',
+    label: 'Career',
+    description: 'Career trajectory, profession, and timing events.',
+    buildPrompt: (periodLabel) =>
+      `Detail the key career events, milestones, date windows, and likelihoods for ${periodLabel}.`,
     icon: 'briefcase',
   },
   {
-    prompt: 'Highlight important upcoming health, energy, and family events to plan around.',
-    footer: 'Wellness & Balance',
+    domain: 'finance',
+    label: 'Family',
+    description: 'Family, domestic life, and financial planning events.',
+    buildPrompt: (periodLabel) =>
+      `Detail the key family, domestic, and financial planning events, date windows, and likelihoods for ${periodLabel}.`,
+    icon: 'layers',
+  },
+  {
+    domain: 'general',
+    label: 'Love',
+    description: 'Love, relationships, and emotional connection events.',
+    buildPrompt: (periodLabel) =>
+      `Detail the key love and relationship events, date windows, and likelihoods for ${periodLabel}.`,
+    icon: 'heart',
+  },
+  {
+    domain: 'health',
+    label: 'Health',
+    description: 'Health, vitality, and wellness guidance events.',
+    buildPrompt: (periodLabel) =>
+      `Detail the key health, energy, and wellness events, date windows, and likelihoods for ${periodLabel}.`,
     icon: 'shield',
   },
 ];
@@ -235,6 +255,239 @@ function WhisperIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
+function ScopeIntroIllustration({ scope }: { scope: ConversationScope }) {
+  const isPrivate = scope === 'private';
+
+  if (isPrivate) {
+    return (
+      <motion.div
+        key="intro-whisper"
+        initial={{ opacity: 0, scale: 0.9, y: 6 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        className="shrink-0 select-none"
+        aria-hidden="true"
+      >
+        <svg
+          viewBox="0 0 112 104"
+          className="w-20 h-[74px] sm:w-24 sm:h-[88px] drop-shadow-[0_12px_22px_rgba(5,150,105,0.22)]"
+        >
+          <defs>
+            <linearGradient id="whisperAura" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#A7F3D0" stopOpacity="0.65" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0.12" />
+            </linearGradient>
+            <linearGradient id="whisperJacket" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#10B981" />
+              <stop offset="100%" stopColor="#047857" />
+            </linearGradient>
+            <linearGradient id="whisperSkin" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FDE2C8" />
+              <stop offset="100%" stopColor="#F3B892" />
+            </linearGradient>
+            <linearGradient id="whisperHair" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#334155" />
+              <stop offset="100%" stopColor="#0F172A" />
+            </linearGradient>
+          </defs>
+
+          {/* Soft atmospheric halo */}
+          <circle cx="52" cy="52" r="42" fill="url(#whisperAura)" />
+
+          {/* Leaning shoulders / hoodie */}
+          <path
+            d="M16 96 C18 74, 34 66, 48 66 C60 66, 70 73, 74 96 Z"
+            fill="url(#whisperJacket)"
+          />
+          <path d="M40 68 L50 78 L58 68" fill="#065F46" opacity="0.55" />
+
+          {/* Neck & Head leaning slightly forward */}
+          <rect x="42" y="53" width="12" height="15" rx="6" fill="url(#whisperSkin)" />
+          <ellipse cx="48" cy="40" rx="18" ry="19" fill="url(#whisperSkin)" />
+
+          {/* Stylized hair */}
+          <path
+            d="M30 37 C29 22, 42 15, 55 18 C64 20, 68 29, 66 36 C60 28, 49 26, 38 30 C34 32, 32 35, 30 37 Z"
+            fill="url(#whisperHair)"
+          />
+          <circle cx="31" cy="41" r="4" fill="#F6C3A0" />
+
+          {/* Expressive side eye & brow */}
+          <path
+            d="M52 34 C55 32.5, 59 33, 61 35"
+            stroke="#1E293B"
+            strokeWidth="2"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <ellipse cx="57" cy="39.5" rx="2.4" ry="2.8" fill="#0F172A" />
+          <circle cx="57.8" cy="38.5" r="0.8" fill="#FFFFFF" />
+
+          {/* Soft mouth */}
+          <ellipse cx="64" cy="48.5" rx="2.8" ry="2.2" fill="#BE123C" opacity="0.85" />
+
+          {/* Cupped hand beside mouth (whispering gesture) */}
+          <path
+            d="M55 76 C59 64, 64 52, 68 44 C71 42, 74.5 44.5, 73.5 49 C72 56, 68 65, 65 76 Z"
+            fill="url(#whisperSkin)"
+            stroke="#E29B72"
+            strokeWidth="1.2"
+          />
+          <path
+            d="M68 44 C69.5 41.5, 72.5 42.5, 72 45.5"
+            stroke="#E29B72"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            fill="none"
+          />
+
+          {/* Subtle emerald whisper sound arcs */}
+          <path
+            d="M78 44 C82 46.5, 82 52.5, 78 55"
+            stroke="#059669"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M84.5 39.5 C90.5 44.5, 90.5 54.5, 84.5 59.5"
+            stroke="#10B981"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeDasharray="3 3"
+            fill="none"
+          />
+          <path
+            d="M91.5 35 C99 42.5, 99 56.5, 91.5 64"
+            stroke="#34D399"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeDasharray="2 4"
+            fill="none"
+          />
+        </svg>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      key="intro-speaker"
+      initial={{ opacity: 0, scale: 0.9, y: 6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      className="shrink-0 select-none"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 116 104"
+        className="w-20 h-[74px] sm:w-24 sm:h-[88px] drop-shadow-[0_12px_22px_rgba(2,132,199,0.24)]"
+      >
+        <defs>
+          <linearGradient id="speakerAura" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#BAE6FD" stopOpacity="0.72" />
+            <stop offset="100%" stopColor="#0284C7" stopOpacity="0.14" />
+          </linearGradient>
+          <linearGradient id="speakerCoat" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#0284C7" />
+            <stop offset="100%" stopColor="#1D4ED8" />
+          </linearGradient>
+          <linearGradient id="speakerSkin" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FDE2C8" />
+            <stop offset="100%" stopColor="#F3B892" />
+          </linearGradient>
+          <linearGradient id="speakerHair" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#334155" />
+            <stop offset="100%" stopColor="#0F172A" />
+          </linearGradient>
+          <linearGradient id="megaphoneBody" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#38BDF8" />
+            <stop offset="55%" stopColor="#0284C7" />
+            <stop offset="100%" stopColor="#0369A1" />
+          </linearGradient>
+          <linearGradient id="megaphoneBell" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FBBF24" />
+            <stop offset="100%" stopColor="#F59E0B" />
+          </linearGradient>
+        </defs>
+
+        {/* Soft atmospheric halo */}
+        <circle cx="52" cy="52" r="42" fill="url(#speakerAura)" />
+
+        {/* Torso */}
+        <path
+          d="M12 96 C15 73, 29 66, 43 66 C56 66, 65 74, 68 96 Z"
+          fill="url(#speakerCoat)"
+        />
+        <path d="M35 67 L43 79 L51 67" fill="#FFFFFF" opacity="0.9" />
+
+        {/* Neck & Head */}
+        <rect x="35" y="52" width="12" height="15" rx="6" fill="url(#speakerSkin)" />
+        <ellipse cx="42" cy="39" rx="17" ry="18.5" fill="url(#speakerSkin)" />
+
+        {/* Stylized hair */}
+        <path
+          d="M24 37 C23 22, 36 14, 49 17 C57 19, 61 27, 59 34 C53 26, 43 24, 32 28 C28 30, 26 33, 24 37 Z"
+          fill="url(#speakerHair)"
+        />
+        <circle cx="25" cy="40" r="3.8" fill="#F6C3A0" />
+
+        {/* Enthusiastic eyes & brow */}
+        <path
+          d="M46 32.5 C49 30.5, 53 31, 55 33"
+          stroke="#1E293B"
+          strokeWidth="2"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <ellipse cx="51" cy="38" rx="2.4" ry="2.8" fill="#0F172A" />
+        <circle cx="51.8" cy="37" r="0.8" fill="#FFFFFF" />
+
+        {/* Open speaking mouth */}
+        <ellipse cx="56.5" cy="47.5" rx="3.2" ry="3.6" fill="#9F1239" />
+
+        {/* Hand holding megaphone handle */}
+        <rect x="65" y="55" width="7" height="16" rx="3" transform="rotate(-10 68 62)" fill="#1E293B" />
+        <circle cx="67" cy="64" r="5" fill="url(#speakerSkin)" />
+
+        {/* Catchy 3D Megaphone / Loudspeaker */}
+        <path
+          d="M59 46 L86 32 L89 64 L59 53 Z"
+          fill="url(#megaphoneBody)"
+          stroke="#FFFFFF"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+        <ellipse cx="87.5" cy="48" rx="4.5" ry="16" fill="url(#megaphoneBell)" stroke="#FFFFFF" strokeWidth="1.2" />
+        <ellipse cx="88" cy="48" rx="2" ry="9" fill="#0F172A" opacity="0.22" />
+
+        {/* Vibrant broadcast sound waves */}
+        <path
+          d="M95 39 C100 43, 100 53, 95 57"
+          stroke="#0284C7"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M101 33 C108 40, 108 56, 101 63"
+          stroke="#38BDF8"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          d="M107.5 28 C115 37, 115 59, 107.5 68"
+          stroke="#F59E0B"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+    </motion.div>
+  );
+}
+
 function ScopeBubbleBadge({ turnScope }: { turnScope: ConversationScope }) {
   const isPrivate = turnScope === 'private';
   return (
@@ -409,10 +662,13 @@ export function WorkbenchPage({
   }, [isChatBarOpen]);
 
   const hasActiveThread = exchanges.length > 0;
-  const activeRefPeriod = formatShortYearMonth(
-    settings.contextCache.activeMonth,
-    settings.contextCache.activeYear,
-  );
+  const activeMonthNum =
+    settings.contextCache.activeMonth ?? new Date().getMonth() + 1;
+  const activeYearNum =
+    settings.contextCache.activeYear ?? new Date().getFullYear();
+  const activeMonthName = getMonthNameFromNumber(activeMonthNum) ?? 'November';
+  const activePeriodFullLabel = `${activeMonthName} ${activeYearNum}`;
+  const activeRefPeriod = formatShortYearMonth(activeMonthNum, activeYearNum);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -434,10 +690,16 @@ export function WorkbenchPage({
     });
   };
 
-  const handleStarterCardClick = (promptText: string) => {
-    setDraft(promptText);
-    onOpenChatBar();
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  const handleDomainCardClick = (card: (typeof DOMAIN_HOME_CARDS)[number]) => {
+    if (isSending) return;
+    onPromptDomainChange(card.domain);
+    onSendMessage({
+      text: card.buildPrompt(activePeriodFullLabel),
+      inputMode: 'text',
+      threadName: card.label,
+      promptDomain: card.domain,
+      isFollowUp: false,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -446,22 +708,6 @@ export function WorkbenchPage({
       handleSubmit();
     }
   };
-
-  const displayName = settings.profile.displayName?.trim() || 'there';
-  const activeProviderLabel =
-    scope === 'private'
-      ? `Private · Ollama${
-          settings.privateLlm.selectedModel.trim()
-            ? ` · ${settings.privateLlm.selectedModel.trim()}`
-            : ''
-        }`
-      : `Public · ${
-          settings.publicLlm.activeAdapter === 'gemini'
-            ? 'Gemini'
-            : settings.publicLlm.activeAdapter === 'claude'
-              ? 'Claude'
-              : 'Fable'
-        }`;
 
   const visibleCount = 3;
   const maxStartIndex = Math.max(0, eventCards.length - visibleCount);
@@ -505,65 +751,51 @@ export function WorkbenchPage({
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-8 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-          {/* STAGE 1: Idle Welcome + 3 Crisp Starter Cards */}
+          {/* STAGE 1: Scope Intro Illustration + Medium Period Message + 4 Prompt Builder Domain Cards */}
           {!activeExchange && (
-            <div className="my-auto py-4 space-y-10">
-              <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-                <div className="space-y-3 max-w-2xl">
-                  <h1 className="font-display text-3xl sm:text-4xl md:text-[42px] leading-[1.14] tracking-tight text-balance">
-                    <span className="font-medium text-slate-400 dark:text-slate-400">
-                      Hi {displayName},{' '}
-                    </span>
-                    <span className="font-semibold text-slate-900 dark:text-white">
-                      Ready to Achieve Great Things?
-                    </span>
-                  </h1>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    <button
-                      type="button"
-                      onClick={onOpenSettings}
-                      className="hover:text-slate-800 dark:hover:text-slate-200 underline decoration-slate-300 underline-offset-4 transition-colors"
-                    >
-                      {activeProviderLabel}
-                    </button>
-                    {activeRefPeriod && (
-                      <>
-                        <span aria-hidden="true"> · </span>
-                        <span className="tabular-nums font-medium text-slate-700 dark:text-slate-200">
-                          Context: {activeRefPeriod}
-                        </span>
-                      </>
-                    )}
-                    <span aria-hidden="true"> · </span>
-                    <span>
-                      Ask a question below to see specific event cards here and save the HTML report on the left.
-                    </span>
-                  </p>
-                </div>
-
-                <FluentPeekCompanion caption="Need a boost?" />
+            <div className="my-auto py-4 space-y-8">
+              <div className="flex items-center gap-4 sm:gap-5">
+                <ScopeIntroIllustration scope={scope} />
+                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance">
+                  Ready to achieve great things in{' '}
+                  <span
+                    className={`tabular-nums ${
+                      scope === 'private'
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-sky-700 dark:text-sky-300'
+                    }`}
+                  >
+                    {activePeriodFullLabel}
+                  </span>
+                </h1>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {STARTER_CARDS.map((card, idx) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {DOMAIN_HOME_CARDS.map((card, idx) => (
                   <motion.button
-                    key={card.footer}
+                    key={card.domain}
                     type="button"
-                    onClick={() => handleStarterCardClick(card.prompt)}
+                    disabled={isSending}
+                    onClick={() => handleDomainCardClick(card)}
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.28, delay: idx * 0.07 }}
+                    transition={{ duration: 0.28, delay: idx * 0.06 }}
                     whileHover={{ y: -4 }}
-                    className="group fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-6 sm:p-7 text-left flex flex-col justify-between min-h-[220px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)]"
+                    className="group fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 text-left flex flex-col justify-between min-h-[210px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)] disabled:opacity-50"
                   >
-                    <div className="space-y-5">
+                    <div className="space-y-4">
                       <EventCategoryEmblem icon={card.icon} />
-                      <p className="text-[16px] font-medium leading-snug text-slate-900 dark:text-slate-100">
-                        {card.prompt}
-                      </p>
+                      <div className="space-y-1.5">
+                        <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-white">
+                          {card.label}
+                        </h2>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                          {card.description}
+                        </p>
+                      </div>
                     </div>
-                    <div className="pt-6 text-xs font-medium text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
-                      {card.footer}
+                    <div className="pt-5 text-xs font-medium text-sky-700 dark:text-sky-300 group-hover:translate-x-0.5 transition-transform">
+                      Open {card.label} thread →
                     </div>
                   </motion.button>
                 ))}
