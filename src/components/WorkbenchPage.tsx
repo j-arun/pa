@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  CalendarRange,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -7,8 +8,10 @@ import {
   Hourglass,
   MessageSquarePlus,
   Plus,
+  RotateCcw,
   Settings as SettingsIcon,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -30,9 +33,8 @@ import {
 } from '../utils/eventParser';
 import {
   PROMPT_DOMAINS,
-  THREAD_MONTHS,
   THREAD_RATING_OPTIONS,
-  THREAD_YEARS,
+  formatShortYearMonth,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
 
@@ -42,19 +44,19 @@ const STARTER_CARDS: Array<{
   icon: EventCardIconType;
 }> = [
   {
-    prompt: 'Summarize my current phase, key strengths, and immediate focus areas.',
-    footer: 'Fast Start',
-    icon: 'layers',
+    prompt: 'Detail the key relationship events, date windows, and likelihoods for this period.',
+    footer: 'Relationship Events',
+    icon: 'heart',
   },
   {
-    prompt: 'Compare upcoming transitions for career, family, relationships, and health.',
-    footer: 'Life & Balance',
-    icon: 'compass',
+    prompt: 'Break down the major career and financial events with specific dates and probability.',
+    footer: 'Career & Planning',
+    icon: 'briefcase',
   },
   {
-    prompt: 'Organize my upcoming timeline shifts, milestones, and priorities cleanly.',
-    footer: 'Planning',
-    icon: 'calendar',
+    prompt: 'Highlight important upcoming health, energy, and family events to plan around.',
+    footer: 'Wellness & Balance',
+    icon: 'shield',
   },
 ];
 
@@ -83,9 +85,8 @@ export interface SendThreadMessagePayload {
   text: string;
   inputMode: 'text';
   threadName: string;
-  threadMonth?: string;
-  threadYear?: number;
   promptDomain: PromptDomain;
+  isFollowUp: boolean;
 }
 
 export interface ThreadMetadataPatch {
@@ -116,6 +117,7 @@ interface WorkbenchPageProps {
   isSending: boolean;
   speech: UseSpeechIOResult;
   onSendMessage: (payload: SendThreadMessagePayload) => void;
+  onRetryExchange: (exchangeId: string) => void;
   onUpdateExchangeMetadata: (exchangeId: string, patch: ThreadMetadataPatch) => void;
   onClearConversation: () => void;
   onDeleteExchange: (exchangeId: string) => void;
@@ -229,22 +231,17 @@ function FluentPeekCompanion({ caption }: { caption: string }) {
             <stop offset="100%" stopColor="#020617" />
           </linearGradient>
         </defs>
-        {/* Antennas / ears */}
         <rect x="13" y="21" width="6" height="16" rx="3" fill="#94A3B8" />
         <rect x="69" y="21" width="6" height="16" rx="3" fill="#94A3B8" />
-        {/* Head */}
         <rect x="18" y="8" width="52" height="40" rx="16" fill="url(#paBotBody)" stroke="#E2E8F0" strokeWidth="1.5" />
-        {/* Visor */}
         <rect x="24" y="15" width="40" height="25" rx="10" fill="url(#paBotVisor)" />
-        {/* Happy glowing eyes */}
         <path d="M32 25C33.5 22 36.5 22 38 25" stroke="#38BDF8" strokeWidth="2.6" strokeLinecap="round" fill="none" />
         <path d="M50 25C51.5 22 54.5 22 56 25" stroke="#38BDF8" strokeWidth="2.6" strokeLinecap="round" fill="none" />
         <path d="M41 30.5H47L45.5 34.5C45 35.5 43 35.5 42.5 34.5L41 30.5Z" fill="#E0F2FE" />
-        {/* Shoulders peeking above card */}
         <path d="M22 54C22 48 66 48 66 54L68 74H20L22 54Z" fill="url(#paBotBody)" stroke="#E2E8F0" strokeWidth="1.2" />
         <rect x="30" y="57" width="28" height="3" rx="1.5" fill="#38BDF8" opacity="0.65" />
       </svg>
-      <div className="mb-9 rounded-2xl rounded-bl-sm bg-white/95 dark:bg-slate-800/95 border border-slate-200/80 dark:border-slate-700/80 shadow-md px-3 py-1.5 text-[11px] font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
+      <div className="mb-9 rounded-full bg-white/95 dark:bg-slate-800/95 border border-slate-200/80 dark:border-slate-700/80 shadow-md px-3.5 py-1.5 text-[11px] font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
         {caption}
       </div>
     </div>
@@ -264,6 +261,7 @@ export function WorkbenchPage({
   onPromptStyleChange,
   isSending,
   onSendMessage,
+  onRetryExchange,
   onUpdateExchangeMetadata,
   onClearConversation,
   onDeleteExchange,
@@ -272,9 +270,8 @@ export function WorkbenchPage({
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [threadName, setThreadName] = useState('');
-  const [threadMonth, setThreadMonth] = useState('');
-  const [threadYear, setThreadYear] = useState('');
   const [showComposerOptions, setShowComposerOptions] = useState(false);
+  const [selectedExchangeIndex, setSelectedExchangeIndex] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -282,7 +279,6 @@ export function WorkbenchPage({
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
-  const parsedThreadYear = threadYear ? Number(threadYear) : undefined;
 
   const exchanges = useMemo<ConversationExchange[]>(() => {
     const grouped: ConversationExchange[] = [];
@@ -318,7 +314,21 @@ export function WorkbenchPage({
     return grouped;
   }, [turns]);
 
-  const activeExchange = exchanges[exchanges.length - 1] ?? null;
+  // Always jump view to newest exchange when exchanges count changes
+  useEffect(() => {
+    if (exchanges.length > 0) {
+      setSelectedExchangeIndex(exchanges.length - 1);
+    } else {
+      setSelectedExchangeIndex(0);
+    }
+  }, [exchanges.length]);
+
+  const rootExchange = exchanges[0] ?? null;
+  const clampedExchangeIdx = Math.min(
+    Math.max(0, selectedExchangeIndex),
+    Math.max(0, exchanges.length - 1),
+  );
+  const activeExchange = exchanges[clampedExchangeIdx] ?? null;
   const activeQuestionTurn = activeExchange?.questionTurn ?? null;
   const activeAssistantReply = useMemo(
     () =>
@@ -355,24 +365,29 @@ export function WorkbenchPage({
     }
   }, [isChatBarOpen]);
 
+  const hasActiveThread = exchanges.length > 0;
+  const activeRefPeriod = formatShortYearMonth(
+    settings.contextCache.activeMonth,
+    settings.contextCache.activeYear,
+  );
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const questionText = draft.trim();
     if (!questionText || isSending) return;
-    const submittedThreadName =
-      threadName.trim() || deriveThreadTitleFromPrompt(questionText);
+    const isFollowUp = hasActiveThread;
+    const submittedThreadName = isFollowUp
+      ? rootExchange?.questionTurn?.threadName?.trim() ||
+        deriveThreadTitleFromPrompt(questionText)
+      : threadName.trim() || deriveThreadTitleFromPrompt(questionText);
     setDraft('');
-    setThreadName('');
+    if (!isFollowUp) setThreadName('');
     onSendMessage({
       text: questionText,
       inputMode: 'text',
       threadName: submittedThreadName,
-      threadMonth: threadMonth.trim() || undefined,
-      threadYear:
-        typeof parsedThreadYear === 'number' && Number.isFinite(parsedThreadYear)
-          ? parsedThreadYear
-          : undefined,
       promptDomain: activePromptDomain,
+      isFollowUp,
     });
   };
 
@@ -447,7 +462,7 @@ export function WorkbenchPage({
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-8 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-          {/* STAGE 1: Idle Welcome + 3 Crisp Starter Cards (Model Screenshot Layout) */}
+          {/* STAGE 1: Idle Welcome + 3 Crisp Starter Cards */}
           {!activeExchange && (
             <div className="my-auto py-4 space-y-10">
               <div className="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -468,9 +483,17 @@ export function WorkbenchPage({
                     >
                       {activeProviderLabel}
                     </button>
+                    {activeRefPeriod && (
+                      <>
+                        <span aria-hidden="true"> · </span>
+                        <span className="tabular-nums font-medium text-slate-700 dark:text-slate-200">
+                          Context: {activeRefPeriod}
+                        </span>
+                      </>
+                    )}
                     <span aria-hidden="true"> · </span>
                     <span>
-                      Ask a question in the bottom-right panel to see event cards here and save the full HTML report on the left.
+                      Ask a question below to see specific event cards here and save the HTML report on the left.
                     </span>
                   </p>
                 </div>
@@ -505,114 +528,167 @@ export function WorkbenchPage({
             </div>
           )}
 
-          {/* STAGE 2: Jumping 3D Fluent Question Bubble while Waiting for LLM Response */}
+          {/* STAGE 2: Jumping 3D Fluent Speech Bubble (Oval/Capsule with Tail, NOT a Rectangle) */}
           {isWaitingForReply && activeQuestionTurn && (
             <div className="my-auto py-8 flex flex-col items-center justify-center text-center">
               <div className="relative flex flex-col items-center max-w-2xl w-full">
-                {/* 3D Fluent Jumping Bubble — displays ONLY the user's exact question */}
                 <motion.div
                   key={`jumping-${activeQuestionTurn.id}`}
-                  initial={{ opacity: 0, scale: 0.86, y: 40 }}
+                  initial={{ opacity: 0, scale: 0.82, y: 42 }}
                   animate={{
                     opacity: 1,
                     scale: 1,
-                    y: [0, -24, 0, -14, 0],
-                    rotateZ: [-0.8, 0.8, -0.5, 0.6, -0.8],
+                    y: [0, -26, 0, -14, 0],
+                    rotateZ: [-0.9, 0.9, -0.5, 0.6, -0.9],
                   }}
                   transition={{
-                    opacity: { duration: 0.25 },
-                    scale: { type: 'spring', stiffness: 260, damping: 20 },
+                    opacity: { duration: 0.24 },
+                    scale: { type: 'spring', stiffness: 260, damping: 18 },
                     y: {
-                      duration: 2.1,
+                      duration: 2.0,
                       repeat: Infinity,
                       ease: 'easeInOut',
                     },
                     rotateZ: {
-                      duration: 3.2,
+                      duration: 3.1,
                       repeat: Infinity,
                       ease: 'easeInOut',
                     },
                   }}
-                  className="fluent-3d-bubble relative rounded-[34px] px-8 py-6 sm:px-10 sm:py-7 max-w-xl w-full text-left"
+                  className="relative max-w-xl w-full flex flex-col items-center"
                 >
-                  {/* Specular Fluent corner highlight */}
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute -top-2.5 right-7 h-5 w-16 rounded-full bg-white/80 dark:bg-sky-400/20 blur-sm"
-                  />
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <span className="text-xs font-semibold text-sky-700 dark:text-sky-300 truncate">
-                      {activeQuestionTurn.threadName?.trim() || 'Your Question'}
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                  <div className="fluent-3d-bubble relative w-full px-10 py-7 sm:px-12 sm:py-8 text-center">
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute top-2.5 left-12 right-12 h-3 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[2px]"
+                    />
+                    <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 mb-1.5">
                       {activeProviderLabel}
-                    </span>
+                    </div>
+                    <p
+                      className="text-lg sm:text-xl font-semibold leading-snug text-slate-900 dark:text-white break-words"
+                      style={{ fontFamily: 'var(--pa-font-body)' }}
+                    >
+                      {activeQuestionTurn.content}
+                    </p>
                   </div>
-                  <p
-                    className="text-lg sm:text-xl font-semibold leading-snug text-slate-900 dark:text-white break-words"
-                    style={{ fontFamily: 'var(--pa-font-body)' }}
-                  >
-                    {activeQuestionTurn.content}
-                  </p>
+                  {/* 3D Thought/Speech Bubble Tail Beads */}
+                  <div className="flex flex-col items-start self-start ml-16 -mt-1.5 space-y-1.5" aria-hidden="true">
+                    <span className="fluent-3d-bubble-tail w-5 h-5 rounded-full block" />
+                    <span className="fluent-3d-bubble-tail w-3 h-3 rounded-full -ml-2 block" />
+                  </div>
                 </motion.div>
 
                 {/* Reactive Floor Shadow beneath Jumping 3D Bubble */}
                 <motion.div
                   aria-hidden="true"
                   animate={{
-                    scaleX: [1, 0.72, 1, 0.82, 1],
-                    opacity: [0.32, 0.16, 0.32, 0.22, 0.32],
+                    scaleX: [1, 0.68, 1, 0.8, 1],
+                    opacity: [0.32, 0.14, 0.32, 0.2, 0.32],
                   }}
                   transition={{
-                    duration: 2.1,
+                    duration: 2.0,
                     repeat: Infinity,
                     ease: 'easeInOut',
                   }}
-                  className="mt-5 h-3.5 w-52 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
+                  className="mt-2 h-3.5 w-48 rounded-full bg-slate-900/25 dark:bg-sky-400/25 blur-md"
                 />
 
-                <div className="mt-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <div className="mt-5 inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                   <Hourglass className="w-3.5 h-3.5 animate-spin text-sky-600 dark:text-sky-400" />
-                  <span>Gathering events &amp; formatting HTML report…</span>
+                  <span>Gathering specific events &amp; updating HTML report…</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* STAGE 3: Response Arrived — Settled 3D Question Banner + Sliding Event Cards */}
+          {/* STAGE 3: Response Arrived — Settled 3D Speech Bubble with In-Bubble Retry + Sliding Event Cards */}
           {!isWaitingForReply && activeExchange && (
             <div className="my-auto py-4 space-y-6">
-              {/* Settled 3D Fluent Question Header (NO raw report / NO context shown) */}
+              {/* Follow-up Turn Switcher when >1 turn exists in this thread */}
+              {exchanges.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {exchanges.map((ex, idx) => {
+                    const isCurrent = idx === clampedExchangeIdx;
+                    return (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => setSelectedExchangeIndex(idx)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                          isCurrent
+                            ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
+                            : 'bg-white/80 dark:bg-slate-800/80 border border-slate-200/85 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{idx === 0 ? 'Initial' : `Follow-up ${idx}`}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Settled 3D Fluent Speech Bubble with In-Bubble Retry */}
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <motion.div
                   key={`settled-${activeExchange.id}`}
-                  initial={{ opacity: 0, y: -12, scale: 0.97 }}
+                  initial={{ opacity: 0, y: -12, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                  className="fluent-3d-bubble rounded-[26px] px-6 py-4 max-w-2xl"
+                  className="relative max-w-2xl"
                 >
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 mb-1">
-                    <span className="font-semibold text-sky-700 dark:text-sky-300">
-                      {activeQuestionTurn?.threadName?.trim() || 'Active Thread'}
-                    </span>
-                    {activeQuestionTurn?.promptDomain && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span>{getPromptDomainShortLabel(activeQuestionTurn.promptDomain)}</span>
-                      </>
-                    )}
-                    {activeQuestionTurn?.threadMonth && activeQuestionTurn?.threadYear && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span className="tabular-nums">
-                          {activeQuestionTurn.threadMonth} {activeQuestionTurn.threadYear}
+                  <div className="fluent-3d-bubble relative px-8 py-5 sm:px-10 sm:py-5">
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute top-2 left-10 right-10 h-2.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-semibold text-sky-700 dark:text-sky-300">
+                          {rootExchange?.questionTurn?.threadName?.trim() ||
+                            activeQuestionTurn?.threadName?.trim() ||
+                            'Active Thread'}
                         </span>
-                      </>
-                    )}
+                        {activeQuestionTurn?.promptDomain && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span>{getPromptDomainShortLabel(activeQuestionTurn.promptDomain)}</span>
+                          </>
+                        )}
+                        {(activeQuestionTurn?.threadMonth || activeQuestionTurn?.threadYear) && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="tabular-nums">
+                              {formatShortYearMonth(
+                                activeQuestionTurn?.threadMonth,
+                                activeQuestionTurn?.threadYear,
+                              )}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onRetryExchange(activeExchange.id)}
+                        disabled={isSending}
+                        title="Retry this exact question with the active LLM provider"
+                        className="inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-700 disabled:opacity-45 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Retry</span>
+                      </button>
+                    </div>
+
+                    <h1 className="font-display text-base sm:text-lg font-semibold leading-snug text-slate-900 dark:text-white pr-2">
+                      {activeQuestionTurn?.content || 'Assistant Events'}
+                    </h1>
                   </div>
-                  <h1 className="font-display text-lg sm:text-xl font-semibold leading-snug text-slate-900 dark:text-white">
-                    {activeQuestionTurn?.content || 'Assistant Events'}
-                  </h1>
+                  {/* Speech bubble tail */}
+                  <div className="flex items-center gap-1.5 ml-12 -mt-1" aria-hidden="true">
+                    <span className="fluent-3d-bubble-tail w-4 h-4 rounded-full block" />
+                    <span className="fluent-3d-bubble-tail w-2.5 h-2.5 rounded-full mt-2 block" />
+                  </div>
                 </motion.div>
 
                 <div className="flex items-center gap-3">
@@ -626,43 +702,44 @@ export function WorkbenchPage({
                 </div>
               </div>
 
-              {/* Error State if Provider Failed */}
+              {/* Error State if Provider Failed — with Retry right inside */}
               {activeErrorReply && !activeAssistantReply && (
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/70 bg-red-50/90 dark:bg-red-950/40 p-6 text-red-900 dark:text-red-200 max-w-2xl">
                   <div className="text-xs font-semibold mb-1">
                     {activeErrorReply.scope === 'private'
-                      ? 'Private · Ollama Error'
-                      : `Public · ${activeErrorReply.adapterId} Error`}
+                      ? 'Private · Ollama Unavailable'
+                      : `Public · ${activeErrorReply.adapterId} Unavailable`}
                   </div>
                   <p className="text-sm leading-relaxed">{activeErrorReply.content}</p>
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onRetryExchange(activeExchange.id)}
+                      disabled={isSending}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Retry Question</span>
+                    </button>
                     <button
                       type="button"
                       onClick={onOpenSettings}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-xs font-medium text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
                     >
                       <SettingsIcon className="w-3.5 h-3.5" />
-                      <span>Open Settings</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onOpenChatBar}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium transition-colors"
-                    >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                      <span>Ask Again</span>
+                      <span>Switch Provider in Settings</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Sliding Event Cards Carousel */}
+              {/* Sliding Event Cards Carousel — Specific Events ONLY (Date Range + Likelihood) */}
               {activeAssistantReply && eventCards.length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
                       Showing {clampedStart + 1}–{Math.min(clampedStart + visibleCount, eventCards.length)} of{' '}
-                      {eventCards.length} events
+                      {eventCards.length} specific events
                     </span>
 
                     <div className="flex items-center gap-2">
@@ -702,60 +779,87 @@ export function WorkbenchPage({
                       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
                       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
                     >
-                      {visibleEvents.map((evt, idx) => (
-                        <motion.article
-                          key={evt.id}
-                          initial={{ opacity: 0, x: 28, y: 8 }}
-                          animate={{ opacity: 1, x: 0, y: 0 }}
-                          transition={{
-                            duration: 0.28,
-                            delay: idx * 0.06,
-                            ease: [0.16, 1, 0.3, 1],
-                          }}
-                          className="fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-6 sm:p-7 flex flex-col justify-between min-h-[248px]"
-                        >
-                          <div className="space-y-4">
-                            <EventCategoryEmblem icon={evt.icon} />
-                            <div className="space-y-1.5">
-                              <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
-                                {evt.title}
-                              </h2>
-                              <p
-                                className="text-[14px] leading-relaxed text-slate-600 dark:text-slate-300"
-                                style={{ fontFamily: 'var(--pa-font-body)' }}
-                              >
-                                {evt.summary}
-                              </p>
-                            </div>
-                          </div>
+                      {visibleEvents.map((evt, idx) => {
+                        const displayDate = evt.dateRange || evt.timeframe;
+                        return (
+                          <motion.article
+                            key={evt.id}
+                            initial={{ opacity: 0, x: 28, y: 8 }}
+                            animate={{ opacity: 1, x: 0, y: 0 }}
+                            transition={{
+                              duration: 0.28,
+                              delay: idx * 0.06,
+                              ease: [0.16, 1, 0.3, 1],
+                            }}
+                            className="fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-6 sm:p-7 flex flex-col justify-between min-h-[268px]"
+                          >
+                            <div className="space-y-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <EventCategoryEmblem icon={evt.icon} />
+                                {evt.likelihood && (
+                                  <div className="text-right tabular-nums">
+                                    <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                      Likelihood
+                                    </div>
+                                    <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+                                      <Sparkles className="w-3 h-3" />
+                                      <span>{evt.likelihood}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
 
-                          <div className="pt-5 text-xs font-medium text-slate-400 dark:text-slate-500 flex items-center gap-2 tabular-nums">
-                            <span>{evt.category}</span>
-                            {evt.timeframe && (
-                              <>
-                                <span aria-hidden="true">·</span>
-                                <span>{evt.timeframe}</span>
-                              </>
-                            )}
-                          </div>
-                        </motion.article>
-                      ))}
+                              {displayDate && (
+                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 tabular-nums">
+                                  <CalendarRange className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{displayDate}</span>
+                                </div>
+                              )}
+
+                              <div className="space-y-1.5">
+                                <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
+                                  {evt.title}
+                                </h2>
+                                <p
+                                  className="text-[14px] leading-relaxed text-slate-600 dark:text-slate-300"
+                                  style={{ fontFamily: 'var(--pa-font-body)' }}
+                                >
+                                  {evt.summary}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="pt-5 text-xs font-medium text-slate-400 dark:text-slate-500 flex items-center justify-between gap-2 tabular-nums">
+                              <span>{evt.category}</span>
+                            </div>
+                          </motion.article>
+                        );
+                      })}
                     </motion.div>
                   </AnimatePresence>
                 </div>
               )}
 
-              {/* Subtle Stage Footer Controls: Open Full HTML Report, Rate Period, New Question */}
-              {activeAssistantReply && (
+              {/* Subtle Stage Footer Controls: Open Full HTML Report, Ask Follow-up, New Thread, Rate */}
+              {activeAssistantReply && rootExchange && (
                 <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => onOpenReportViewer(activeExchange.id)}
+                      onClick={() => onOpenReportViewer(rootExchange.id)}
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors shadow-xs whitespace-nowrap shrink-0"
                     >
                       <FileCode2 className="w-3.5 h-3.5" />
                       <span>Open HTML Report</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onOpenChatBar}
+                      disabled={isSending}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+                    >
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                      <span>Ask Follow-up</span>
                     </button>
                     <button
                       type="button"
@@ -764,14 +868,14 @@ export function WorkbenchPage({
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/85 dark:bg-slate-900/80 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>New Question</span>
+                      <span>New Thread</span>
                     </button>
-                    {confirmDeleteId === activeExchange.id ? (
+                    {confirmDeleteId === rootExchange.id ? (
                       <div className="inline-flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => {
-                            onDeleteExchange(activeExchange.id);
+                            onDeleteExchange(rootExchange.id);
                             setConfirmDeleteId(null);
                           }}
                           className="px-3 py-2 rounded-xl bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition-colors whitespace-nowrap shrink-0"
@@ -789,7 +893,7 @@ export function WorkbenchPage({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setConfirmDeleteId(activeExchange.id)}
+                        onClick={() => setConfirmDeleteId(rootExchange.id)}
                         disabled={isSending}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/75 text-xs font-medium text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-300 transition-colors whitespace-nowrap shrink-0"
                       >
@@ -799,19 +903,19 @@ export function WorkbenchPage({
                     )}
                   </div>
 
-                  {activeQuestionTurn && (
+                  {rootExchange.questionTurn && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">
                         Rate:
                       </span>
                       {THREAD_RATING_OPTIONS.map((opt) => {
-                        const selected = activeQuestionTurn.threadRating === opt.id;
+                        const selected = rootExchange.questionTurn?.threadRating === opt.id;
                         return (
                           <button
                             key={opt.id}
                             type="button"
                             onClick={() =>
-                              onUpdateExchangeMetadata(activeExchange.id, {
+                              onUpdateExchangeMetadata(rootExchange.id, {
                                 threadRating: selected ? undefined : opt.id,
                               })
                             }
@@ -857,18 +961,33 @@ export function WorkbenchPage({
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    Ask Personal Assistant
+                    {hasActiveThread
+                      ? `Follow-up · ${rootExchange?.questionTurn?.threadName?.trim() || 'Active Thread'}`
+                      : 'Ask Personal Assistant'}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
                     {activeProviderLabel}
+                    {activeRefPeriod ? ` · Period: ${activeRefPeriod}` : ''}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {hasActiveThread && (
+                    <button
+                      type="button"
+                      onClick={onClearConversation}
+                      disabled={isSending}
+                      title="Start a brand new thread"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>New</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowComposerOptions((prev) => !prev)}
                     aria-expanded={showComposerOptions}
-                    title="Thread domain, month, year, and prompt style"
+                    title="Domain and prompt style"
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                       showComposerOptions
                         ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
@@ -903,17 +1022,19 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Thread Name Input */}
-              <input
-                type="text"
-                value={threadName}
-                onChange={(e) => setThreadName(e.target.value)}
-                placeholder="Thread name (auto-named if blank)"
-                aria-label="Thread Name"
-                className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/80 dark:bg-slate-950/65 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15"
-              />
+              {/* Thread Name Input (shown for new thread; follow-ups update the active thread automatically) */}
+              {!hasActiveThread && (
+                <input
+                  type="text"
+                  value={threadName}
+                  onChange={(e) => setThreadName(e.target.value)}
+                  placeholder="Report / Thread name (auto-named if blank)"
+                  aria-label="Thread Name"
+                  className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/80 dark:bg-slate-950/65 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15"
+                />
+              )}
 
-              {/* Collapsible Domain / Month / Year / Style Options */}
+              {/* Collapsible Domain / Style Options (Month & Year come from Reference Context) */}
               {showComposerOptions && (
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
                   <select
@@ -945,34 +1066,6 @@ export function WorkbenchPage({
                       </button>
                     ))}
                   </div>
-
-                  <select
-                    aria-label="Thread Month"
-                    value={threadMonth}
-                    onChange={(e) => setThreadMonth(e.target.value)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
-                  >
-                    <option value="">Month (optional)</option>
-                    {THREAD_MONTHS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    aria-label="Thread Year"
-                    value={threadYear}
-                    onChange={(e) => setThreadYear(e.target.value)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-xs tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none"
-                  >
-                    <option value="">Year (optional)</option>
-                    {THREAD_YEARS.map((yr) => (
-                      <option key={yr} value={yr}>
-                        {yr}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               )}
 
@@ -991,7 +1084,11 @@ export function WorkbenchPage({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type your question… (Enter to send)"
+                  placeholder={
+                    hasActiveThread
+                      ? 'Ask a follow-up question to update this report…'
+                      : 'Type your question… (Enter to send)'
+                  }
                   style={{ fontFamily: 'var(--pa-font-body)' }}
                   className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none"
                 />
@@ -1005,7 +1102,7 @@ export function WorkbenchPage({
                     <Hourglass className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>Send</span>
+                      <span>{hasActiveThread ? 'Follow Up' : 'Send'}</span>
                       <ArrowUp className="w-3.5 h-3.5" />
                     </>
                   )}
@@ -1022,10 +1119,16 @@ export function WorkbenchPage({
               exit={{ opacity: 0, y: 12, scale: 0.9 }}
               transition={{ duration: 0.18 }}
               whileHover={{ y: -2 }}
-              className="pointer-events-auto inline-flex items-center gap-2.5 rounded-2xl border border-white/90 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] hover:shadow-[0_18px_40px_-10px_rgba(2,132,199,0.28)] transition-shadow"
+              className="pointer-events-auto inline-flex items-center gap-2.5 rounded-full border border-white/90 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] hover:shadow-[0_18px_40px_-10px_rgba(2,132,199,0.28)] transition-shadow"
             >
               <MessageSquarePlus className="w-4 h-4" style={{ color: 'var(--pa-accent)' }} />
-              <span>{isSending ? 'Thinking…' : 'Ask Assistant'}</span>
+              <span>
+                {isSending
+                  ? 'Thinking…'
+                  : hasActiveThread
+                    ? 'Ask Follow-up'
+                    : 'Ask Assistant'}
+              </span>
             </motion.button>
           )}
         </AnimatePresence>

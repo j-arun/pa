@@ -10,17 +10,22 @@ import {
   RotateCcw,
   Save,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ConversationTurn } from '../types/workbench';
-import { buildThreadHtmlDocument } from '../utils/eventParser';
-import { getPromptDomainShortLabel } from '../utils/promptTemplates';
+import {
+  buildThreadHtmlDocument,
+  type ThreadHtmlExchangeInput,
+} from '../utils/eventParser';
+import {
+  formatShortYearMonth,
+  getPromptDomainShortLabel,
+} from '../utils/promptTemplates';
 
 type ReportViewMode = 'browser' | 'editor' | 'split';
 
 interface ReportDocumentPageProps {
   exchangeId: string;
-  questionTurn: ConversationTurn | null;
-  replyTurns: ConversationTurn[];
+  turns: ConversationTurn[];
   onSaveHtmlReport: (exchangeId: string, html: string) => void;
   onViewEventCards: (exchangeId: string) => void;
   onClose: () => void;
@@ -28,28 +33,70 @@ interface ReportDocumentPageProps {
 
 export function ReportDocumentPage({
   exchangeId,
-  questionTurn,
-  replyTurns,
+  turns,
   onSaveHtmlReport,
   onViewEventCards,
   onClose,
 }: ReportDocumentPageProps) {
-  const title = questionTurn?.threadName?.trim() || 'Reference Report';
-  const primaryReply =
-    replyTurns.find((turn) => turn.role === 'assistant') ?? replyTurns[0];
+  const { rootQuestion, latestReply, exchanges } = useMemo(() => {
+    const grouped: ThreadHtmlExchangeInput[] = [];
+    const byId = new Map<string, ThreadHtmlExchangeInput>();
+    let current: ThreadHtmlExchangeInput | null = null;
+    let firstQ: ConversationTurn | null = null;
+    let lastReply: ConversationTurn | null = null;
 
-  const generatedHtml = buildThreadHtmlDocument({
-    title,
-    question: questionTurn?.content || '',
-    replies: replyTurns,
-    domain: questionTurn?.promptDomain,
-    month: questionTurn?.threadMonth,
-    year: questionTurn?.threadYear,
-    rating: questionTurn?.threadRating,
-    createdAt: primaryReply?.timestamp || questionTurn?.timestamp,
-  });
+    for (const turn of turns) {
+      if (turn.role === 'user') {
+        if (!firstQ) firstQ = turn;
+        current = {
+          question: turn.content,
+          replies: [],
+          askedAt: turn.timestamp,
+        };
+        grouped.push(current);
+        byId.set(turn.id, current);
+      } else {
+        if (turn.role === 'assistant') lastReply = turn;
+        const target = turn.exchangeId ? byId.get(turn.exchangeId) : current;
+        if (target) {
+          target.replies.push(turn);
+        }
+      }
+    }
 
-  const savedHtml = primaryReply?.htmlReport || generatedHtml;
+    return {
+      rootQuestion: firstQ,
+      latestReply: lastReply,
+      exchanges: grouped,
+    };
+  }, [turns]);
+
+  const title = rootQuestion?.threadName?.trim() || 'Reference Report';
+
+  const generatedHtml = useMemo(
+    () =>
+      buildThreadHtmlDocument({
+        title,
+        exchanges,
+        domain: rootQuestion?.promptDomain,
+        month: rootQuestion?.threadMonth,
+        year: rootQuestion?.threadYear,
+        rating: rootQuestion?.threadRating,
+        createdAt: latestReply?.timestamp || rootQuestion?.timestamp,
+      }),
+    [
+      exchanges,
+      latestReply?.timestamp,
+      rootQuestion?.promptDomain,
+      rootQuestion?.threadMonth,
+      rootQuestion?.threadRating,
+      rootQuestion?.threadYear,
+      rootQuestion?.timestamp,
+      title,
+    ],
+  );
+
+  const savedHtml = latestReply?.htmlReport || generatedHtml;
 
   const [viewMode, setViewMode] = useState<ReportViewMode>('browser');
   const [draftHtml, setDraftHtml] = useState<string>(savedHtml);
@@ -62,10 +109,11 @@ export function ReportDocumentPage({
   }, [exchangeId, savedHtml]);
 
   const isDirty = draftHtml !== savedHtml;
-  const safeSlug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'reference-report';
+  const safeSlug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'reference-report';
 
   const handleSave = () => {
     onSaveHtmlReport(exchangeId, draftHtml);
@@ -102,15 +150,18 @@ export function ReportDocumentPage({
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const shortPeriod = formatShortYearMonth(
+    rootQuestion?.threadMonth,
+    rootQuestion?.threadYear,
+  );
   const metaParts = [
-    questionTurn?.promptDomain
-      ? getPromptDomainShortLabel(questionTurn.promptDomain)
+    shortPeriod || '',
+    rootQuestion?.promptDomain
+      ? getPromptDomainShortLabel(rootQuestion.promptDomain)
       : '',
-    questionTurn?.threadMonth && questionTurn?.threadYear
-      ? `${questionTurn.threadMonth} ${questionTurn.threadYear}`
-      : '',
-    primaryReply
-      ? `${primaryReply.scope === 'private' ? 'Private' : 'Public'} · ${primaryReply.model}`
+    exchanges.length > 1 ? `${exchanges.length} turns` : '',
+    latestReply
+      ? `${latestReply.scope === 'private' ? 'Private' : 'Public'} · ${latestReply.model}`
       : '',
   ].filter(Boolean);
 
@@ -212,7 +263,7 @@ export function ReportDocumentPage({
               <button
                 type="button"
                 onClick={handleReset}
-                title="Reset HTML document to the original generated report"
+                title="Reset HTML document to the generated report"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
               >
                 <RotateCcw className="w-3.5 h-3.5" />

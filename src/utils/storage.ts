@@ -133,6 +133,15 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
   contextCache: {
     privateText: '',
     publicText: '',
+    activeMonth: new Date().getMonth() + 1,
+    activeYear: Math.min(2090, Math.max(1990, new Date().getFullYear())),
+    lastSyncedAt: '',
+  },
+  referenceContextApi: {
+    hostname: 'localhost',
+    port: 3000,
+    path: '/api/content',
+    queryTemplate: 'date={month}/{year}&variant=compact',
   },
   publicLlm: {
     activeAdapter: 'gemini',
@@ -230,6 +239,45 @@ export function loadSettings(): WorkbenchSettings {
           typeof parsed.contextCache?.publicText === 'string'
             ? parsed.contextCache.publicText
             : DEFAULT_SETTINGS.contextCache.publicText,
+        activeMonth:
+          typeof parsed.contextCache?.activeMonth === 'number' &&
+          parsed.contextCache.activeMonth >= 1 &&
+          parsed.contextCache.activeMonth <= 12
+            ? Math.round(parsed.contextCache.activeMonth)
+            : DEFAULT_SETTINGS.contextCache.activeMonth,
+        activeYear:
+          typeof parsed.contextCache?.activeYear === 'number' &&
+          parsed.contextCache.activeYear >= 1990 &&
+          parsed.contextCache.activeYear <= 2090
+            ? Math.round(parsed.contextCache.activeYear)
+            : DEFAULT_SETTINGS.contextCache.activeYear,
+        lastSyncedAt:
+          typeof parsed.contextCache?.lastSyncedAt === 'string'
+            ? parsed.contextCache.lastSyncedAt
+            : '',
+      },
+      referenceContextApi: {
+        hostname:
+          typeof parsed.referenceContextApi?.hostname === 'string' &&
+          parsed.referenceContextApi.hostname.trim()
+            ? parsed.referenceContextApi.hostname.trim()
+            : DEFAULT_SETTINGS.referenceContextApi.hostname,
+        port:
+          typeof parsed.referenceContextApi?.port === 'number' &&
+          parsed.referenceContextApi.port > 0 &&
+          parsed.referenceContextApi.port <= 65535
+            ? Math.round(parsed.referenceContextApi.port)
+            : DEFAULT_SETTINGS.referenceContextApi.port,
+        path:
+          typeof parsed.referenceContextApi?.path === 'string' &&
+          parsed.referenceContextApi.path.trim()
+            ? parsed.referenceContextApi.path.trim()
+            : DEFAULT_SETTINGS.referenceContextApi.path,
+        queryTemplate:
+          typeof parsed.referenceContextApi?.queryTemplate === 'string' &&
+          parsed.referenceContextApi.queryTemplate.trim()
+            ? parsed.referenceContextApi.queryTemplate.trim()
+            : DEFAULT_SETTINGS.referenceContextApi.queryTemplate,
       },
       publicLlm: {
         activeAdapter:

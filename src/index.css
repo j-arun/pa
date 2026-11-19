@@ -200,16 +200,17 @@
   background: rgba(100, 116, 139, 0.45);
 }
 
-/* Creative 3D Fluent Question Bubble */
+/* Creative 3D Fluent Speech Bubble (pillowy rounded capsule + speech tail, not rectangular) */
 .fluent-3d-bubble {
+  border-radius: 9999px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(235, 244, 255, 0.88) 55%, rgba(219, 234, 254, 0.84) 100%);
+    radial-gradient(120% 100% at 22% 10%, rgba(255, 255, 255, 0.98) 0%, rgba(235, 245, 255, 0.92) 48%, rgba(207, 232, 254, 0.88) 100%);
   box-shadow:
-    0 24px 52px -14px rgba(15, 23, 42, 0.20),
-    0 10px 24px -8px rgba(2, 132, 199, 0.22),
-    inset 0 2px 3px rgba(255, 255, 255, 0.95),
-    inset 0 -6px 14px rgba(148, 163, 184, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.92);
+    0 26px 56px -14px rgba(15, 23, 42, 0.22),
+    0 12px 26px -8px rgba(2, 132, 199, 0.28),
+    inset 0 3px 6px rgba(255, 255, 255, 0.98),
+    inset 0 -8px 16px rgba(148, 163, 184, 0.22);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(22px) saturate(1.25);
   -webkit-backdrop-filter: blur(22px) saturate(1.25);
   transform-style: preserve-3d;
@@ -217,13 +218,29 @@
 
 .dark .fluent-3d-bubble {
   background:
-    linear-gradient(145deg, rgba(30, 41, 59, 0.94) 0%, rgba(15, 23, 42, 0.92) 55%, rgba(12, 34, 58, 0.88) 100%);
+    radial-gradient(120% 100% at 22% 10%, rgba(51, 65, 85, 0.96) 0%, rgba(30, 41, 59, 0.94) 52%, rgba(12, 34, 58, 0.92) 100%);
   box-shadow:
-    0 24px 56px -14px rgba(2, 6, 23, 0.65),
-    0 10px 26px -8px rgba(14, 165, 233, 0.24),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.22),
-    inset 0 -6px 14px rgba(2, 6, 23, 0.45);
-  border: 1px solid rgba(148, 163, 184, 0.26);
+    0 26px 58px -14px rgba(2, 6, 23, 0.72),
+    0 12px 28px -8px rgba(14, 165, 233, 0.28),
+    inset 0 2px 4px rgba(255, 255, 255, 0.22),
+    inset 0 -8px 16px rgba(2, 6, 23, 0.52);
+  border: 1.5px solid rgba(148, 163, 184, 0.30);
+}
+
+.fluent-3d-bubble-tail {
+  background: linear-gradient(155deg, rgba(235, 245, 255, 0.94), rgba(207, 232, 254, 0.90));
+  box-shadow:
+    0 10px 18px -6px rgba(2, 132, 199, 0.28),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+}
+
+.dark .fluent-3d-bubble-tail {
+  background: linear-gradient(155deg, rgba(30, 41, 59, 0.94), rgba(12, 34, 58, 0.92));
+  box-shadow:
+    0 10px 18px -6px rgba(2, 6, 23, 0.6),
+    inset 0 1px 2px rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.28);
 }
 
 .fluent-event-card {

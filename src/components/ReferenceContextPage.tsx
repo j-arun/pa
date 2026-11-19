@@ -1,30 +1,43 @@
-import { AlertCircle, CheckCircle2, Cloud, Lock, Trash2, Upload } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  CalendarClock,
+  CheckCircle2,
+  RefreshCw,
+  Settings as SettingsIcon,
+  Trash2,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import type {
   ConversationScope,
-  ConversationTurn,
   WorkbenchSettings,
 } from '../types/workbench';
-import { estimateTokens } from '../utils/promptTemplates';
+import {
+  THREAD_MONTHS,
+  THREAD_YEARS,
+  estimateTokens,
+  formatShortYearMonth,
+} from '../utils/promptTemplates';
 
 interface ReferenceContextPageProps {
   scope: ConversationScope;
-  onChangeScope: (scope: ConversationScope) => void;
   settings: WorkbenchSettings;
-  turns: ConversationTurn[];
-  onSaveReferenceContext: (
-    targetScope: ConversationScope,
-    text: string,
-  ) => Promise<boolean>;
+  onApplyFetchedContext: (payload: {
+    text: string;
+    month: number;
+    year: number;
+    fetchedAt: string;
+  }) => Promise<boolean>;
+  onClearAllReferenceContext: () => Promise<boolean>;
+  onOpenSettings: () => void;
   onContextLog?: (level: 'info' | 'success' | 'error', message: string) => void;
 }
 
 export function ReferenceContextPage({
   scope,
-  onChangeScope,
   settings,
-  turns,
-  onSaveReferenceContext,
+  onApplyFetchedContext,
+  onClearAllReferenceContext,
+  onOpenSettings,
   onContextLog,
 }: ReferenceContextPageProps) {
   const savedText =
@@ -32,173 +45,141 @@ export function ReferenceContextPage({
       ? settings.contextCache.privateText
       : settings.contextCache.publicText;
 
+  const [selectedMonth, setSelectedMonth] = useState<number>(
+    settings.contextCache.activeMonth ?? new Date().getMonth() + 1,
+  );
+  const [selectedYear, setSelectedYear] = useState<number>(
+    settings.contextCache.activeYear ??
+      Math.min(2090, Math.max(1990, new Date().getFullYear())),
+  );
   const [draftText, setDraftText] = useState(savedText);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: 'info' | 'success' | 'warning' | 'error';
     title: string;
     message: string;
   } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraftText(savedText);
-    setFeedback(null);
-  }, [scope, savedText]);
+  }, [savedText]);
 
-  const activeAdapter = settings.publicLlm.activeAdapter;
-  const targetLabel =
-    scope === 'private'
-      ? `Private · Ollama · ${settings.privateLlm.selectedModel || 'No model selected'}`
-      : `Public · ${
-          activeAdapter === 'claude'
-            ? 'Claude'
-            : activeAdapter === 'fable'
-              ? 'Fable'
-              : 'Gemini'
-        } · ${settings.publicLlm.adapters[activeAdapter].model}`;
+  useEffect(() => {
+    if (settings.contextCache.activeMonth) {
+      setSelectedMonth(settings.contextCache.activeMonth);
+    }
+    if (settings.contextCache.activeYear) {
+      setSelectedYear(settings.contextCache.activeYear);
+    }
+  }, [settings.contextCache.activeMonth, settings.contextCache.activeYear]);
 
-  const activeSystemInstruction =
-    scope === 'private'
-      ? settings.privateLlm.systemInstruction
-      : settings.publicLlm.adapters[activeAdapter].systemInstruction;
+  const apiCfg = settings.referenceContextApi;
+  const resolvedEndpointPreview = `${
+    /^https?:\/\//i.test(apiCfg.hostname)
+      ? apiCfg.hostname.replace(/\/+$/, '')
+      : `http://${apiCfg.hostname || 'localhost'}`
+  }:${apiCfg.port || 3000}${
+    apiCfg.path.startsWith('/') ? apiCfg.path : `/${apiCfg.path}`
+  }?${(apiCfg.queryTemplate || 'date={month}/{year}&variant=compact')
+    .replace(/^\?/, '')
+    .replace(/\{month\}/gi, String(selectedMonth))
+    .replace(/\{year\}/gi, String(selectedYear))}`;
 
-  const activeContextWindow =
-    scope === 'private' ? settings.privateLlm.contextWindow : null;
-
-  const recentHistoryText = useMemo(() => {
-    const maxHistory = Math.min(
-      32,
-      Math.max(2, settings.privateLlm.maxHistoryTurns || 16),
-    );
-    return turns
-      .filter((turn) => {
-        if (turn.role === 'user') {
-          return (turn.responseScopes ?? [turn.scope]).includes(scope);
-        }
-        return turn.role === 'assistant' && turn.scope === scope;
-      })
-      .slice(-maxHistory)
-      .map((turn) => turn.content)
-      .join('\n');
-  }, [turns, scope, settings.privateLlm.maxHistoryTurns]);
-
-  const savedTokens = estimateTokens(savedText);
-  const draftTokens = estimateTokens(draftText);
-  const estimatedTotalContextTokens = estimateTokens(
-    [activeSystemInstruction, draftText, recentHistoryText]
-      .filter(Boolean)
-      .join('\n'),
+  const activePeriodLabel = formatShortYearMonth(selectedMonth, selectedYear);
+  const savedPeriodLabel = formatShortYearMonth(
+    settings.contextCache.activeMonth,
+    settings.contextCache.activeYear,
   );
+  const publicTokens = estimateTokens(settings.contextCache.publicText);
+  const privateTokens = estimateTokens(settings.contextCache.privateText);
 
-  const remainingTokens =
-    activeContextWindow !== null
-      ? activeContextWindow - estimatedTotalContextTokens
-      : null;
-  const exceedsWindow =
-    remainingTokens !== null && remainingTokens < 0;
-
-  const handleFileUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const handleApplyMonthYear = async () => {
+    setIsApplying(true);
+    setFeedback(null);
 
     try {
-      const content = await file.text();
-      setDraftText(content);
-      const nextEstimate = estimateTokens(
-        [activeSystemInstruction, content, recentHistoryText]
-          .filter(Boolean)
-          .join('\n'),
+      const response = await fetch('/api/reference-context/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: selectedMonth,
+          year: selectedYear,
+          apiConfig: settings.referenceContextApi,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        text?: string;
+        url?: string;
+        fetchedAt?: string;
+        error?: string;
+      };
+
+      if (!response.ok || payload.error) {
+        const errMessage =
+          payload.error ||
+          `Reference Context REST endpoint is not available at ${resolvedEndpointPreview}.`;
+        setFeedback({
+          type: 'error',
+          title: 'Reference Context API endpoint unavailable',
+          message: errMessage,
+        });
+        onContextLog?.('error', errMessage);
+        return;
+      }
+
+      const plainText = typeof payload.text === 'string' ? payload.text : '';
+      const fetchedAt = payload.fetchedAt || new Date().toISOString();
+      setDraftText(plainText);
+
+      const saved = await onApplyFetchedContext({
+        text: plainText,
+        month: selectedMonth,
+        year: selectedYear,
+        fetchedAt,
+      });
+
+      const tokenCount = estimateTokens(plainText);
+      onContextLog?.(
+        'success',
+        `Loaded & applied ${activePeriodLabel} reference context (${tokenCount.toLocaleString()} est. tokens) to both Public & Private.`,
       );
-      if (activeContextWindow !== null && nextEstimate > activeContextWindow) {
-        setFeedback({
-          type: 'warning',
-          title: 'Text loaded but exceeds the context window',
-          message: `${file.name} was loaded. The draft, system instruction, and recent conversation exceed the configured ${activeContextWindow.toLocaleString()}-token window.`,
-        });
-      } else {
-        setFeedback({
-          type: 'info',
-          title: 'Text loaded',
-          message: `${file.name} (${estimateTokens(content).toLocaleString()} est. tokens) is ready to apply.`,
-        });
-      }
+
+      setFeedback({
+        type: saved ? 'success' : 'warning',
+        title: `Applied ${activePeriodLabel} to Public & Private`,
+        message: saved
+          ? `Fetched plain text (${tokenCount.toLocaleString()} estimated tokens) from ${payload.url || resolvedEndpointPreview} and automatically populated both Public and Private contexts.`
+          : `Fetched ${tokenCount.toLocaleString()} estimated tokens into Public and Private in browser storage, though local disk config sync reported an error.`,
+      });
     } catch (error) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : `Reference Context REST endpoint is not available at ${resolvedEndpointPreview}.`;
       setFeedback({
         type: 'error',
-        title: 'Could not read text file',
-        message:
-          error instanceof Error ? error.message : 'Unable to read the selected file.',
+        title: 'Reference Context API endpoint unavailable',
+        message: msg,
       });
-    }
-  };
-
-  const handleApplyContext = async () => {
-    if (!draftText.trim()) {
-      setFeedback({
-        type: 'warning',
-        title: 'No text to apply',
-        message: 'Paste or upload reference text first.',
-      });
-      return;
-    }
-    if (exceedsWindow && activeContextWindow !== null) {
-      setFeedback({
-        type: 'warning',
-        title: 'Text is larger than the context window',
-        message:
-          'The draft, system instruction, and recent conversation exceed the configured context window.',
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const saved = await onSaveReferenceContext(scope, draftText);
-      const tokenCount = estimateTokens(draftText);
-      if (saved) {
-        onContextLog?.(
-          'success',
-          `Applied ${tokenCount.toLocaleString()} estimated reference tokens to ${scope}.`,
-        );
-        setFeedback({
-          type: 'success',
-          title: 'Reference context saved',
-          message: `${tokenCount.toLocaleString()} estimated tokens saved locally. It will be included with each future prompt; no model request is sent until you chat.`,
-        });
-      } else {
-        setFeedback({
-          type: 'warning',
-          title: 'Saved locally in browser',
-          message:
-            'Updated reference context in browser storage, though the local settings file sync returned an error.',
-        });
-      }
-    } catch (error) {
-      setFeedback({
-        type: 'error',
-        title: 'Could not save context',
-        message:
-          error instanceof Error ? error.message : 'Failed to save reference context.',
-      });
+      onContextLog?.('error', msg);
     } finally {
-      setIsSaving(false);
+      setIsApplying(false);
     }
   };
 
   const handleClearContext = async () => {
-    setIsSaving(true);
+    setIsClearing(true);
     try {
-      await onSaveReferenceContext(scope, '');
+      await onClearAllReferenceContext();
       setDraftText('');
-      onContextLog?.('info', `Cleared reference context for ${scope}.`);
+      onContextLog?.('info', 'Cleared reference context for both Public and Private.');
       setFeedback({
         type: 'success',
         title: 'Context cleared',
-        message: `The applied reference text was removed for the ${scope} connection.`,
+        message:
+          'Reference text has been cleared from both Public and Private connections.',
       });
     } catch (error) {
       setFeedback({
@@ -208,7 +189,7 @@ export function ReferenceContextPage({
           error instanceof Error ? error.message : 'Failed to clear reference context.',
       });
     } finally {
-      setIsSaving(false);
+      setIsClearing(false);
     }
   };
 
@@ -221,207 +202,192 @@ export function ReferenceContextPage({
               Reference Context
             </h1>
             <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              Save reference text for the active connection. Future prompts include it automatically; clicking Apply does not contact the model.
+              Select a Month and Year and click Apply to fetch plain-text reference context from your configured REST endpoint and apply it automatically to both Public and Private chats.
             </p>
           </div>
 
-          <div
-            role="group"
-            aria-label="Reference context connection target"
-            className="inline-flex items-center rounded-xl border border-slate-200/90 bg-white/80 p-1 dark:border-slate-700/80 dark:bg-slate-900/75"
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white/85 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-white dark:border-slate-700/80 dark:bg-slate-900/75 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
           >
-            <button
-              type="button"
-              onClick={() => onChangeScope('private')}
-              aria-pressed={scope === 'private'}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                scope === 'private'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Lock className="h-3.5 w-3.5" />
-              <span>Private</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeScope('public')}
-              aria-pressed={scope === 'public'}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                scope === 'public'
-                  ? 'bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900'
-                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Cloud className="h-3.5 w-3.5" />
-              <span>Public</span>
-            </button>
-          </div>
+            <SettingsIcon className="h-3.5 w-3.5" style={{ color: 'var(--pa-accent)' }} />
+            <span>API Settings ({apiCfg.hostname}:{apiCfg.port})</span>
+          </button>
         </header>
 
-        {/* 4-Card Token Estimate Strip */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Saved reference estimate
+        {/* Month / Year Selector & Auto-Apply REST Bar */}
+        <section className="rounded-3xl border border-slate-200/85 bg-white/85 p-5 shadow-sm backdrop-blur-xl dark:border-slate-700/75 dark:bg-slate-900/70 space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[170px] flex-1 sm:flex-none">
+              <label
+                htmlFor="ref-ctx-month"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+              >
+                Month (1–12)
+              </label>
+              <select
+                id="ref-ctx-month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              >
+                {THREAD_MONTHS.map((name, idx) => (
+                  <option key={name} value={idx + 1}>
+                    {idx + 1} · {name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-              {savedTokens.toLocaleString()} tokens
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Draft estimate
+            <div className="min-w-[140px] flex-1 sm:flex-none">
+              <label
+                htmlFor="ref-ctx-year"
+                className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+              >
+                Year (1990–2090)
+              </label>
+              <select
+                id="ref-ctx-year"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm tabular-nums text-slate-900 dark:text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              >
+                {THREAD_YEARS.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-              {draftTokens.toLocaleString()} tokens
-            </div>
-          </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Remaining after draft
-            </div>
-            <div
-              className={`mt-1 font-mono text-lg font-semibold tabular-nums ${
-                exceedsWindow
-                  ? 'text-red-600 dark:text-red-400'
-                  : 'text-slate-900 dark:text-slate-100'
-              }`}
+            <button
+              type="button"
+              onClick={() => void handleApplyMonthYear()}
+              disabled={isApplying || isClearing}
+              className="inline-flex items-center gap-2 rounded-xl bg-[var(--pa-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--pa-accent-hover)] disabled:pointer-events-none disabled:opacity-45 whitespace-nowrap shrink-0"
             >
-              {remainingTokens === null
-                ? 'Provider-defined'
-                : remainingTokens >= 0
-                  ? `${remainingTokens.toLocaleString()} tokens`
-                  : `Over by ${Math.abs(remainingTokens).toLocaleString()}`}
+              <RefreshCw className={`h-4 w-4 ${isApplying ? 'animate-spin' : ''}`} />
+              <span>{isApplying ? 'Fetching & Applying…' : 'Apply'}</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/70 dark:border-slate-800/70">
+            <span className="font-mono break-all">GET {resolvedEndpointPreview}</span>
+            {savedPeriodLabel && (
+              <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300 tabular-nums shrink-0">
+                <CalendarClock className="h-3.5 w-3.5" style={{ color: 'var(--pa-accent)' }} />
+                <span>Active Period: {savedPeriodLabel}</span>
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* Synced Summary Strip */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Active Thread Period
+            </div>
+            <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {savedPeriodLabel || activePeriodLabel}
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              Context window
+              Public Context Applied
             </div>
             <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-              {activeContextWindow !== null
-                ? `${activeContextWindow.toLocaleString()} tokens`
-                : 'Provider-defined'}
+              {publicTokens.toLocaleString()} tokens
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-3.5 dark:border-slate-700/75 dark:bg-slate-900/65">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Private Context Applied
+            </div>
+            <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {privateTokens.toLocaleString()} tokens
             </div>
           </div>
         </div>
 
-        {/* Editor Card */}
+        {/* Populated Reference Text Viewer */}
         <section className="rounded-3xl border border-slate-200/85 bg-white/75 p-5 shadow-sm backdrop-blur-xl dark:border-slate-700/75 dark:bg-slate-900/65 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                Reference text
+                Populated Reference Text (Public &amp; Private)
               </h2>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                {targetLabel}
+                Automatically populated from the REST endpoint when you click Apply above
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".txt,.md,.csv,.json,.log"
-                onChange={(e) => void handleFileUpload(e)}
-                className="hidden"
-                aria-hidden="true"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                <span>Upload text</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleClearContext()}
-                disabled={isSaving || (!draftText && !savedText)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-red-50 hover:text-red-700 disabled:pointer-events-none disabled:opacity-45 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-red-950/40 dark:hover:text-red-300 whitespace-nowrap shrink-0"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Clear context</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => void handleClearContext()}
+              disabled={
+                isApplying ||
+                isClearing ||
+                (!draftText &&
+                  !settings.contextCache.publicText &&
+                  !settings.contextCache.privateText)
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-red-50 hover:text-red-700 disabled:pointer-events-none disabled:opacity-45 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-red-950/40 dark:hover:text-red-300 whitespace-nowrap shrink-0"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{isClearing ? 'Clearing…' : 'Clear context'}</span>
+            </button>
           </div>
 
           <textarea
-            aria-label="Reference context notes"
+            aria-label="Reference context plain text"
             value={draftText}
-            onChange={(e) => {
-              setDraftText(e.target.value);
-              if (feedback?.type === 'success') setFeedback(null);
-            }}
+            readOnly
             rows={14}
-            placeholder="Paste your reference notes, background context, or source text here..."
-            className="w-full min-h-[300px] max-h-[540px] resize-y rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 font-mono text-[13px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-600 fluent-scroll"
+            placeholder="Select Month & Year and click Apply above to load plain-text reference context from your REST API..."
+            className="w-full min-h-[280px] max-h-[520px] resize-y rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 font-mono text-[13px] leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 fluent-scroll"
           />
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
             <span>
-              {draftText.length.toLocaleString()} characters · approximate token count
+              {draftText.length.toLocaleString()} characters ·{' '}
+              {estimateTokens(draftText).toLocaleString()} est. tokens
             </span>
-            <span>Estimated at roughly 1 token per 4 characters</span>
+            {settings.contextCache.lastSyncedAt && (
+              <span>
+                Last synced: {new Date(settings.contextCache.lastSyncedAt).toLocaleString()}
+              </span>
+            )}
           </div>
 
-          {(exceedsWindow || feedback) && (
+          {feedback && (
             <div
-              role={
-                exceedsWindow || feedback?.type === 'error' || feedback?.type === 'warning'
-                  ? 'alert'
-                  : 'status'
-              }
+              role={feedback.type === 'error' || feedback.type === 'warning' ? 'alert' : 'status'}
               className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-xs ${
-                exceedsWindow || feedback?.type === 'error'
+                feedback.type === 'error'
                   ? 'border-red-200 bg-red-50/90 text-red-800 dark:border-red-900 dark:bg-red-950/45 dark:text-red-200'
-                  : feedback?.type === 'warning'
+                  : feedback.type === 'warning'
                     ? 'border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-900 dark:bg-amber-950/45 dark:text-amber-200'
-                    : feedback?.type === 'success'
+                    : feedback.type === 'success'
                       ? 'border-emerald-200 bg-emerald-50/90 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/45 dark:text-emerald-200'
                       : 'border-sky-200 bg-sky-50/90 text-sky-800 dark:border-sky-900 dark:bg-sky-950/45 dark:text-sky-200'
               }`}
             >
-              {feedback?.type === 'success' && !exceedsWindow ? (
+              {feedback.type === 'success' ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
               ) : (
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               )}
               <div>
-                <div className="font-semibold">
-                  {exceedsWindow
-                    ? 'Text is larger than the context window'
-                    : feedback?.title}
-                </div>
-                <div className="mt-0.5 leading-relaxed">
-                  {exceedsWindow
-                    ? 'The draft, system instruction, and recent conversation exceed the configured context window.'
-                    : feedback?.message}
-                </div>
+                <div className="font-semibold">{feedback.title}</div>
+                <div className="mt-0.5 leading-relaxed">{feedback.message}</div>
               </div>
             </div>
           )}
         </section>
-
-        {/* Footer Apply Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-            This is saved locally, not stored as a persistent model KV session. Each chat request includes the reference text again; Apply sends no model request. Public connections send it to the configured provider.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleApplyContext()}
-            disabled={isSaving || !draftText.trim() || exceedsWindow}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--pa-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--pa-accent-hover)] disabled:pointer-events-none disabled:opacity-45 whitespace-nowrap shrink-0"
-          >
-            {isSaving ? 'Saving…' : 'Apply context'}
-          </button>
-        </div>
       </div>
     </main>
   );

@@ -13,6 +13,7 @@ import {
   Star,
   X,
 } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
@@ -27,6 +28,7 @@ import {
 import { useSpeechIO } from './hooks/useSpeechIO';
 import type {
   AnyAdapterId,
+  CarefulDateItem,
   ConversationScope,
   ConversationTurn,
   LlmContextLogEntry,
@@ -48,11 +50,17 @@ import {
   saveScope,
   saveSettings,
 } from './utils/storage';
-import { THREAD_RATING_OPTIONS } from './utils/promptTemplates';
+import {
+  THREAD_RATING_OPTIONS,
+  formatShortYearMonth,
+  getMonthNameFromNumber,
+} from './utils/promptTemplates';
 import {
   EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
   buildThreadHtmlDocument,
+  formatSidebarThreadLabel,
   parseResponseEventsAndReport,
+  type ThreadHtmlExchangeInput,
 } from './utils/eventParser';
 import {
   playReplyChime,
@@ -96,6 +104,30 @@ function appendCachedContext(
     return normalizedInstruction;
   }
   return [normalizedInstruction, normalizedContext].filter(Boolean).join('\n\n');
+}
+
+function buildExchangesFromTurns(threadTurns: ConversationTurn[]): ThreadHtmlExchangeInput[] {
+  const grouped: ThreadHtmlExchangeInput[] = [];
+  const byId = new Map<string, ThreadHtmlExchangeInput>();
+  let current: ThreadHtmlExchangeInput | null = null;
+
+  for (const turn of threadTurns) {
+    if (turn.role === 'user') {
+      current = {
+        question: turn.content,
+        replies: [],
+        askedAt: turn.timestamp,
+      };
+      grouped.push(current);
+      byId.set(turn.id, current);
+    } else {
+      const target = turn.exchangeId ? byId.get(turn.exchangeId) : current;
+      if (target) {
+        target.replies.push(turn);
+      }
+    }
+  }
+  return grouped;
 }
 
 export default function App() {
@@ -353,45 +385,35 @@ export default function App() {
   }, [ratedThreads]);
 
   useEffect(() => {
-    const completedUserTurns = turns.filter((turn) => {
-      if (turn.role !== 'user') return false;
-      const hasReply = turns.some(
-        (candidate) =>
-          candidate.exchangeId === turn.id && candidate.role === 'assistant',
-      );
-      return hasReply || Boolean(turn.threadRating);
-    });
-    if (completedUserTurns.length === 0) return;
+    const rootUserTurn = turns.find((turn) => turn.role === 'user');
+    if (!rootUserTurn) return;
+    const hasAssistantReply = turns.some((candidate) => candidate.role === 'assistant');
+    if (!hasAssistantReply && !rootUserTurn.threadRating) return;
 
     setRatedThreads((prevRated) => {
-      let changed = false;
-      const nextRated = [...prevRated];
-
-      for (const userTurn of completedUserTurns) {
-        const snapshot = turns.filter(
-          (turn) => turn.id === userTurn.id || turn.exchangeId === userTurn.id,
-        );
-        const existingIdx = nextRated.findIndex((item) => item.id === userTurn.id);
-        if (existingIdx >= 0) {
-          const existing = nextRated[existingIdx];
-          if (JSON.stringify(existing.turns) !== JSON.stringify(snapshot)) {
-            nextRated[existingIdx] = {
-              ...existing,
-              turns: snapshot,
-            };
-            changed = true;
-          }
-        } else {
-          nextRated.unshift({
-            id: userTurn.id,
-            turns: snapshot,
-            ratedAt: new Date().toISOString(),
-          });
-          changed = true;
+      const existingIdx = prevRated.findIndex((item) => item.id === rootUserTurn.id);
+      if (existingIdx >= 0) {
+        const existing = prevRated[existingIdx];
+        if (JSON.stringify(existing.turns) === JSON.stringify(turns)) {
+          return prevRated;
         }
+        const nextRated = [...prevRated];
+        nextRated[existingIdx] = {
+          ...existing,
+          turns,
+          ratedAt: new Date().toISOString(),
+        };
+        return nextRated;
       }
 
-      return changed ? nextRated : prevRated;
+      return [
+        {
+          id: rootUserTurn.id,
+          turns,
+          ratedAt: new Date().toISOString(),
+        },
+        ...prevRated,
+      ];
     });
   }, [turns]);
 
@@ -417,15 +439,39 @@ export default function App() {
     setSettings((prev) => ({ ...prev, theme: nextTheme }));
   };
 
-  const handleSaveReferenceContext = async (
-    targetScope: ConversationScope,
-    text: string,
-  ): Promise<boolean> => {
+  const handleApplyFetchedContext = async ({
+    text,
+    month,
+    year,
+    fetchedAt,
+  }: {
+    text: string;
+    month: number;
+    year: number;
+    fetchedAt: string;
+  }): Promise<boolean> => {
     const nextSettings: WorkbenchSettings = {
       ...settings,
       contextCache: {
         ...settings.contextCache,
-        [targetScope === 'private' ? 'privateText' : 'publicText']: text,
+        privateText: text,
+        publicText: text,
+        activeMonth: month,
+        activeYear: year,
+        lastSyncedAt: fetchedAt,
+      },
+    };
+    setSettings(nextSettings);
+    return persistSettingsToFile(nextSettings);
+  };
+
+  const handleClearAllReferenceContext = async (): Promise<boolean> => {
+    const nextSettings: WorkbenchSettings = {
+      ...settings,
+      contextCache: {
+        ...settings.contextCache,
+        privateText: '',
+        publicText: '',
       },
     };
     setSettings(nextSettings);
@@ -460,26 +506,35 @@ export default function App() {
   );
 
   const handleSaveHtmlReport = useCallback((exchangeId: string, nextHtml: string) => {
-    setTurns((previous) =>
-      previous.map((turn) =>
-        turn.exchangeId === exchangeId && turn.role === 'assistant'
+    setTurns((previous) => {
+      const assistantIndices = previous
+        .map((t, idx) => (t.role === 'assistant' ? idx : -1))
+        .filter((idx) => idx >= 0);
+      const lastAssistantIdx = assistantIndices[assistantIndices.length - 1];
+      return previous.map((turn, idx) =>
+        idx === lastAssistantIdx ||
+        (turn.exchangeId === exchangeId && turn.role === 'assistant')
           ? { ...turn, htmlReport: nextHtml }
           : turn,
-      ),
-    );
+      );
+    });
     setRatedThreads((prevRated) =>
-      prevRated.map((record) =>
-        record.id === exchangeId
-          ? {
-              ...record,
-              turns: record.turns.map((turn) =>
-                turn.exchangeId === exchangeId && turn.role === 'assistant'
-                  ? { ...turn, htmlReport: nextHtml }
-                  : turn,
-              ),
-            }
-          : record,
-      ),
+      prevRated.map((record) => {
+        if (record.id !== exchangeId) return record;
+        const assistantIndices = record.turns
+          .map((t, idx) => (t.role === 'assistant' ? idx : -1))
+          .filter((idx) => idx >= 0);
+        const lastAssistantIdx = assistantIndices[assistantIndices.length - 1];
+        return {
+          ...record,
+          turns: record.turns.map((turn, idx) =>
+            idx === lastAssistantIdx ||
+            (turn.exchangeId === exchangeId && turn.role === 'assistant')
+              ? { ...turn, htmlReport: nextHtml }
+              : turn,
+          ),
+        };
+      }),
     );
   }, []);
 
@@ -487,65 +542,95 @@ export default function App() {
     if (!activeReportExchangeId) return null;
     const fromSaved = ratedThreads.find((r) => r.id === activeReportExchangeId);
     if (fromSaved) return fromSaved;
-    const matchingTurns = turns.filter(
-      (t) => t.id === activeReportExchangeId || t.exchangeId === activeReportExchangeId,
-    );
-    if (matchingTurns.length === 0) return null;
-    return {
-      id: activeReportExchangeId,
-      turns: matchingTurns,
-      ratedAt: matchingTurns[0].timestamp,
-    };
+    if (turns.some((t) => t.id === activeReportExchangeId)) {
+      return {
+        id: activeReportExchangeId,
+        turns,
+        ratedAt: turns[0]?.timestamp || new Date().toISOString(),
+      };
+    }
+    return null;
   }, [activeReportExchangeId, ratedThreads, turns]);
 
-  const handleSendMessage = async ({
-    text,
-    inputMode,
-    threadName,
-    threadMonth,
-    threadYear,
-    promptDomain,
-  }: SendThreadMessagePayload) => {
-    const responseScopes: ConversationScope[] = [scope];
-    const selectedAdapterId: AnyAdapterId =
-      scope === 'private'
+  const activeCarefulDates = useMemo<CarefulDateItem[]>(() => {
+    const items: CarefulDateItem[] = [];
+    const seen = new Set<string>();
+    const rootQ = turns.find((t) => t.role === 'user');
+
+    for (const turn of turns) {
+      if (turn.role !== 'assistant') continue;
+      const list =
+        Array.isArray(turn.carefulDates) && turn.carefulDates.length > 0
+          ? turn.carefulDates
+          : parseResponseEventsAndReport(turn.content, rootQ?.promptDomain).carefulDates;
+      for (const cd of list) {
+        const dedupeKey = `${cd.domain.toLowerCase()}|${cd.date.toLowerCase()}|${cd.note.toLowerCase()}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        items.push({ ...cd, id: `${turn.id}-${cd.id}` });
+      }
+    }
+    return items;
+  }, [turns]);
+
+  const activeCarefulPeriodLabel = useMemo(() => {
+    const rootQ = turns.find((t) => t.role === 'user');
+    return (
+      formatShortYearMonth(rootQ?.threadMonth, rootQ?.threadYear) ||
+      formatShortYearMonth(
+        settings.contextCache.activeMonth,
+        settings.contextCache.activeYear,
+      )
+    );
+  }, [settings.contextCache.activeMonth, settings.contextCache.activeYear, turns]);
+
+  const executeExchangeRequest = async ({
+    userTurn,
+    precedingTurns,
+    baseThreadTurns,
+    effectiveDomain,
+  }: {
+    userTurn: ConversationTurn;
+    precedingTurns: ConversationTurn[];
+    baseThreadTurns: ConversationTurn[];
+    effectiveDomain: PromptDomain;
+  }) => {
+    const targetScope = scope;
+    const targetAdapterId: AnyAdapterId =
+      targetScope === 'private'
         ? settings.privateLlm.activeAdapter
         : settings.publicLlm.activeAdapter;
-
-    const selectedModelName =
-      scope === 'private'
+    const targetModel =
+      targetScope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
     const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
-    const historyForScope = (targetScope: ConversationScope) =>
-      turns
-        .filter((turn) => {
-          if (turn.role === 'user') {
-            return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
-          }
-          return turn.role === 'assistant' && turn.scope === targetScope;
-        })
-        .slice(-maxHistory)
-        .map((turn) => ({
-          role: turn.role as 'user' | 'assistant',
-          content: turn.content,
-        }));
-    const targetHistory = historyForScope(scope);
-    const historyByScope = {
-      private: scope === 'private' ? targetHistory : [],
-      public: scope === 'public' ? targetHistory : [],
-    };
-    const privateCachedContext = settings.contextCache.privateText.trim();
-    const publicCachedContext = settings.contextCache.publicText.trim();
+    const targetHistory = precedingTurns
+      .filter((turn) => {
+        if (turn.role === 'user') {
+          return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
+        }
+        return turn.role === 'assistant' && turn.scope === targetScope;
+      })
+      .slice(-maxHistory)
+      .map((turn) => ({
+        role: turn.role as 'user' | 'assistant',
+        content: turn.content,
+      }));
+
     const targetCachedContext =
-      scope === 'private' ? privateCachedContext : publicCachedContext;
-    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+      targetScope === 'private'
+        ? settings.contextCache.privateText.trim()
+        : settings.contextCache.publicText.trim();
     const majorTemplate = extractMajorTemplate(
       promptTemplates[effectiveDomain]?.[promptStyle] ?? '',
     );
-    const dedupeSources = [text, ...targetHistory.map((turn) => turn.content)];
+    const dedupeSources = [
+      userTurn.content,
+      ...targetHistory.map((turn) => turn.content),
+    ];
     const baseWithContext = appendCachedContext(
-      scope === 'private'
+      targetScope === 'private'
         ? settings.privateLlm.systemInstruction
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
       targetCachedContext,
@@ -562,33 +647,7 @@ export default function App() {
     ]
       .filter(Boolean)
       .join('\n\n');
-    const systemInstructionByScope = {
-      private: scope === 'private' ? targetSystemInstruction : '',
-      public: scope === 'public' ? targetSystemInstruction : '',
-    };
 
-    const userTurn: ConversationTurn = {
-      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      responseScopes,
-      role: 'user',
-      content: text,
-      timestamp: new Date().toISOString(),
-      inputMode,
-      scope,
-      adapterId: selectedAdapterId,
-      model: selectedModelName,
-      promptDomain,
-      promptStyle,
-      threadName,
-      threadMonth,
-      threadYear,
-      systemInstruction: targetSystemInstruction,
-      cachedContext: targetCachedContext,
-    };
-
-    setTurns((prev) => [...prev, userTurn]);
-    setActiveReportExchangeId(null);
-    setIsChatBarOpen(false);
     setIsSending(true);
     const requestStartedAt = Date.now();
     setNowMs(requestStartedAt);
@@ -597,7 +656,7 @@ export default function App() {
       phase: 'Thinking',
       isThinking: true,
       startedAtMs: requestStartedAt,
-      promptChars: text.trim().length,
+      promptChars: userTurn.content.trim().length,
       historyTurnsUsed: targetHistory.length,
       inputTokens: undefined,
       outputTokens: undefined,
@@ -606,228 +665,327 @@ export default function App() {
       durationMs: undefined,
       lastError: '',
     }));
+
     const timeoutSec = Math.max(0, Number(settings.requestTimeoutSeconds) || 0);
     const timeoutLabel = timeoutSec > 0 ? `${timeoutSec}s` : 'Unlimited';
 
     pushContextLog(
       'info',
-      `Prompt sent (${text.trim().length} ch, ${targetHistory.length} hist) -> ${scope}:${selectedAdapterId}/${selectedModelName} · timeout: ${timeoutLabel}`,
+      `Prompt sent (${userTurn.content.trim().length} ch, ${targetHistory.length} hist) -> ${targetScope}:${targetAdapterId}/${targetModel} · timeout: ${timeoutLabel}`,
     );
 
     if (settings.notifications?.desktopNotificationOnReply !== false) {
       void requestDesktopNotificationPermission();
     }
 
-    const requestOne = async (targetScope: ConversationScope): Promise<ConversationTurn> => {
-      const targetAdapterId: AnyAdapterId =
-        targetScope === 'private'
-          ? settings.privateLlm.activeAdapter
-          : settings.publicLlm.activeAdapter;
-      const targetModel =
-        targetScope === 'private'
-          ? settings.privateLlm.selectedModel || 'unselected'
-          : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
-      const historyPayload = historyByScope[targetScope];
-      const requestStart = Date.now();
-      const options =
-        targetScope === 'private'
-          ? {
-              model: settings.privateLlm.selectedModel,
-              systemInstruction: systemInstructionByScope.private,
-              ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl,
-              contextWindow: settings.privateLlm.contextWindow,
-              keepAlive: settings.privateLlm.keepAlive,
-              requestTimeoutSeconds: timeoutSec,
-            }
-          : {
-              model: settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model,
-              systemInstruction: systemInstructionByScope.public,
-              thinkingLevel:
-                settings.publicLlm.adapters[settings.publicLlm.activeAdapter]
-                  .thinkingLevel,
-              endpointUrl:
-                settings.publicLlm.adapters[settings.publicLlm.activeAdapter]
-                  .endpointUrl,
-              maxTokens:
-                settings.publicLlm.adapters[settings.publicLlm.activeAdapter].maxTokens,
-              requestTimeoutSeconds: timeoutSec,
-            };
-
-      try {
-        if (targetScope === 'private' && !settings.privateLlm.selectedModel.trim()) {
-          throw new Error('Select a private Ollama model in Settings to get the Private response.');
-        }
-
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scope: targetScope,
-            adapterId: targetAdapterId,
-            message: text,
-            history: historyPayload,
-            options,
-          }),
-        });
-
-        const payload = (await response.json()) as {
-          text?: string;
-          adapterId?: AnyAdapterId;
-          scope?: ConversationScope;
-          model?: string;
-          protocol?: string;
-          durationMs?: number;
-          tokenCount?: number;
-          inputTokens?: number;
-          outputTokens?: number;
-          tokensPerSecond?: number;
-          error?: string;
-        };
-
-        if (!response.ok || payload.error || !payload.text) {
-          throw new Error(payload.error || 'Adapter returned an error.');
-        }
-
-        const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStart);
-        const inputTokens = payload.inputTokens;
-        const outputTokens = payload.outputTokens ?? payload.tokenCount;
-        const totalTokens =
-          inputTokens !== undefined && outputTokens !== undefined
-            ? inputTokens + outputTokens
-            : payload.tokenCount ?? outputTokens ?? inputTokens;
-        const tokensPerSecond =
-          payload.tokensPerSecond ??
-          (outputTokens !== undefined && elapsedMs > 0
-            ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
-            : undefined);
-        const { cleanMarkdown, events } = parseResponseEventsAndReport(
-          payload.text,
-          effectiveDomain,
-        );
-        const nowIso = new Date().toISOString();
-        const preliminaryReplyTurn: ConversationTurn = {
-          id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          exchangeId: userTurn.id,
-          role: 'assistant',
-          content: cleanMarkdown,
-          eventCards: events,
-          timestamp: nowIso,
-          scope: payload.scope || targetScope,
-          adapterId: payload.adapterId || targetAdapterId,
-          model: payload.model || targetModel,
-          durationMs: elapsedMs,
-          tokenCount: totalTokens,
-          inputTokenCount: inputTokens,
-          outputTokenCount: outputTokens,
-          tokensPerSecond,
-          adapterProtocol: payload.protocol,
-        };
-        const htmlReport = buildThreadHtmlDocument({
-          title: threadName || 'Assistant Report',
-          question: text,
-          replies: [preliminaryReplyTurn],
-          domain: effectiveDomain,
-          month: threadMonth,
-          year: threadYear,
-          createdAt: nowIso,
-        });
-        const assistantTurn: ConversationTurn = {
-          ...preliminaryReplyTurn,
-          htmlReport,
-        };
-
-        setTurns((prev) => [...prev, assistantTurn]);
-        pushContextLog(
-          'success',
-          `${targetScope} reply in ${(elapsedMs / 1000).toFixed(2)}s · ${
-            totalTokens !== undefined
-              ? `${totalTokens} tok (in ${inputTokens ?? '—'} / out ${outputTokens ?? '—'})`
-              : 'tokens n/a'
-          }${tokensPerSecond !== undefined ? ` @ ${tokensPerSecond.toFixed(1)} tok/s` : ''}`,
-        );
-        return assistantTurn;
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Request failed.';
-        const errorTurn: ConversationTurn = {
-          id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          exchangeId: userTurn.id,
-          role: 'error',
-          content: errorMessage,
-          timestamp: new Date().toISOString(),
-          scope: targetScope,
-          adapterId: targetAdapterId,
-          model: targetModel,
-          durationMs: Math.max(0, Date.now() - requestStart),
-        };
-        setTurns((prev) => [...prev, errorTurn]);
-        pushContextLog('error', `${targetScope} response failed: ${errorMessage}`);
-        return errorTurn;
-      }
-    };
+    const requestStart = Date.now();
+    const options =
+      targetScope === 'private'
+        ? {
+            model: settings.privateLlm.selectedModel,
+            systemInstruction: targetSystemInstruction,
+            ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl,
+            contextWindow: settings.privateLlm.contextWindow,
+            keepAlive: settings.privateLlm.keepAlive,
+            requestTimeoutSeconds: timeoutSec,
+          }
+        : {
+            model: settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model,
+            systemInstruction: targetSystemInstruction,
+            thinkingLevel:
+              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].thinkingLevel,
+            endpointUrl:
+              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].endpointUrl,
+            maxTokens:
+              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].maxTokens,
+            requestTimeoutSeconds: timeoutSec,
+          };
 
     try {
-      const results = await Promise.all(responseScopes.map(requestOne));
-      const successfulTurns = results.filter((turn) => turn.role === 'assistant');
-      const failedTurns = results.filter((turn) => turn.role === 'error');
-      const selectedReply = successfulTurns.find((turn) => turn.scope === scope);
-      const telemetryReply = selectedReply ?? successfulTurns[0];
+      if (targetScope === 'private' && !settings.privateLlm.selectedModel.trim()) {
+        throw new Error('Select a private Ollama model in Settings to get the Private response.');
+      }
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: targetScope,
+          adapterId: targetAdapterId,
+          message: userTurn.content,
+          history: targetHistory,
+          options,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        text?: string;
+        adapterId?: AnyAdapterId;
+        scope?: ConversationScope;
+        model?: string;
+        protocol?: string;
+        durationMs?: number;
+        tokenCount?: number;
+        inputTokens?: number;
+        outputTokens?: number;
+        tokensPerSecond?: number;
+        error?: string;
+      };
+
+      if (!response.ok || payload.error || !payload.text) {
+        throw new Error(payload.error || 'Adapter returned an error.');
+      }
+
+      const elapsedMs = payload.durationMs ?? Math.max(0, Date.now() - requestStart);
+      const inputTokens = payload.inputTokens;
+      const outputTokens = payload.outputTokens ?? payload.tokenCount;
+      const totalTokens =
+        inputTokens !== undefined && outputTokens !== undefined
+          ? inputTokens + outputTokens
+          : payload.tokenCount ?? outputTokens ?? inputTokens;
+      const tokensPerSecond =
+        payload.tokensPerSecond ??
+        (outputTokens !== undefined && elapsedMs > 0
+          ? Number((outputTokens / (elapsedMs / 1000)).toFixed(1))
+          : undefined);
+      const { cleanMarkdown, events, carefulDates } = parseResponseEventsAndReport(
+        payload.text,
+        effectiveDomain,
+      );
+      const nowIso = new Date().toISOString();
+      const preliminaryReplyTurn: ConversationTurn = {
+        id: `asst-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        exchangeId: userTurn.id,
+        role: 'assistant',
+        content: cleanMarkdown,
+        eventCards: events,
+        carefulDates,
+        timestamp: nowIso,
+        scope: payload.scope || targetScope,
+        adapterId: payload.adapterId || targetAdapterId,
+        model: payload.model || targetModel,
+        durationMs: elapsedMs,
+        tokenCount: totalTokens,
+        inputTokenCount: inputTokens,
+        outputTokenCount: outputTokens,
+        tokensPerSecond,
+        adapterProtocol: payload.protocol,
+      };
+
+      const rootUserTurn =
+        baseThreadTurns.find((t) => t.role === 'user') ?? userTurn;
+      const combinedTurns = [...baseThreadTurns, preliminaryReplyTurn];
+      const combinedExchanges = buildExchangesFromTurns(combinedTurns);
+      const htmlReport = buildThreadHtmlDocument({
+        title: rootUserTurn.threadName || userTurn.threadName || 'Assistant Report',
+        exchanges: combinedExchanges,
+        domain: rootUserTurn.promptDomain || effectiveDomain,
+        month: rootUserTurn.threadMonth || userTurn.threadMonth,
+        year: rootUserTurn.threadYear ?? userTurn.threadYear,
+        rating: rootUserTurn.threadRating,
+        createdAt: nowIso,
+      });
+
+      const assistantTurn: ConversationTurn = {
+        ...preliminaryReplyTurn,
+        htmlReport,
+      };
+
+      setTurns((prev) => [
+        ...prev.filter((t) => t.exchangeId !== userTurn.id),
+        assistantTurn,
+      ]);
+
       setTelemetry((prev) => ({
         ...prev,
-        phase: successfulTurns.length > 0 ? 'Ready' : 'Error',
+        phase: 'Ready',
         isThinking: false,
         startedAtMs: undefined,
-        inputTokens: telemetryReply?.inputTokenCount,
-        outputTokens: telemetryReply?.outputTokenCount,
-        totalTokens: telemetryReply?.tokenCount,
-        tokensPerSecond: telemetryReply?.tokensPerSecond,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        tokensPerSecond,
         durationMs: Date.now() - requestStartedAt,
-        lastError: failedTurns.map((turn) => `${turn.scope}: ${turn.content}`).join(' · '),
+        lastError: '',
       }));
 
-      const hasAnySuccess = successfulTurns.length > 0;
+      pushContextLog(
+        'success',
+        `${targetScope} reply in ${(elapsedMs / 1000).toFixed(2)}s · ${
+          totalTokens !== undefined
+            ? `${totalTokens} tok (in ${inputTokens ?? '—'} / out ${outputTokens ?? '—'})`
+            : 'tokens n/a'
+        }${tokensPerSecond !== undefined ? ` @ ${tokensPerSecond.toFixed(1)} tok/s` : ''}`,
+      );
+
       if (settings.notifications?.soundOnReply !== false) {
-        playReplyChime(!hasAnySuccess);
+        playReplyChime(false);
       }
-
-      const replyTitle = hasAnySuccess
-        ? `Personal Assistant · ${scope === 'private' ? 'Private' : 'Public'} reply ready`
-        : 'Personal Assistant · Response Error';
-      const replyPreview = successfulTurns
-        .map((turn) => `${turn.scope}: ${turn.content.replace(/\s+/g, ' ').trim()}`)
-        .concat(failedTurns.map((turn) => `${turn.scope} error: ${turn.content}`))
-        .join(' | ');
+      const replyTitle = `Personal Assistant · ${targetScope === 'private' ? 'Private' : 'Public'} reply ready`;
+      const cleanedPreview = cleanMarkdown.replace(/\s+/g, ' ').trim();
       const shortPreview =
-        replyPreview.length > 110 ? `${replyPreview.slice(0, 107)}...` : replyPreview;
-
-      if (settings.notifications?.desktopNotificationOnReply !== false && replyPreview) {
+        cleanedPreview.length > 110 ? `${cleanedPreview.slice(0, 107)}...` : cleanedPreview;
+      if (settings.notifications?.desktopNotificationOnReply !== false && shortPreview) {
         showDesktopNotification(replyTitle, shortPreview);
       }
-      if (replyPreview) {
-        setReplyToast({ title: replyTitle, preview: shortPreview, isError: !hasAnySuccess });
+      if (shortPreview) {
+        setReplyToast({ title: replyTitle, preview: shortPreview, isError: false });
         if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-        replyToastTimerRef.current = window.setTimeout(
-          () => setReplyToast(null),
-          hasAnySuccess ? 4500 : 5000,
-        );
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 4500);
       }
 
       const shouldAutoSpeak =
-        scope === 'public'
+        targetScope === 'public'
           ? settings.voice.autoSpeakPublic
           : settings.voice.autoSpeakPrivate;
-      if (shouldAutoSpeak && selectedReply) {
+      if (shouldAutoSpeak) {
         if (settings.notifications?.soundOnReply !== false) {
-          setTimeout(() => speech.speakText(selectedReply.id, selectedReply.content), 240);
+          setTimeout(() => speech.speakText(assistantTurn.id, assistantTurn.content), 240);
         } else {
-          speech.speakText(selectedReply.id, selectedReply.content);
+          speech.speakText(assistantTurn.id, assistantTurn.content);
         }
       }
-      if (hasAnySuccess) {
-        setIsChatBarOpen(false);
+
+      setIsChatBarOpen(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Request failed.';
+      const errorTurn: ConversationTurn = {
+        id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        exchangeId: userTurn.id,
+        role: 'error',
+        content: errorMessage,
+        timestamp: new Date().toISOString(),
+        scope: targetScope,
+        adapterId: targetAdapterId,
+        model: targetModel,
+        durationMs: Math.max(0, Date.now() - requestStart),
+      };
+      setTurns((prev) => [
+        ...prev.filter((t) => t.exchangeId !== userTurn.id),
+        errorTurn,
+      ]);
+      setTelemetry((prev) => ({
+        ...prev,
+        phase: 'Error',
+        isThinking: false,
+        startedAtMs: undefined,
+        durationMs: Date.now() - requestStartedAt,
+        lastError: `${targetScope}: ${errorMessage}`,
+      }));
+      pushContextLog('error', `${targetScope} response failed: ${errorMessage}`);
+
+      if (settings.notifications?.soundOnReply !== false) {
+        playReplyChime(true);
       }
+      const errTitle = 'Personal Assistant · Response Error';
+      const shortPreview =
+        errorMessage.length > 110 ? `${errorMessage.slice(0, 107)}...` : errorMessage;
+      setReplyToast({ title: errTitle, preview: shortPreview, isError: true });
+      if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+      replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleSendMessage = async ({
+    text,
+    inputMode,
+    threadName,
+    promptDomain,
+    isFollowUp,
+  }: SendThreadMessagePayload) => {
+    const selectedAdapterId: AnyAdapterId =
+      scope === 'private'
+        ? settings.privateLlm.activeAdapter
+        : settings.publicLlm.activeAdapter;
+    const selectedModelName =
+      scope === 'private'
+        ? settings.privateLlm.selectedModel || 'unselected'
+        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+
+    const rootUserTurn = turns.find((t) => t.role === 'user');
+    const inheritedMonth =
+      (isFollowUp ? rootUserTurn?.threadMonth : undefined) ||
+      getMonthNameFromNumber(settings.contextCache.activeMonth);
+    const inheritedYear =
+      (isFollowUp ? rootUserTurn?.threadYear : undefined) ??
+      settings.contextCache.activeYear;
+    const effectiveThreadName =
+      isFollowUp && rootUserTurn?.threadName?.trim()
+        ? rootUserTurn.threadName.trim()
+        : threadName;
+    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+
+    const userTurn: ConversationTurn = {
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      responseScopes: [scope],
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+      inputMode,
+      scope,
+      adapterId: selectedAdapterId,
+      model: selectedModelName,
+      promptDomain: effectiveDomain,
+      promptStyle,
+      threadName: effectiveThreadName,
+      threadMonth: inheritedMonth,
+      threadYear: inheritedYear,
+    };
+
+    const nextBaseTurns = [...turns, userTurn];
+    setTurns(nextBaseTurns);
+    setActiveReportExchangeId(null);
+    setIsChatBarOpen(false);
+
+    await executeExchangeRequest({
+      userTurn,
+      precedingTurns: turns,
+      baseThreadTurns: nextBaseTurns,
+      effectiveDomain,
+    });
+  };
+
+  const handleRetryExchange = async (exchangeId: string) => {
+    if (isSending) return;
+    const targetIndex = turns.findIndex(
+      (t) => t.id === exchangeId && t.role === 'user',
+    );
+    if (targetIndex < 0) return;
+
+    const existingUserTurn = turns[targetIndex];
+    const selectedAdapterId: AnyAdapterId =
+      scope === 'private'
+        ? settings.privateLlm.activeAdapter
+        : settings.publicLlm.activeAdapter;
+    const selectedModelName =
+      scope === 'private'
+        ? settings.privateLlm.selectedModel || 'unselected'
+        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+
+    const refreshedUserTurn: ConversationTurn = {
+      ...existingUserTurn,
+      scope,
+      responseScopes: [scope],
+      adapterId: selectedAdapterId,
+      model: selectedModelName,
+    };
+
+    const precedingTurns = turns.slice(0, targetIndex);
+    const cleanedTurns = turns
+      .filter((t) => t.exchangeId !== exchangeId)
+      .map((t) => (t.id === exchangeId ? refreshedUserTurn : t));
+
+    setTurns(cleanedTurns);
+    setIsChatBarOpen(false);
+
+    await executeExchangeRequest({
+      userTurn: refreshedUserTurn,
+      precedingTurns,
+      baseThreadTurns: cleanedTurns,
+      effectiveDomain: refreshedUserTurn.promptDomain ?? activePromptDomain,
+    });
   };
 
   return (
@@ -950,8 +1108,7 @@ export default function App() {
                       record.turns.find((turn) => turn.role === 'assistant')?.scope ??
                       'public';
                     const isPublicThread = threadScope === 'public';
-                    const displayLabel =
-                      qTurn?.threadName?.trim() || `Report #${index + 1}`;
+                    const displayLabel = formatSidebarThreadLabel(qTurn, index);
                     const isActiveReport = activeReportExchangeId === record.id;
 
                     return (
@@ -964,22 +1121,26 @@ export default function App() {
                           setIsReferenceContextOpen(false);
                           setActiveReportExchangeId(record.id);
                         }}
-                        title={`Open HTML report "${displayLabel}" in Browser / HTML Editor${ratingOption ? ` · ${ratingOption.description}` : ''}`}
-                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors text-left ${
+                        title={`${isPublicThread ? 'Public' : 'Private'} HTML report "${displayLabel}"${ratingOption ? ` · ${ratingOption.description}` : ''}`}
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all text-left ${
                           isPublicThread
                             ? 'font-semibold text-slate-900 dark:text-white'
-                            : 'font-normal text-slate-600 dark:text-slate-300'
+                            : 'font-normal text-slate-500 dark:text-slate-400 opacity-55 blur-[0.4px] grayscale-[45%] hover:opacity-85 hover:blur-0'
                         } ${
                           isActiveReport
-                            ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                            : 'hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
+                            ? 'bg-white dark:bg-slate-800 shadow-xs border border-slate-200/80 dark:border-slate-700/70 opacity-100 blur-none'
+                            : isPublicThread
+                              ? 'bg-white/45 dark:bg-slate-800/35 hover:bg-white/80 dark:hover:bg-slate-800/75'
+                              : 'hover:bg-white/55 dark:hover:bg-slate-800/55'
                         }`}
                       >
                         <FileCode2
                           className="w-3.5 h-3.5 shrink-0"
-                          style={{ color: 'var(--pa-accent)' }}
+                          style={{
+                            color: isPublicThread ? 'var(--pa-accent)' : '#94a3b8',
+                          }}
                         />
-                        <span className="truncate flex-1">{displayLabel}</span>
+                        <span className="truncate flex-1 tabular-nums">{displayLabel}</span>
                         {starCount > 0 && (
                           <span
                             aria-hidden="true"
@@ -1206,10 +1367,10 @@ export default function App() {
               onClick={() => {
                 setIsContextRailOpen((prev) => !prev);
               }}
-              aria-label={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
-              title={isContextRailVisible ? 'Hide Agent Session Sidebar' : 'Show Agent Session Sidebar'}
+              aria-label={isContextRailVisible ? 'Hide Careful Dates by Domain' : 'Show Careful Dates by Domain'}
+              title={isContextRailVisible ? 'Hide Careful Dates by Domain' : 'Show Careful Dates by Domain'}
               aria-pressed={isContextRailVisible}
-              className={`hidden lg:inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
                 isContextRailVisible
                   ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                   : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -1263,21 +1424,19 @@ export default function App() {
           ) : isReferenceContextOpen ? (
             <ReferenceContextPage
               scope={scope}
-              onChangeScope={setScope}
               settings={settings}
-              turns={turns}
-              onSaveReferenceContext={handleSaveReferenceContext}
+              onApplyFetchedContext={handleApplyFetchedContext}
+              onClearAllReferenceContext={handleClearAllReferenceContext}
+              onOpenSettings={() => {
+                setIsReferenceContextOpen(false);
+                setIsSettingsOpen(true);
+              }}
               onContextLog={pushContextLog}
             />
           ) : activeReportRecord ? (
             <ReportDocumentPage
               exchangeId={activeReportRecord.id}
-              questionTurn={
-                activeReportRecord.turns.find((t) => t.role === 'user') ?? null
-              }
-              replyTurns={activeReportRecord.turns.filter(
-                (t) => t.role !== 'user',
-              )}
+              turns={activeReportRecord.turns}
               onSaveHtmlReport={handleSaveHtmlReport}
               onViewEventCards={(exchangeId) => {
                 const record = ratedThreads.find((r) => r.id === exchangeId);
@@ -1321,6 +1480,7 @@ export default function App() {
               isSending={isSending}
               speech={speech}
               onSendMessage={(payload) => void handleSendMessage(payload)}
+              onRetryExchange={(exchangeId) => void handleRetryExchange(exchangeId)}
               onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
               onClearConversation={() => {
                 setTurns([]);
@@ -1335,11 +1495,7 @@ export default function App() {
                 pushContextLog('info', 'Started new thread; stage cleared');
               }}
               onDeleteExchange={(exchangeId) => {
-                setTurns((previous) =>
-                  previous.filter(
-                    (turn) => turn.id !== exchangeId && turn.exchangeId !== exchangeId,
-                  ),
-                );
+                setTurns([]);
                 setRatedThreads((previous) =>
                   previous.filter((item) => item.id !== exchangeId),
                 );
@@ -1360,41 +1516,20 @@ export default function App() {
             />
           )}
 
-          {!isSettingsOpen &&
-            !isPromptBuilderOpen &&
-            !isReferenceContextOpen &&
-            !activeReportRecord &&
-            isContextRailVisible && (
-            <>
-              {/* Right Rail Drag Splitter */}
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize Agent Session Sidebar"
-                title="Drag to resize Agent Session Sidebar"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  startPaneResize('right', e.clientX, rightRailWidth);
-                }}
-                className="hidden lg:flex w-1.5 shrink-0 cursor-col-resize items-center justify-center group hover:bg-sky-500/15 transition-colors"
-              >
-                <span
-                  className={`w-0.5 h-9 rounded-full transition-colors ${
-                    activeResizer === 'right'
-                      ? 'bg-sky-500'
-                      : 'bg-slate-300/70 dark:bg-slate-700/70 group-hover:bg-sky-500/80'
-                  }`}
+          {/* Floating Right-Hand Careful Dates by Domain Drawer */}
+          <AnimatePresence>
+            {!isSettingsOpen &&
+              !isPromptBuilderOpen &&
+              !isReferenceContextOpen &&
+              !activeReportRecord &&
+              isContextRailVisible && (
+                <ContextMonitorRail
+                  carefulDates={activeCarefulDates}
+                  periodLabel={activeCarefulPeriodLabel}
+                  onClose={() => setIsContextRailOpen(false)}
                 />
-              </div>
-
-              <ContextMonitorRail
-                telemetry={telemetry}
-                logs={contextLogs}
-                nowMs={nowMs}
-                width={rightRailWidth}
-              />
-            </>
-          )}
+              )}
+          </AnimatePresence>
         </div>
 
         {/* Bottom Panel Drag Splitter */}

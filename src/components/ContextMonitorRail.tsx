@@ -1,234 +1,177 @@
-import { Activity, AlertCircle, Cpu, Gauge, Timer } from 'lucide-react';
-import type { LlmContextLogEntry, LlmContextTelemetry } from '../types/workbench';
+import { AlertTriangle, Calendar, ShieldAlert, X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useMemo, useState } from 'react';
+import type { CarefulDateItem } from '../types/workbench';
 
 interface ContextMonitorRailProps {
-  telemetry: LlmContextTelemetry;
-  logs: LlmContextLogEntry[];
-  nowMs: number;
-  width?: number;
+  carefulDates: CarefulDateItem[];
+  periodLabel?: string;
+  onClose: () => void;
 }
 
-function formatDuration(ms?: number): string {
-  if (ms === undefined || ms < 0) return '—';
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
-function formatNumber(value?: number): string {
-  if (value === undefined || Number.isNaN(value)) return '—';
-  return value.toLocaleString();
-}
+const SEVERITY_STYLES: Record<
+  NonNullable<CarefulDateItem['severity']>,
+  { dot: string; label: string; border: string }
+> = {
+  high: {
+    dot: 'bg-red-500',
+    label: 'High Care',
+    border: 'border-red-200/90 dark:border-red-900/75',
+  },
+  caution: {
+    dot: 'bg-amber-500',
+    label: 'Caution',
+    border: 'border-amber-200/90 dark:border-amber-900/75',
+  },
+  watch: {
+    dot: 'bg-sky-500',
+    label: 'Watch',
+    border: 'border-slate-200/90 dark:border-slate-700/80',
+  },
+};
 
 export function ContextMonitorRail({
-  telemetry,
-  logs,
-  nowMs,
-  width = 288,
+  carefulDates,
+  periodLabel,
+  onClose,
 }: ContextMonitorRailProps) {
-  const liveElapsedMs =
-    telemetry.isThinking && telemetry.startedAtMs
-      ? Math.max(0, nowMs - telemetry.startedAtMs)
-      : telemetry.durationMs;
+  const [selectedDomain, setSelectedDomain] = useState<string>('All');
 
-  const badgeStyle =
-    telemetry.phase === 'Thinking'
-      ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
-      : telemetry.phase === 'Ready'
-        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-        : telemetry.phase === 'Error'
-          ? 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30'
-          : 'bg-slate-200/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-300/70 dark:border-slate-700/70';
+  const domains = useMemo(() => {
+    const unique = Array.from(
+      new Set(carefulDates.map((item) => item.domain.trim() || 'General')),
+    );
+    return ['All', ...unique];
+  }, [carefulDates]);
 
-  const dotColor =
-    telemetry.phase === 'Thinking'
-      ? 'bg-sky-500 animate-pulse'
-      : telemetry.phase === 'Ready'
-        ? 'bg-emerald-500'
-        : telemetry.phase === 'Error'
-          ? 'bg-red-500'
-          : 'bg-slate-400';
+  const activeDomain = domains.includes(selectedDomain) ? selectedDomain : 'All';
+
+  const groupedByDomain = useMemo(() => {
+    const filtered =
+      activeDomain === 'All'
+        ? carefulDates
+        : carefulDates.filter(
+            (item) => (item.domain.trim() || 'General') === activeDomain,
+          );
+
+    const map = new Map<string, CarefulDateItem[]>();
+    for (const item of filtered) {
+      const domainKey = item.domain.trim() || 'General';
+      const existing = map.get(domainKey) || [];
+      existing.push(item);
+      map.set(domainKey, existing);
+    }
+    return Array.from(map.entries());
+  }, [activeDomain, carefulDates]);
 
   return (
-    <aside
-      aria-label="Agent Session Sidebar"
-      style={{ width }}
-      className="hidden lg:flex shrink-0 flex-col border-l border-slate-200/80 dark:border-slate-800/80 bg-white/55 dark:bg-slate-900/55 backdrop-blur-xl p-3 gap-2.5 select-text overflow-hidden"
+    <motion.aside
+      aria-label="Careful Dates by Domain"
+      initial={{ opacity: 0, x: 28, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 28, scale: 0.96 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      className="fixed top-[4.25rem] right-4 z-30 w-[330px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-8.5rem)] flex flex-col rounded-3xl border border-white/90 dark:border-slate-700/85 bg-white/92 dark:bg-slate-900/92 backdrop-blur-2xl shadow-[0_24px_60px_-14px_rgba(15,23,42,0.26)] overflow-hidden select-text"
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
+      <div className="shrink-0 px-4 py-3.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-            <h2 className="text-xs font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-              Agent Session Sidebar
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" />
+            <h2 className="font-display text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100 truncate">
+              Careful Dates by Domain
             </h2>
           </div>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Session status, context &amp; activity
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums truncate">
+            {periodLabel ? `${periodLabel} · ` : ''}
+            {carefulDates.length} date{carefulDates.length === 1 ? '' : 's'} flagged
           </p>
         </div>
 
-        <span
-          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold shrink-0 ${badgeStyle}`}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close Careful Dates drawer"
+          title="Close Careful Dates"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors shrink-0"
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
-          <span>{telemetry.phase}</span>
-        </span>
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
-      {/* Live Progress Card */}
-      <div className="rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 px-3 py-2.5 space-y-1.5">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-            <Timer className="w-3.5 h-3.5 text-slate-400" />
-            <span>{telemetry.isThinking ? 'Thinking...' : 'Generation Progress'}</span>
-          </span>
-          <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200">
-            {formatDuration(liveElapsedMs)}
-          </span>
+      {/* Domain Filter Strip */}
+      {domains.length > 2 && (
+        <div className="shrink-0 px-3.5 py-2 border-b border-slate-200/70 dark:border-slate-800/70 flex items-center gap-1.5 overflow-x-auto fluent-scroll">
+          {domains.map((dom) => (
+            <button
+              key={dom}
+              type="button"
+              onClick={() => setSelectedDomain(dom)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 ${
+                activeDomain === dom
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              {dom}
+            </button>
+          ))}
         </div>
-        <div className="h-1.5 w-full rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden">
-          {telemetry.isThinking ? (
-            <div
-              className="h-full w-2/5 rounded-full animate-pulse"
-              style={{
-                backgroundColor: 'var(--pa-accent)',
-                animation: 'pulse 1.1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              }}
-            />
-          ) : telemetry.phase === 'Ready' ? (
-            <div className="h-full w-full rounded-full bg-emerald-500/85" />
-          ) : telemetry.phase === 'Error' ? (
-            <div className="h-full w-full rounded-full bg-red-500/85" />
-          ) : (
-            <div className="h-full w-0 rounded-full" />
-          )}
-        </div>
+      )}
+
+      {/* Careful Dates List */}
+      <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-3.5 space-y-4">
+        {groupedByDomain.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/50 p-4 text-center space-y-1.5">
+            <AlertTriangle className="w-5 h-5 mx-auto text-slate-400" />
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+              No careful dates yet
+            </p>
+            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              Ask a question to populate domain-specific dates to watch closely.
+            </p>
+          </div>
+        ) : (
+          groupedByDomain.map(([domainName, items]) => (
+            <section key={domainName} className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  {domainName}
+                </h3>
+                <span className="text-[11px] font-mono tabular-nums text-slate-400 dark:text-slate-500">
+                  {items.length}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {items.map((item) => {
+                  const sev = SEVERITY_STYLES[item.severity || 'caution'];
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-2xl border ${sev.border} bg-white/85 dark:bg-slate-950/60 p-3 space-y-1.5 shadow-2xs`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                          <Calendar className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                          <span>{item.date}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">
+                          <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} aria-hidden="true" />
+                          <span>{sev.label}</span>
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                        {item.note}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))
+        )}
       </div>
-
-      {/* 2x3 Read-Only Telemetry Grid */}
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-            Prompt Size
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {telemetry.promptChars > 0
-              ? `${telemetry.promptChars.toLocaleString()} ch · ${telemetry.historyTurnsUsed}t`
-              : '—'}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-            Tokens Loaded
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {formatNumber(telemetry.totalTokens)}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-            Input Tokens
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {formatNumber(telemetry.inputTokens)}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-            Output Tokens
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {formatNumber(telemetry.outputTokens)}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
-            <Gauge className="w-3 h-3" />
-            <span>Speed</span>
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {telemetry.tokensPerSecond !== undefined
-              ? `${telemetry.tokensPerSecond.toFixed(1)} tok/s`
-              : '—'}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 px-2.5 py-2">
-          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
-            <Cpu className="w-3 h-3" />
-            <span>Time Taken</span>
-          </div>
-          <div className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-            {formatDuration(liveElapsedMs)}
-          </div>
-        </div>
-      </div>
-
-      {/* Status / Errors Box */}
-      <div
-        className={`rounded-xl border px-3 py-2 text-[11px] ${
-          telemetry.lastError
-            ? 'border-red-300/80 dark:border-red-900/80 bg-red-50/80 dark:bg-red-950/35 text-red-700 dark:text-red-300'
-            : 'border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 text-slate-600 dark:text-slate-300'
-        }`}
-      >
-        <div className="flex items-center gap-1.5 font-semibold text-[10px] uppercase tracking-wide opacity-80 mb-0.5">
-          <AlertCircle className="w-3 h-3 shrink-0" />
-          <span>Status / Errors</span>
-        </div>
-        <div className="leading-snug break-words line-clamp-3">
-          {telemetry.lastError || 'Healthy · No active errors'}
-        </div>
-      </div>
-
-      {/* Limited Moving LLM Context Logs */}
-      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-slate-900/70 overflow-hidden">
-        <div className="px-3 py-2 border-b border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-            Context Events
-          </span>
-          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-            {logs.length}/12 max
-          </span>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-1.5">
-          {logs.length === 0 ? (
-            <div className="text-[11px] text-slate-400 dark:text-slate-500 italic px-1 py-2">
-              Waiting for LLM context activity...
-            </div>
-          ) : (
-            logs.map((entry) => {
-              const dotClass =
-                entry.level === 'success'
-                  ? 'bg-emerald-500'
-                  : entry.level === 'error'
-                    ? 'bg-red-500'
-                    : 'bg-sky-500';
-              return (
-                <div
-                  key={entry.id}
-                  className="flex items-start gap-2 text-[11px] leading-snug rounded-md px-1.5 py-1 bg-slate-50/70 dark:bg-slate-950/40 border border-slate-200/50 dark:border-slate-800/60"
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${dotClass}`}
-                    aria-hidden="true"
-                  />
-                  <span className="font-mono text-[10.5px] text-slate-700 dark:text-slate-300 break-words min-w-0">
-                    <span className="text-slate-400 dark:text-slate-500">[{entry.timestamp}]</span>{' '}
-                    {entry.message}
-                  </span>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </aside>
+    </motion.aside>
   );
 }

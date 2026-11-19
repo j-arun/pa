@@ -37,12 +37,56 @@ export const THREAD_MONTHS: readonly string[] = [
   'December',
 ];
 
-export const THREAD_YEAR_START = 1993;
+export const THREAD_YEAR_START = 1990;
 export const THREAD_YEAR_END = 2090;
 export const THREAD_YEARS: readonly number[] = Array.from(
   { length: THREAD_YEAR_END - THREAD_YEAR_START + 1 },
   (_, index) => THREAD_YEAR_START + index,
 );
+
+const MONTH_SHORT_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+export function getMonthNameFromNumber(monthNum?: number): string | undefined {
+  if (!monthNum || monthNum < 1 || monthNum > 12) return undefined;
+  return THREAD_MONTHS[monthNum - 1];
+}
+
+export function getMonthNumberFromName(monthName?: string): number | undefined {
+  if (!monthName) return undefined;
+  const normalized = monthName.trim().toLowerCase();
+  const idx = THREAD_MONTHS.findIndex((m) => m.toLowerCase() === normalized);
+  if (idx >= 0) return idx + 1;
+  const shortIdx = MONTH_SHORT_NAMES.findIndex((m) => m.toLowerCase() === normalized.slice(0, 3));
+  if (shortIdx >= 0) return shortIdx + 1;
+  const numeric = Number(normalized);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) return numeric;
+  return undefined;
+}
+
+export function formatShortYearMonth(month?: string | number, year?: number): string {
+  if (!year || !Number.isFinite(year)) return '';
+  let monthNum: number | undefined;
+  if (typeof month === 'number') {
+    monthNum = month >= 1 && month <= 12 ? month : undefined;
+  } else if (typeof month === 'string') {
+    monthNum = getMonthNumberFromName(month);
+  }
+  if (!monthNum) return String(year);
+  return `${year}${MONTH_SHORT_NAMES[monthNum - 1]}`;
+}
 
 export const THREAD_RATING_OPTIONS: ReadonlyArray<{
   id: ThreadRating;

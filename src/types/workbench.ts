@@ -32,8 +32,18 @@ export interface EventCardItem {
   title: string;
   summary: string;
   category: string;
+  dateRange?: string;
+  likelihood?: string;
   timeframe?: string;
   icon: EventCardIconType;
+}
+
+export interface CarefulDateItem {
+  id: string;
+  domain: string;
+  date: string;
+  note: string;
+  severity?: 'high' | 'caution' | 'watch';
 }
 
 export interface ConversationTurn {
@@ -55,6 +65,7 @@ export interface ConversationTurn {
   role: 'user' | 'assistant' | 'error';
   content: string;
   eventCards?: EventCardItem[];
+  carefulDates?: CarefulDateItem[];
   htmlReport?: string;
   timestamp: string;
   inputMode?: 'text' | 'voice';
@@ -124,6 +135,16 @@ export interface PrivateLlmConfig {
 export interface ContextCacheConfig {
   privateText: string;
   publicText: string;
+  activeMonth?: number;
+  activeYear?: number;
+  lastSyncedAt?: string;
+}
+
+export interface ReferenceContextApiConfig {
+  hostname: string;
+  port: number;
+  path: string;
+  queryTemplate: string;
 }
 
 export interface PublicAdapterConfig {
@@ -174,6 +195,7 @@ export interface WorkbenchSettings {
   profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
   contextCache: ContextCacheConfig;
+  referenceContextApi: ReferenceContextApiConfig;
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;
   notifications: NotificationConfig;

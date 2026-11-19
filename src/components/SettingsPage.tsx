@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
+  Globe,
   HardDrive,
   Lock,
   Palette,
@@ -158,22 +159,35 @@ export function SettingsPage({
   const [notifyFeedback, setNotifyFeedback] = useState<string | null>(null);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceFeedback, setMaintenanceFeedback] = useState<string | null>(null);
+  const [refApiTesting, setRefApiTesting] = useState(false);
+  const [refApiTestFeedback, setRefApiTestFeedback] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
   const [expandedSections, setExpandedSections] = useState<{
     appearance: boolean;
     privateLlm: boolean;
     publicLlm: boolean;
     voice: boolean;
+    referenceApi: boolean;
     storage: boolean;
   }>({
     appearance: true,
     privateLlm: true,
     publicLlm: true,
     voice: true,
+    referenceApi: true,
     storage: true,
   });
 
   const toggleSection = (
-    sectionKey: 'appearance' | 'privateLlm' | 'publicLlm' | 'voice' | 'storage',
+    sectionKey:
+      | 'appearance'
+      | 'privateLlm'
+      | 'publicLlm'
+      | 'voice'
+      | 'referenceApi'
+      | 'storage',
   ) => {
     setExpandedSections((prev) => ({
       ...prev,
@@ -189,6 +203,7 @@ export function SettingsPage({
       privateLlm: nextValue,
       publicLlm: nextValue,
       voice: nextValue,
+      referenceApi: nextValue,
       storage: nextValue,
     });
   };
@@ -1560,7 +1575,225 @@ export function SettingsPage({
           )}
         </section>
 
-        {/* Section 5: Local Configuration File & Windows Storage */}
+        {/* Section 5: Reference Context REST API */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('referenceApi')}
+            aria-expanded={expandedSections.referenceApi}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Globe className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                <span>Reference Context REST API</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Configure hostname, port, endpoint path, and query template for automatic Reference Context fetch
+              </p>
+            </div>
+            {expandedSections.referenceApi ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
+
+          {expandedSections.referenceApi && (
+            <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="ref-api-host"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Hostname
+                  </label>
+                  <input
+                    id="ref-api-host"
+                    type="text"
+                    value={draft.referenceContextApi.hostname}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        referenceContextApi: {
+                          ...prev.referenceContextApi,
+                          hostname: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="localhost"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="ref-api-port"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Port
+                  </label>
+                  <input
+                    id="ref-api-port"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={draft.referenceContextApi.port}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(65535, Math.round(Number(e.target.value) || 3000)));
+                      updateDraft((prev) => ({
+                        ...prev,
+                        referenceContextApi: {
+                          ...prev.referenceContextApi,
+                          port: val,
+                        },
+                      }));
+                    }}
+                    placeholder="3000"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="ref-api-path"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Endpoint Path
+                  </label>
+                  <input
+                    id="ref-api-path"
+                    type="text"
+                    value={draft.referenceContextApi.path}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        referenceContextApi: {
+                          ...prev.referenceContextApi,
+                          path: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="/api/content"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="ref-api-query"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Query Parameter Template
+                  </label>
+                  <input
+                    id="ref-api-query"
+                    type="text"
+                    value={draft.referenceContextApi.queryTemplate}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        referenceContextApi: {
+                          ...prev.referenceContextApi,
+                          queryTemplate: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="date={month}/{year}&variant=compact"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
+                <div className="min-w-0">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Resolved GET Request Preview
+                  </div>
+                  <div className="font-mono text-xs text-slate-800 dark:text-slate-200 break-all">
+                    {`${
+                      /^https?:\/\//i.test(draft.referenceContextApi.hostname)
+                        ? draft.referenceContextApi.hostname.replace(/\/+$/, '')
+                        : `http://${draft.referenceContextApi.hostname || 'localhost'}`
+                    }:${draft.referenceContextApi.port || 3000}${
+                      draft.referenceContextApi.path.startsWith('/')
+                        ? draft.referenceContextApi.path
+                        : `/${draft.referenceContextApi.path}`
+                    }?${(draft.referenceContextApi.queryTemplate || 'date={month}/{year}&variant=compact')
+                      .replace(/^\?/, '')
+                      .replace(/\{month\}/gi, String(draft.contextCache.activeMonth ?? 4))
+                      .replace(/\{year\}/gi, String(draft.contextCache.activeYear ?? 2026))}`}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={refApiTesting}
+                  onClick={async () => {
+                    setRefApiTesting(true);
+                    setRefApiTestFeedback(null);
+                    try {
+                      const res = await fetch('/api/reference-context/fetch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          month: draft.contextCache.activeMonth ?? 4,
+                          year: draft.contextCache.activeYear ?? 2026,
+                          apiConfig: draft.referenceContextApi,
+                        }),
+                      });
+                      const data = (await res.json()) as {
+                        text?: string;
+                        error?: string;
+                        url?: string;
+                      };
+                      if (!res.ok || data.error) {
+                        setRefApiTestFeedback({
+                          ok: false,
+                          message: data.error || 'Reference Context endpoint is not available.',
+                        });
+                      } else {
+                        setRefApiTestFeedback({
+                          ok: true,
+                          message: `Endpoint reachable (${(data.text || '').length.toLocaleString()} chars returned).`,
+                        });
+                      }
+                    } catch (err) {
+                      setRefApiTestFeedback({
+                        ok: false,
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : 'Unable to reach Reference Context endpoint.',
+                      });
+                    } finally {
+                      setRefApiTesting(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refApiTesting ? 'animate-spin' : ''}`} />
+                  <span>{refApiTesting ? 'Testing…' : 'Test Endpoint'}</span>
+                </button>
+              </div>
+
+              {refApiTestFeedback && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs ${
+                    refApiTestFeedback.ok
+                      ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                      : 'border-amber-200 dark:border-amber-900 bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200'
+                  }`}
+                >
+                  {refApiTestFeedback.message}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Section 6: Local Configuration File & Windows Storage */}
         <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           <button
             type="button"
