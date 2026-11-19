@@ -132,7 +132,7 @@ export default function App() {
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [ratedThreads, setRatedThreads] = useState<RatedThreadRecord[]>(() =>
-    loadRatedThreads(),
+    loadRatedThreads().map((rec) => ({ ...rec, isFinalized: true })),
   );
   const activePromptDomain = settings.promptBuilder.activeDomain;
   const promptStyle = settings.promptBuilder.activeStyle;
@@ -301,7 +301,7 @@ export default function App() {
         reports?: RatedThreadRecord[];
       };
       if (Array.isArray(data.reports)) {
-        const diskReports = data.reports;
+        const diskReports = data.reports.map((rec) => ({ ...rec, isFinalized: true }));
         setRatedThreads((prev) => {
           const byId = new Map<string, RatedThreadRecord>();
           for (const rec of diskReports) {
@@ -524,53 +524,6 @@ export default function App() {
   }, [ratedThreads]);
 
   useEffect(() => {
-    const rootUserTurn = turns.find((turn) => turn.role === 'user');
-    if (!rootUserTurn) return;
-    const hasAssistantReply = turns.some((candidate) => candidate.role === 'assistant');
-    if (!hasAssistantReply && !rootUserTurn.threadRating) return;
-
-    const recordId = rootUserTurn.id;
-    const isFinalized = Boolean(rootUserTurn.isFinalized);
-    const updatedRecord: RatedThreadRecord = {
-      id: recordId,
-      turns,
-      ratedAt: new Date().toISOString(),
-      isFinalized,
-    };
-
-    setRatedThreads((prevRated) => {
-      const existingIdx = prevRated.findIndex((item) => item.id === recordId);
-      if (existingIdx >= 0) {
-        const existing = prevRated[existingIdx];
-        const nextFinalized = Boolean(existing.isFinalized || isFinalized);
-        if (
-          JSON.stringify(existing.turns) === JSON.stringify(turns) &&
-          Boolean(existing.isFinalized) === nextFinalized
-        ) {
-          return prevRated;
-        }
-        const nextRated = [...prevRated];
-        const mergedRecord: RatedThreadRecord = {
-          ...existing,
-          turns,
-          ratedAt: updatedRecord.ratedAt,
-          isFinalized: nextFinalized,
-        };
-        nextRated[existingIdx] = mergedRecord;
-        if (hasAssistantReply && reportsHydratedRef.current) {
-          void syncReportToDisk(mergedRecord);
-        }
-        return nextRated;
-      }
-
-      if (hasAssistantReply && reportsHydratedRef.current) {
-        void syncReportToDisk(updatedRecord);
-      }
-      return [updatedRecord, ...prevRated];
-    });
-  }, [turns, syncReportToDisk]);
-
-  useEffect(() => {
     saveScope(scope);
   }, [scope]);
 
@@ -641,21 +594,24 @@ export default function App() {
         ),
       );
       setRatedThreads((prevRated) =>
-        prevRated.map((item) =>
-          item.id === exchangeId
-            ? {
-                ...item,
-                turns: item.turns.map((turn) =>
-                  turn.id === exchangeId && turn.role === 'user'
-                    ? { ...turn, ...patch }
-                    : turn,
-                ),
-              }
-            : item,
-        ),
+        prevRated.map((item) => {
+          if (item.id !== exchangeId) return item;
+          const updatedItem: RatedThreadRecord = {
+            ...item,
+            turns: item.turns.map((turn) =>
+              turn.id === exchangeId && turn.role === 'user'
+                ? { ...turn, ...patch }
+                : turn,
+            ),
+          };
+          if (reportsHydratedRef.current && !updatedItem.isExternalFile) {
+            void syncReportToDisk(updatedItem);
+          }
+          return updatedItem;
+        }),
       );
     },
-    [],
+    [syncReportToDisk],
   );
 
   const handleStartNewThread = useCallback(() => {
@@ -1961,18 +1917,43 @@ export default function App() {
                 void handleUpdateReportComment(id, nextComment)
               }
               onViewEventCards={(exchangeId) => {
+                // If an active unarchived thread is on stage with a reply, archive it first
+                const currentRoot = turns.find((t) => t.role === 'user');
+                const currentHasReply = turns.some((t) => t.role === 'assistant');
+                if (
+                  currentRoot &&
+                  currentHasReply &&
+                  currentRoot.id !== exchangeId &&
+                  !ratedThreads.some((r) => r.id === currentRoot.id)
+                ) {
+                  const archivedTurns = turns.map((t) =>
+                    t.id === currentRoot.id && t.role === 'user'
+                      ? { ...t, isFinalized: true }
+                      : t,
+                  );
+                  const archivedRecord: RatedThreadRecord = {
+                    id: currentRoot.id,
+                    turns: archivedTurns,
+                    ratedAt: new Date().toISOString(),
+                    isFinalized: true,
+                  };
+                  setRatedThreads((prev) => [archivedRecord, ...prev]);
+                  if (reportsHydratedRef.current) {
+                    void syncReportToDisk(archivedRecord);
+                  }
+                }
+
                 const record = ratedThreads.find((r) => r.id === exchangeId);
                 if (record) {
                   const firstUserIdx = record.turns.findIndex((t) => t.role === 'user');
                   const qTurn = firstUserIdx >= 0 ? record.turns[firstUserIdx] : undefined;
                   if (qTurn?.scope) setScope(qTurn.scope);
-                  const loadedTurns = record.isFinalized
-                    ? record.turns.map((t, idx) =>
-                        idx === firstUserIdx ? { ...t, isFinalized: true } : t,
-                      )
-                    : record.turns;
+                  const loadedTurns = record.turns.map((t, idx) =>
+                    idx === firstUserIdx ? { ...t, isFinalized: true } : t,
+                  );
                   setTurns(loadedTurns);
                 }
+                setIsChatBarOpen(false);
                 setActiveReportExchangeId(null);
               }}
               onClose={() => setActiveReportExchangeId(null)}
@@ -1982,6 +1963,13 @@ export default function App() {
               scope={scope}
               settings={settings}
               turns={turns}
+              isArchivedThread={Boolean(
+                turns.some((t) => t.role === 'user' && t.isFinalized) ||
+                  (() => {
+                    const rootQ = turns.find((t) => t.role === 'user');
+                    return rootQ ? ratedThreads.some((r) => r.id === rootQ.id) : false;
+                  })(),
+              )}
               activePromptDomain={activePromptDomain}
               promptStyle={promptStyle}
               isChatBarOpen={isChatBarOpen}

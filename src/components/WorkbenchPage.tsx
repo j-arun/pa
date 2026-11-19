@@ -214,6 +214,7 @@ interface WorkbenchPageProps {
   scope: ConversationScope;
   settings: WorkbenchSettings;
   turns: ConversationTurn[];
+  isArchivedThread?: boolean;
   activePromptDomain: PromptDomain;
   promptStyle: PromptStyle;
   isChatBarOpen: boolean;
@@ -364,17 +365,17 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
         style={{ backgroundColor: 'var(--pa-particle-color)' }}
       />
 
-      {/* Embedded Large Transparent Background Illustration (Theme-Matched Palette, Breathing + Pulsing Waves) */}
+      {/* Embedded Large Transparent Background AI Character Illustration (Theme-Matched Palette, Breathing + Pulsing Waves) */}
       <div className="absolute inset-0 flex items-center justify-center sm:justify-end sm:pr-8 md:pr-16">
         <AnimatePresence mode="wait">
           {isPrivate ? (
             <motion.div
-              key="backdrop-murmur"
+              key="backdrop-ai-murmur"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.16] dark:opacity-[0.22]"
+              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.17] dark:opacity-[0.23]"
               style={{
                 maskImage:
                   'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
@@ -384,86 +385,121 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
             >
               <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
                 <defs>
-                  <linearGradient id="bgUnifiedAuraPriv" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="bgAiAuraPriv" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
                     <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
                   </linearGradient>
-                  <linearGradient id="bgUnifiedBodyPriv" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
-                  </linearGradient>
-                  <linearGradient id="bgUnifiedSkinPriv" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="bgAiChassisPriv" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--pa-fig-skin)" />
                     <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
                   </linearGradient>
-                  <linearGradient id="bgUnifiedHairPriv" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body-deep)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-stroke)" />
+                  <linearGradient id="bgAiBodyPriv" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
+                  </linearGradient>
+                  <linearGradient id="bgAiVisorPriv" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-stroke)" stopOpacity="0.92" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" stopOpacity="0.96" />
                   </linearGradient>
                 </defs>
 
-                <circle cx="56" cy="54" r="46" fill="url(#bgUnifiedAuraPriv)" />
+                <circle cx="56" cy="54" r="46" fill="url(#bgAiAuraPriv)" />
 
-                {/* Leaning shoulders / quiet posture */}
+                {/* AI Robot Shoulders / Torso */}
                 <path
-                  d="M16 98 C18 75, 34 67, 49 67 C62 67, 72 74, 76 98 Z"
-                  fill="url(#bgUnifiedBodyPriv)"
+                  d="M18 98 C20 76, 33 68, 48 68 C61 68, 70 75, 74 98 Z"
+                  fill="url(#bgAiBodyPriv)"
                 />
-                <path d="M40 69 L50 79 L59 69" fill="var(--pa-fig-stroke)" opacity="0.35" />
-
-                {/* Neck & Head */}
-                <rect x="43" y="54" width="12" height="15" rx="6" fill="url(#bgUnifiedSkinPriv)" />
-                <ellipse cx="49" cy="41" rx="18" ry="19" fill="url(#bgUnifiedSkinPriv)" />
-
-                {/* Hair */}
-                <path
-                  d="M31 38 C30 23, 43 16, 56 19 C65 21, 69 30, 67 37 C61 29, 50 27, 39 31 C35 33, 33 36, 31 38 Z"
-                  fill="url(#bgUnifiedHairPriv)"
+                <rect
+                  x="37"
+                  y="76"
+                  width="22"
+                  height="3.5"
+                  rx="1.75"
+                  fill="var(--pa-fig-skin)"
+                  opacity="0.6"
                 />
-                <circle cx="32" cy="42" r="4" fill="var(--pa-fig-skin-mid)" />
 
-                {/* Side eye & brow */}
-                <path
-                  d="M53 35 C56 33.5, 60 34, 62 36"
+                {/* Neck joint */}
+                <rect x="42" y="57" width="12" height="12" rx="5" fill="var(--pa-fig-body-deep)" opacity="0.65" />
+
+                {/* Antenna */}
+                <line
+                  x1="45"
+                  y1="21"
+                  x2="42"
+                  y2="12"
                   stroke="var(--pa-fig-stroke)"
-                  strokeWidth="2"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+                <circle cx="42" cy="11" r="3" fill="var(--pa-fig-body)" stroke="var(--pa-fig-stroke)" strokeWidth="1.2" />
+
+                {/* AI Robot Head Shell (three-quarter profile facing right) */}
+                <rect
+                  x="27"
+                  y="21"
+                  width="42"
+                  height="37"
+                  rx="16"
+                  fill="url(#bgAiChassisPriv)"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.35"
+                  strokeWidth="1.5"
+                />
+
+                {/* Side Ear Pod */}
+                <rect
+                  x="22"
+                  y="32"
+                  width="6.5"
+                  height="15"
+                  rx="3.2"
+                  fill="url(#bgAiBodyPriv)"
+                />
+
+                {/* Dark Visor Screen angled toward right */}
+                <rect x="38" y="27" width="29" height="22" rx="9" fill="url(#bgAiVisorPriv)" />
+
+                {/* Expressive AI Optic Eye & Quiet LED Mouth */}
+                <path
+                  d="M49 36 C51.5 33, 55.5 33, 58 36"
+                  stroke="var(--pa-fig-skin)"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   fill="none"
                 />
-                <ellipse cx="58" cy="40.5" rx="2.3" ry="2.7" fill="var(--pa-fig-stroke)" />
+                <circle cx="62" cy="43.5" r="2.2" fill="var(--pa-fig-skin)" opacity="0.88" />
 
-                {/* Soft whispering mouth */}
-                <ellipse cx="64.5" cy="49.5" rx="2.6" ry="2" fill="var(--pa-fig-body-deep)" opacity="0.72" />
-
-                {/* Cupped hand beside mouth (murmuring gesture) */}
+                {/* Cupped AI Hand beside mouth (quiet murmuring gesture) */}
                 <path
-                  d="M56 77 C60 65, 65 53, 69 45 C72 43, 75.5 45.5, 74.5 50 C73 57, 69 66, 66 77 Z"
-                  fill="url(#bgUnifiedSkinPriv)"
+                  d="M55 77 C59 65, 64 53, 68 45 C71 43, 74.5 45.5, 73.5 50 C72 57, 68 66, 65 77 Z"
+                  fill="url(#bgAiChassisPriv)"
                   stroke="var(--pa-fig-stroke)"
                   strokeOpacity="0.45"
-                  strokeWidth="1.3"
+                  strokeWidth="1.4"
                 />
-                <path
-                  d="M69 45 C70.5 42.5, 73.5 43.5, 73 46.5"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.45"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  fill="none"
+                <rect
+                  x="66.5"
+                  y="44"
+                  width="5"
+                  height="7"
+                  rx="2.5"
+                  fill="url(#bgAiBodyPriv)"
                 />
 
                 {/* Pulsing quiet murmur ripples */}
                 <path
                   className="pa-ripple-1"
-                  d="M80 45 C84 47.5, 84 53.5, 80 56"
+                  d="M80 44 C84 46.5, 84 52.5, 80 55"
                   stroke="var(--pa-fig-body-deep)"
-                  strokeWidth="2.2"
+                  strokeWidth="2.3"
                   strokeLinecap="round"
                   fill="none"
                 />
                 <path
                   className="pa-ripple-2"
-                  d="M86.5 40.5 C92.5 45.5, 92.5 55.5, 86.5 60.5"
+                  d="M86.5 39.5 C92.5 44.5, 92.5 54.5, 86.5 59.5"
                   stroke="var(--pa-fig-body)"
                   strokeWidth="2"
                   strokeLinecap="round"
@@ -472,7 +508,7 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
                 />
                 <path
                   className="pa-ripple-3"
-                  d="M93.5 36 C101 43.5, 101 57.5, 93.5 65"
+                  d="M93.5 35 C101 42.5, 101 56.5, 93.5 64"
                   stroke="var(--pa-fig-stroke)"
                   strokeOpacity="0.65"
                   strokeWidth="1.8"
@@ -484,12 +520,12 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
             </motion.div>
           ) : (
             <motion.div
-              key="backdrop-speaker"
+              key="backdrop-ai-speaker"
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.16] dark:opacity-[0.22]"
+              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.17] dark:opacity-[0.23]"
               style={{
                 maskImage:
                   'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
@@ -499,62 +535,103 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
             >
               <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
                 <defs>
-                  <linearGradient id="bgUnifiedAuraPub" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="bgAiAuraPub" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
                     <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
                   </linearGradient>
-                  <linearGradient id="bgUnifiedBodyPub" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
-                  </linearGradient>
-                  <linearGradient id="bgUnifiedSkinPub" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="bgAiChassisPub" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--pa-fig-skin)" />
                     <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
                   </linearGradient>
-                  <linearGradient id="bgUnifiedHairPub" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body-deep)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-stroke)" />
+                  <linearGradient id="bgAiBodyPub" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
                   </linearGradient>
-                  <linearGradient id="bgUnifiedSpeaker" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="bgAiVisorPub" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-stroke)" stopOpacity="0.92" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" stopOpacity="0.96" />
+                  </linearGradient>
+                  <linearGradient id="bgAiSpeaker" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--pa-fig-body)" />
                     <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
                   </linearGradient>
                 </defs>
 
-                <circle cx="54" cy="54" r="46" fill="url(#bgUnifiedAuraPub)" />
+                <circle cx="54" cy="54" r="46" fill="url(#bgAiAuraPub)" />
 
-                {/* Torso */}
+                {/* AI Robot Torso */}
                 <path
-                  d="M12 98 C15 75, 29 68, 43 68 C56 68, 65 76, 68 98 Z"
-                  fill="url(#bgUnifiedBodyPub)"
+                  d="M12 98 C15 76, 28 68, 42 68 C55 68, 63 76, 66 98 Z"
+                  fill="url(#bgAiBodyPub)"
                 />
-                <path d="M35 69 L43 81 L51 69" fill="var(--pa-fig-skin-mid)" opacity="0.65" />
-
-                {/* Neck & Head */}
-                <rect x="35" y="54" width="12" height="15" rx="6" fill="url(#bgUnifiedSkinPub)" />
-                <ellipse cx="42" cy="41" rx="17" ry="18.5" fill="url(#bgUnifiedSkinPub)" />
-
-                {/* Hair */}
-                <path
-                  d="M24 39 C23 24, 36 16, 49 19 C57 21, 61 29, 59 36 C53 28, 43 26, 32 30 C28 32, 26 35, 24 39 Z"
-                  fill="url(#bgUnifiedHairPub)"
+                <rect
+                  x="30"
+                  y="76"
+                  width="22"
+                  height="3.5"
+                  rx="1.75"
+                  fill="var(--pa-fig-skin)"
+                  opacity="0.6"
                 />
-                <circle cx="25" cy="42" r="3.8" fill="var(--pa-fig-skin-mid)" />
 
-                {/* Eye & brow */}
-                <path
-                  d="M46 34.5 C49 32.5, 53 33, 55 35"
+                {/* Neck joint */}
+                <rect x="35" y="57" width="12" height="12" rx="5" fill="var(--pa-fig-body-deep)" opacity="0.65" />
+
+                {/* Antenna */}
+                <line
+                  x1="39"
+                  y1="21"
+                  x2="37"
+                  y2="12"
                   stroke="var(--pa-fig-stroke)"
-                  strokeWidth="2"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+                <circle cx="37" cy="11" r="3" fill="var(--pa-fig-body)" stroke="var(--pa-fig-stroke)" strokeWidth="1.2" />
+
+                {/* AI Robot Head Shell */}
+                <rect
+                  x="21"
+                  y="21"
+                  width="41"
+                  height="37"
+                  rx="16"
+                  fill="url(#bgAiChassisPub)"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.35"
+                  strokeWidth="1.5"
+                />
+
+                {/* Side Ear Pod */}
+                <rect
+                  x="16.5"
+                  y="32"
+                  width="6.5"
+                  height="15"
+                  rx="3.2"
+                  fill="url(#bgAiBodyPub)"
+                />
+
+                {/* Dark Visor Screen */}
+                <rect x="32" y="27" width="28" height="22" rx="9" fill="url(#bgAiVisorPub)" />
+
+                {/* Bright AI Optic Eye & Open Speaking Wave Mouth */}
+                <path
+                  d="M42.5 35.5 C45 32.5, 49 32.5, 51.5 35.5"
+                  stroke="var(--pa-fig-skin)"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   fill="none"
                 />
-                <ellipse cx="51" cy="40" rx="2.3" ry="2.7" fill="var(--pa-fig-stroke)" />
+                <path
+                  d="M46 43.5 Q51 46.5 55.5 43.5"
+                  stroke="var(--pa-fig-skin)"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  fill="none"
+                />
 
-                {/* Open speaking mouth */}
-                <ellipse cx="56.5" cy="49.5" rx="3" ry="3.4" fill="var(--pa-fig-body-deep)" opacity="0.72" />
-
-                {/* Hand holding speaker handle */}
+                {/* Robot Hand holding speaker handle */}
                 <rect
                   x="65"
                   y="57"
@@ -564,12 +641,20 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
                   transform="rotate(-10 68 64)"
                   fill="var(--pa-fig-body-deep)"
                 />
-                <circle cx="67" cy="66" r="5" fill="url(#bgUnifiedSkinPub)" />
+                <circle
+                  cx="67"
+                  cy="66"
+                  r="5"
+                  fill="url(#bgAiChassisPub)"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.4"
+                  strokeWidth="1.2"
+                />
 
-                {/* Speaker / Megaphone (matched active theme palette) */}
+                {/* Speaker / Megaphone */}
                 <path
-                  d="M59 48 L86 34 L89 66 L59 55 Z"
-                  fill="url(#bgUnifiedSpeaker)"
+                  d="M60 47 L86 34 L89 66 L60 55 Z"
+                  fill="url(#bgAiSpeaker)"
                   stroke="var(--pa-fig-skin)"
                   strokeWidth="1.4"
                   strokeLinejoin="round"
@@ -585,7 +670,7 @@ function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
                 />
                 <ellipse cx="88" cy="50" rx="2" ry="9" fill="var(--pa-fig-stroke)" opacity="0.35" />
 
-                {/* Pulsing broadcast sound arcs (same color family) */}
+                {/* Pulsing broadcast sound arcs */}
                 <path
                   className="pa-ripple-1"
                   d="M95 41 C100 45, 100 55, 95 59"
@@ -692,41 +777,13 @@ function ScopeBubbleBadge({
   );
 }
 
-function FluentPeekCompanion() {
-  return (
-    <div
-      className="pointer-events-none hidden lg:flex items-end gap-1.5 select-none"
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 88 76" className="w-20 h-[68px] drop-shadow-[0_12px_20px_rgba(15,23,42,0.16)]">
-        <defs>
-          <linearGradient id="paBotBody" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor="#CBD5E1" />
-          </linearGradient>
-          <linearGradient id="paBotVisor" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1E293B" />
-            <stop offset="100%" stopColor="#020617" />
-          </linearGradient>
-        </defs>
-        <rect x="13" y="21" width="6" height="16" rx="3" fill="#94A3B8" />
-        <rect x="69" y="21" width="6" height="16" rx="3" fill="#94A3B8" />
-        <rect x="18" y="8" width="52" height="40" rx="16" fill="url(#paBotBody)" stroke="#E2E8F0" strokeWidth="1.5" />
-        <rect x="24" y="15" width="40" height="25" rx="10" fill="url(#paBotVisor)" />
-        <path d="M32 25C33.5 22 36.5 22 38 25" stroke="#38BDF8" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-        <path d="M50 25C51.5 22 54.5 22 56 25" stroke="#38BDF8" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-        <path d="M41 30.5H47L45.5 34.5C45 35.5 43 35.5 42.5 34.5L41 30.5Z" fill="#E0F2FE" />
-        <path d="M22 54C22 48 66 48 66 54L68 74H20L22 54Z" fill="url(#paBotBody)" stroke="#E2E8F0" strokeWidth="1.2" />
-        <rect x="30" y="57" width="28" height="3" rx="1.5" fill="#38BDF8" opacity="0.65" />
-      </svg>
-    </div>
-  );
-}
+
 
 export function WorkbenchPage({
   scope,
   settings,
   turns,
+  isArchivedThread = false,
   activePromptDomain,
   promptStyle,
   isChatBarOpen,
@@ -872,7 +929,9 @@ export function WorkbenchPage({
   }, [isChatBarOpen]);
 
   const hasActiveThread = exchanges.length > 0;
-  const isThreadFinalized = Boolean(rootExchange?.questionTurn?.isFinalized);
+  const isThreadFinalized = Boolean(
+    isArchivedThread || rootExchange?.questionTurn?.isFinalized,
+  );
   const activeMonthNum =
     settings.contextCache.activeMonth ?? new Date().getMonth() + 1;
   const activeYearNum =
@@ -934,22 +993,57 @@ export function WorkbenchPage({
       {/* Very Light Transparent Scope Watermark Backdrop */}
       <ScopeWatermarkBackdrop scope={scope} />
 
-      {/* Top-Right New Thread Shaka Icon (shown in main pane only after response arrives) */}
+      {/* Top-Right Enlarged & Animated New Thread Icon (shown in main pane only after response arrives) */}
       {!isWaitingForReply && activeExchange && (activeAssistantReply || activeErrorReply) && (
-        <motion.button
-          type="button"
-          onClick={onClearConversation}
-          disabled={isSending}
-          initial={{ opacity: 0, scale: 0.85, y: -6 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.94 }}
-          title="Start a new thread"
-          aria-label="Start a new thread"
-          className="absolute top-4 right-5 sm:top-5 sm:right-8 z-20 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/90 dark:border-slate-700/85 bg-white/85 dark:bg-slate-900/80 backdrop-blur-xl shadow-md hover:shadow-lg hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
-        >
-          <WhatsAppSymbol className="w-7 h-7" />
-        </motion.button>
+        <div className="absolute top-4 right-5 sm:top-5 sm:right-8 z-20">
+          <motion.span
+            aria-hidden="true"
+            animate={{
+              scale: [1, 1.24, 1],
+              opacity: [0.42, 0, 0.42],
+            }}
+            transition={{
+              duration: 2.2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+            className="pointer-events-none absolute inset-0 rounded-2xl"
+            style={{ backgroundColor: 'var(--pa-accent)' }}
+          />
+          <motion.button
+            type="button"
+            onClick={onClearConversation}
+            disabled={isSending}
+            initial={{ opacity: 0, scale: 0.85, y: -6 }}
+            animate={{
+              opacity: 1,
+              y: [0, -3, 0],
+              scale: [1, 1.04, 1],
+            }}
+            transition={{
+              opacity: { duration: 0.2 },
+              y: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' },
+              scale: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' },
+            }}
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.94 }}
+            title="Start a new thread"
+            aria-label="Start a new thread"
+            className="relative inline-flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl border-2 border-white/95 dark:border-slate-700/90 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl shadow-lg hover:shadow-xl hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
+          >
+            <motion.span
+              animate={{ rotate: [0, -6, 6, -3, 0] }}
+              transition={{
+                duration: 2.8,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+              className="inline-flex items-center justify-center"
+            >
+              <WhatsAppSymbol className="w-9 h-9 sm:w-10 sm:h-10" />
+            </motion.span>
+          </motion.button>
+        </div>
       )}
 
       {/* Main Stage Viewport */}
@@ -1201,76 +1295,74 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Settled Round 3D Fluent Speech Bubble with Whisper/Loudspeaker + Domain + Period + Question + Retry */}
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <motion.div
-                  key={`settled-${activeExchange.id}`}
-                  initial={{ opacity: 0, y: -12, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                  className="relative flex flex-col items-start"
-                >
-                  <div
-                    data-active-bubble="true"
-                    className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden"
+              {/* Settled Round 3D Fluent Speech Bubble with Retry (hidden for archived folder reports) */}
+              {!isThreadFinalized && (
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <motion.div
+                    key={`settled-${activeExchange.id}`}
+                    initial={{ opacity: 0, y: -12, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+                    className="relative flex flex-col items-start"
                   >
                     <div
-                      aria-hidden="true"
-                      className="pointer-events-none absolute top-4 left-14 right-14 h-3.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
-                    />
-                    <span className="scale-115 mb-0.5">
-                      <EventCategoryEmblem
-                        icon={getDomainIconFromPromptDomain(activeQuestionTurn?.promptDomain)}
+                      data-active-bubble="true"
+                      className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden"
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-4 left-14 right-14 h-3.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
                       />
-                    </span>
-                    <ScopeBubbleBadge
-                      turnScope={activeQuestionTurn?.scope ?? scope}
-                      adapterId={activeAssistantReply?.adapterId ?? activeQuestionTurn?.adapterId}
-                      model={activeAssistantReply?.model ?? activeQuestionTurn?.model}
-                    />
+                      <span className="scale-115 mb-0.5">
+                        <EventCategoryEmblem
+                          icon={getDomainIconFromPromptDomain(activeQuestionTurn?.promptDomain)}
+                        />
+                      </span>
+                      <ScopeBubbleBadge
+                        turnScope={activeQuestionTurn?.scope ?? scope}
+                        adapterId={activeAssistantReply?.adapterId ?? activeQuestionTurn?.adapterId}
+                        model={activeAssistantReply?.model ?? activeQuestionTurn?.model}
+                      />
 
-                    {formatBubbleMonthYear(
-                      activeQuestionTurn?.threadMonth,
-                      activeQuestionTurn?.threadYear,
-                    ) && (
-                      <div className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
-                        {formatBubbleMonthYear(
-                          activeQuestionTurn?.threadMonth,
-                          activeQuestionTurn?.threadYear,
-                        )}
-                      </div>
-                    )}
+                      {formatBubbleMonthYear(
+                        activeQuestionTurn?.threadMonth,
+                        activeQuestionTurn?.threadYear,
+                      ) && (
+                        <div className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                          {formatBubbleMonthYear(
+                            activeQuestionTurn?.threadMonth,
+                            activeQuestionTurn?.threadYear,
+                          )}
+                        </div>
+                      )}
 
-                    <p
-                      title={activeQuestionTurn?.content}
-                      className="text-[11px] sm:text-xs font-normal leading-relaxed text-slate-600 dark:text-slate-300 line-clamp-3 break-words"
-                      style={{ fontFamily: 'var(--pa-font-body)' }}
-                    >
-                      {activeQuestionTurn?.content || 'Assistant Events'}
-                    </p>
+                      <p
+                        title={activeQuestionTurn?.content}
+                        className="text-[11px] sm:text-xs font-normal leading-relaxed text-slate-600 dark:text-slate-300 line-clamp-3 break-words"
+                        style={{ fontFamily: 'var(--pa-font-body)' }}
+                      >
+                        {activeQuestionTurn?.content || 'Assistant Events'}
+                      </p>
 
-                    <button
-                      type="button"
-                      onClick={() => onRetryExchange(activeExchange.id)}
-                      disabled={isSending}
-                      title="Retry this exact question"
-                      className="mt-1 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 px-3 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-700 disabled:opacity-45 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Retry</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => onRetryExchange(activeExchange.id)}
+                        disabled={isSending}
+                        title="Retry this exact question"
+                        className="mt-1 inline-flex items-center gap-1 rounded-full bg-white/90 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-600/80 px-3 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-700 disabled:opacity-45 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Retry</span>
+                      </button>
+                    </div>
                   {/* Round Speech bubble tail */}
                   <div className="flex items-center gap-1.5 ml-14 -mt-2" aria-hidden="true">
                     <span className="fluent-3d-bubble-tail w-4 h-4 rounded-full block" />
                     <span className="fluent-3d-bubble-tail w-2.5 h-2.5 rounded-full mt-2 block" />
                   </div>
                 </motion.div>
-
-                <div className="flex items-center gap-3">
-                  <FluentPeekCompanion />
-                </div>
               </div>
+              )}
 
               {/* Error State if Provider Failed — Friendly message with Retry & Settings */}
               {activeErrorReply && !activeAssistantReply && (
@@ -1283,15 +1375,17 @@ export function WorkbenchPage({
                     Try &quot;What&apos;s up&quot; little later ..
                   </p>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onRetryExchange(activeExchange.id)}
-                      disabled={isSending}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Retry Question</span>
-                    </button>
+                    {!isThreadFinalized && (
+                      <button
+                        type="button"
+                        onClick={() => onRetryExchange(activeExchange.id)}
+                        disabled={isSending}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Retry Question</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={onOpenSettings}
