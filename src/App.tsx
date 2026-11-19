@@ -3,6 +3,7 @@ import {
   BookOpen,
   Cloud,
   FileCode2,
+  Home,
   Lock,
   Palette,
   PanelBottom,
@@ -42,7 +43,6 @@ import type {
 } from './types/workbench';
 import {
   DEFAULT_SETTINGS,
-  loadConversation,
   loadRatedThreads,
   loadScope,
   loadSettings,
@@ -131,7 +131,7 @@ export default function App() {
   const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
-  const [turns, setTurns] = useState<ConversationTurn[]>(() => loadConversation());
+  const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [ratedThreads, setRatedThreads] = useState<RatedThreadRecord[]>(() =>
     loadRatedThreads(),
   );
@@ -1209,74 +1209,13 @@ export default function App() {
                   setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(null);
                 }}
-                title="Open Event Stage"
+                title="Home"
                 aria-label="Home"
-                className="px-3 pt-2 pb-1 inline-flex items-center justify-center rounded-lg hover:bg-white/65 dark:hover:bg-slate-800/65 transition-colors shrink-0 self-start"
+                className="px-2.5 py-2 inline-flex items-center justify-center rounded-xl bg-white/75 dark:bg-slate-800/75 border border-slate-200/80 dark:border-slate-700/70 hover:bg-white dark:hover:bg-slate-800 transition-colors shrink-0 self-start shadow-2xs"
+                style={{ color: 'var(--pa-accent)' }}
               >
-                <img src="/favicon.svg" alt="Assistant" className="w-8 h-8 shrink-0" />
+                <Home className="w-5 h-5" />
               </button>
-
-              <nav className="space-y-1 shrink-0" aria-label="Primary pages">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsOpen(false);
-                    setIsPromptBuilderOpen(false);
-                    setIsReferenceContextOpen(true);
-                    setActiveReportExchangeId(null);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isReferenceContextOpen
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                  aria-current={isReferenceContextOpen ? 'page' : undefined}
-                >
-                  <BookOpen className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                  <span className="truncate">Reference Context</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsOpen(true);
-                    setIsPromptBuilderOpen(false);
-                    setIsReferenceContextOpen(false);
-                    setActiveReportExchangeId(null);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isSettingsOpen
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                  aria-current={isSettingsOpen ? 'page' : undefined}
-                >
-                  <Settings className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                  <span className="truncate">Settings</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsOpen(false);
-                    setIsPromptBuilderOpen(true);
-                    setIsReferenceContextOpen(false);
-                    setActiveReportExchangeId(null);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    isPromptBuilderOpen
-                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700/70'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-white/70 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                  aria-current={isPromptBuilderOpen ? 'page' : undefined}
-                >
-                  <Sparkles className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                  <span className="truncate">Prompt Builder</span>
-                </button>
-              </nav>
-
-              <div
-                role="separator"
-                className="border-t border-slate-200/80 dark:border-slate-800/80 shrink-0"
-              />
 
               <div
                 aria-label="Reports"
@@ -1410,7 +1349,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Fluent Top Menu Bar */}
         <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between gap-4">
-          {/* Zone 1: Left Rail Toggle + App Icon + Title */}
+          {/* Zone 1: Left Rail Toggle + Title + Icon-only Top Navigation */}
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
@@ -1427,7 +1366,21 @@ export default function App() {
             >
               <PanelLeft className="w-4 h-4" />
             </button>
-            <img src="/favicon.svg" alt="Personal Assistant" className="w-6 h-6 shrink-0 md:hidden" />
+            <button
+              type="button"
+              onClick={() => {
+                setIsSettingsOpen(false);
+                setIsPromptBuilderOpen(false);
+                setIsReferenceContextOpen(false);
+                setActiveReportExchangeId(null);
+              }}
+              title="Home"
+              aria-label="Home"
+              className="md:hidden p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 shrink-0"
+              style={{ color: 'var(--pa-accent)' }}
+            >
+              <Home className="w-4 h-4" />
+            </button>
             <span className="font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
               {isSettingsOpen
                 ? 'Settings'
@@ -1439,6 +1392,74 @@ export default function App() {
                       ? 'Reference Report'
                       : 'Personal Assistant'}
             </span>
+
+            <span
+              aria-hidden="true"
+              className="h-4 w-px bg-slate-200/90 dark:bg-slate-700/80 mx-0.5 shrink-0"
+            />
+
+            <nav className="flex items-center gap-1 shrink-0" aria-label="Primary pages">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen((prev) => !prev);
+                  setActiveReportExchangeId(null);
+                }}
+                aria-label="Reference Context"
+                title="Reference Context"
+                aria-current={isReferenceContextOpen ? 'page' : undefined}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                  isReferenceContextOpen
+                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
+                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
+                }`}
+                style={isReferenceContextOpen ? { color: 'var(--pa-accent)' } : undefined}
+              >
+                <BookOpen className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen((prev) => !prev);
+                  setIsPromptBuilderOpen(false);
+                  setIsReferenceContextOpen(false);
+                  setActiveReportExchangeId(null);
+                }}
+                aria-label="Settings"
+                title="Settings"
+                aria-current={isSettingsOpen ? 'page' : undefined}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                  isSettingsOpen
+                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
+                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
+                }`}
+                style={isSettingsOpen ? { color: 'var(--pa-accent)' } : undefined}
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setIsPromptBuilderOpen((prev) => !prev);
+                  setIsReferenceContextOpen(false);
+                  setActiveReportExchangeId(null);
+                }}
+                aria-label="Prompt Builder"
+                title="Prompt Builder"
+                aria-current={isPromptBuilderOpen ? 'page' : undefined}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                  isPromptBuilderOpen
+                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
+                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
+                }`}
+                style={isPromptBuilderOpen ? { color: 'var(--pa-accent)' } : undefined}
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            </nav>
           </div>
 
           {/* Zone 2: Private / Public Toggle in Top Menu Bar */}

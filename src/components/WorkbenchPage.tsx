@@ -19,6 +19,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AnyAdapterId,
   ConversationScope,
   ConversationTurn,
   EventCardIconType,
@@ -583,24 +584,73 @@ function ScopeIntroIllustration({ scope }: { scope: ConversationScope }) {
   );
 }
 
-function ScopeBubbleBadge({ turnScope }: { turnScope: ConversationScope }) {
+function getDomainIconFromPromptDomain(domain?: PromptDomain): EventCardIconType {
+  switch (domain) {
+    case 'astrology':
+      return 'briefcase';
+    case 'finance':
+      return 'layers';
+    case 'health':
+      return 'shield';
+    case 'general':
+    default:
+      return 'heart';
+  }
+}
+
+function getShortModelLabel(
+  adapterId?: AnyAdapterId,
+  model?: string,
+  turnScope?: ConversationScope,
+): string {
+  const lower = (model || '').toLowerCase();
+  if (lower.includes('fable') || adapterId === 'fable') return 'Fable';
+  if (lower.includes('sonnet')) return 'Sonnet';
+  if (lower.includes('opus')) return 'Opus';
+  if (lower.includes('haiku')) return 'Haiku';
+  if (lower.includes('gemini') || adapterId === 'gemini') return 'Gemini';
+  if (adapterId === 'claude') return 'Claude';
+  if (turnScope === 'private' || adapterId === 'ollama') {
+    const clean = (model || 'Ollama').split(':')[0].trim();
+    return clean || 'Ollama';
+  }
+  return 'Assistant';
+}
+
+function formatBubbleMonthYear(month?: string, year?: number): string {
+  const rawMonth = month?.trim();
+  const parsedMonthNum = rawMonth && /^\d+$/.test(rawMonth) ? Number(rawMonth) : undefined;
+  const resolvedMonth = parsedMonthNum ? getMonthNameFromNumber(parsedMonthNum) : rawMonth;
+  return [resolvedMonth, year].filter(Boolean).join(' ');
+}
+
+function ScopeBubbleBadge({
+  turnScope,
+  adapterId,
+  model,
+}: {
+  turnScope: ConversationScope;
+  adapterId?: AnyAdapterId;
+  model?: string;
+}) {
   const isPrivate = turnScope === 'private';
+  const shortModel = getShortModelLabel(adapterId, model, turnScope);
   return (
     <span
-      title={isPrivate ? 'Private question (Whisper)' : 'Public question (Loudspeaker)'}
-      aria-label={isPrivate ? 'Whisper (Private)' : 'Loudspeaker (Public)'}
-      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+      title={`${shortModel} (${isPrivate ? 'Private' : 'Public'})`}
+      aria-label={`${shortModel} (${isPrivate ? 'Private' : 'Public'})`}
+      className={`inline-flex items-center gap-2 text-base sm:text-lg font-bold tracking-tight ${
         isPrivate
           ? 'text-emerald-700 dark:text-emerald-300'
           : 'text-sky-700 dark:text-sky-300'
       }`}
     >
+      <span>{shortModel}</span>
       {isPrivate ? (
-        <WhisperIcon className="w-4 h-4 shrink-0" />
+        <WhisperIcon className="w-5 h-5 shrink-0" />
       ) : (
-        <Megaphone className="w-4 h-4 shrink-0" />
+        <Megaphone className="w-5 h-5 shrink-0" />
       )}
-      <span>{isPrivate ? 'Whisper' : 'Loudspeaker'}</span>
     </span>
   );
 }
@@ -1000,25 +1050,34 @@ export function WorkbenchPage({
                   }}
                   className="relative flex flex-col items-center"
                 >
-                  <div className="fluent-3d-bubble relative w-[280px] sm:w-[320px] aspect-square px-8 py-8 flex flex-col items-center justify-center text-center gap-2.5 overflow-hidden">
+                  <div className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-8 flex flex-col items-center justify-center text-center gap-2.5 overflow-hidden">
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute top-4 left-16 right-16 h-4 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[3px]"
                     />
-                    <ScopeBubbleBadge turnScope={activeQuestionTurn.scope} />
-                    <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
-                      {[
-                        getPromptDomainShortLabel(activeQuestionTurn.promptDomain),
-                        formatShortYearMonth(
+                    <span className="scale-125 mb-0.5">
+                      <EventCategoryEmblem
+                        icon={getDomainIconFromPromptDomain(activeQuestionTurn.promptDomain)}
+                      />
+                    </span>
+                    <ScopeBubbleBadge
+                      turnScope={activeQuestionTurn.scope}
+                      adapterId={activeQuestionTurn.adapterId}
+                      model={activeQuestionTurn.model}
+                    />
+                    {formatBubbleMonthYear(
+                      activeQuestionTurn.threadMonth,
+                      activeQuestionTurn.threadYear,
+                    ) && (
+                      <div className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                        {formatBubbleMonthYear(
                           activeQuestionTurn.threadMonth,
                           activeQuestionTurn.threadYear,
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
+                        )}
+                      </div>
+                    )}
                     <p
-                      className="text-base sm:text-lg font-semibold leading-snug text-slate-900 dark:text-white break-words line-clamp-5"
+                      className="text-[11px] sm:text-xs font-normal leading-relaxed text-slate-600 dark:text-slate-300 break-words line-clamp-3"
                       style={{ fontFamily: 'var(--pa-font-body)' }}
                     >
                       {activeQuestionTurn.content}
@@ -1089,31 +1148,41 @@ export function WorkbenchPage({
                   transition={{ type: 'spring', stiffness: 280, damping: 24 }}
                   className="relative flex flex-col items-start"
                 >
-                  <div className="fluent-3d-bubble relative w-[275px] sm:w-[310px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
+                  <div className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute top-4 left-14 right-14 h-3.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
                     />
-                    <ScopeBubbleBadge turnScope={activeQuestionTurn?.scope ?? scope} />
+                    <span className="scale-115 mb-0.5">
+                      <EventCategoryEmblem
+                        icon={getDomainIconFromPromptDomain(activeQuestionTurn?.promptDomain)}
+                      />
+                    </span>
+                    <ScopeBubbleBadge
+                      turnScope={activeQuestionTurn?.scope ?? scope}
+                      adapterId={activeAssistantReply?.adapterId ?? activeQuestionTurn?.adapterId}
+                      model={activeAssistantReply?.model ?? activeQuestionTurn?.model}
+                    />
 
-                    <div className="text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
-                      {[
-                        getPromptDomainShortLabel(activeQuestionTurn?.promptDomain),
-                        formatShortYearMonth(
+                    {formatBubbleMonthYear(
+                      activeQuestionTurn?.threadMonth,
+                      activeQuestionTurn?.threadYear,
+                    ) && (
+                      <div className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+                        {formatBubbleMonthYear(
                           activeQuestionTurn?.threadMonth,
                           activeQuestionTurn?.threadYear,
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
+                        )}
+                      </div>
+                    )}
 
-                    <h1
+                    <p
                       title={activeQuestionTurn?.content}
-                      className="font-display text-sm sm:text-base font-semibold leading-snug text-slate-900 dark:text-white line-clamp-4 break-words"
+                      className="text-[11px] sm:text-xs font-normal leading-relaxed text-slate-600 dark:text-slate-300 line-clamp-3 break-words"
+                      style={{ fontFamily: 'var(--pa-font-body)' }}
                     >
                       {activeQuestionTurn?.content || 'Assistant Events'}
-                    </h1>
+                    </p>
 
                     <button
                       type="button"
