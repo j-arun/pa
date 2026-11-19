@@ -341,238 +341,374 @@ function WhisperIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
-function ScopeIntroIllustration({ scope }: { scope: ConversationScope }) {
-  const isPrivate = scope === 'private';
+function buildPeriodicSinePath(
+  baselineY: number,
+  amplitude: number,
+  cyclesPerTile: number,
+  phaseOffset = 0,
+): string {
+  const tileWidth = 1440;
+  const totalWidth = 2880;
+  const step = 40;
+  const points: string[] = [];
 
-  if (isPrivate) {
-    return (
-      <motion.div
-        key="intro-whisper"
-        initial={{ opacity: 0, scale: 0.9, y: 6 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-        className="shrink-0 select-none"
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 112 104"
-          className="w-20 h-[74px] sm:w-24 sm:h-[88px] drop-shadow-[0_12px_22px_rgba(5,150,105,0.22)]"
-        >
-          <defs>
-            <linearGradient id="whisperAura" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#A7F3D0" stopOpacity="0.65" />
-              <stop offset="100%" stopColor="#10B981" stopOpacity="0.12" />
-            </linearGradient>
-            <linearGradient id="whisperJacket" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#10B981" />
-              <stop offset="100%" stopColor="#047857" />
-            </linearGradient>
-            <linearGradient id="whisperSkin" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#FDE2C8" />
-              <stop offset="100%" stopColor="#F3B892" />
-            </linearGradient>
-            <linearGradient id="whisperHair" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#334155" />
-              <stop offset="100%" stopColor="#0F172A" />
-            </linearGradient>
-          </defs>
-
-          {/* Soft atmospheric halo */}
-          <circle cx="52" cy="52" r="42" fill="url(#whisperAura)" />
-
-          {/* Leaning shoulders / hoodie */}
-          <path
-            d="M16 96 C18 74, 34 66, 48 66 C60 66, 70 73, 74 96 Z"
-            fill="url(#whisperJacket)"
-          />
-          <path d="M40 68 L50 78 L58 68" fill="#065F46" opacity="0.55" />
-
-          {/* Neck & Head leaning slightly forward */}
-          <rect x="42" y="53" width="12" height="15" rx="6" fill="url(#whisperSkin)" />
-          <ellipse cx="48" cy="40" rx="18" ry="19" fill="url(#whisperSkin)" />
-
-          {/* Stylized hair */}
-          <path
-            d="M30 37 C29 22, 42 15, 55 18 C64 20, 68 29, 66 36 C60 28, 49 26, 38 30 C34 32, 32 35, 30 37 Z"
-            fill="url(#whisperHair)"
-          />
-          <circle cx="31" cy="41" r="4" fill="#F6C3A0" />
-
-          {/* Expressive side eye & brow */}
-          <path
-            d="M52 34 C55 32.5, 59 33, 61 35"
-            stroke="#1E293B"
-            strokeWidth="2"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <ellipse cx="57" cy="39.5" rx="2.4" ry="2.8" fill="#0F172A" />
-          <circle cx="57.8" cy="38.5" r="0.8" fill="#FFFFFF" />
-
-          {/* Soft mouth */}
-          <ellipse cx="64" cy="48.5" rx="2.8" ry="2.2" fill="#BE123C" opacity="0.85" />
-
-          {/* Cupped hand beside mouth (whispering gesture) */}
-          <path
-            d="M55 76 C59 64, 64 52, 68 44 C71 42, 74.5 44.5, 73.5 49 C72 56, 68 65, 65 76 Z"
-            fill="url(#whisperSkin)"
-            stroke="#E29B72"
-            strokeWidth="1.2"
-          />
-          <path
-            d="M68 44 C69.5 41.5, 72.5 42.5, 72 45.5"
-            stroke="#E29B72"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            fill="none"
-          />
-
-          {/* Subtle emerald whisper sound arcs */}
-          <path
-            d="M78 44 C82 46.5, 82 52.5, 78 55"
-            stroke="#059669"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M84.5 39.5 C90.5 44.5, 90.5 54.5, 84.5 59.5"
-            stroke="#10B981"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeDasharray="3 3"
-            fill="none"
-          />
-          <path
-            d="M91.5 35 C99 42.5, 99 56.5, 91.5 64"
-            stroke="#34D399"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeDasharray="2 4"
-            fill="none"
-          />
-        </svg>
-      </motion.div>
-    );
+  for (let x = 0; x <= totalWidth; x += step) {
+    const theta = ((x / tileWidth) * cyclesPerTile * Math.PI * 2) + phaseOffset;
+    const y = baselineY + Math.sin(theta) * amplitude;
+    points.push(`${x === 0 ? 'M' : 'L'} ${x} ${y.toFixed(1)}`);
   }
 
+  return points.join(' ');
+}
+
+const RIBBON_PATH_A = buildPeriodicSinePath(96, 26, 2, 0.2);
+const RIBBON_PATH_B = buildPeriodicSinePath(118, 20, 3, 1.4);
+const RIBBON_PATH_C = buildPeriodicSinePath(106, 15, 2, 2.5);
+
+function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
+  const isPrivate = scope === 'private';
+
   return (
-    <motion.div
-      key="intro-speaker"
-      initial={{ opacity: 0, scale: 0.9, y: 6 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-      className="shrink-0 select-none"
-      aria-hidden="true"
-    >
-      <svg
-        viewBox="0 0 116 104"
-        className="w-20 h-[74px] sm:w-24 sm:h-[88px] drop-shadow-[0_12px_22px_rgba(2,132,199,0.24)]"
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {/* Animated Ambient Aurora Clouds Driven by Active Theme */}
+      <div
+        className="pa-mist-a absolute -top-28 -left-24 w-[560px] h-[420px] rounded-full blur-3xl opacity-85"
+        style={{
+          background:
+            'radial-gradient(circle, var(--pa-aurora-1) 0%, var(--pa-aurora-3) 45%, transparent 74%)',
+        }}
+      />
+      <div
+        className="pa-mist-b absolute -bottom-28 -right-24 w-[540px] h-[420px] rounded-full blur-3xl opacity-80"
+        style={{
+          background:
+            'radial-gradient(circle, var(--pa-aurora-2) 0%, var(--pa-aurora-3) 46%, transparent 74%)',
+        }}
+      />
+      <div
+        className="pa-mist-c absolute top-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[340px] rounded-full blur-3xl opacity-65"
+        style={{
+          background:
+            'radial-gradient(circle, var(--pa-aurora-3) 0%, transparent 72%)',
+        }}
+      />
+
+      {/* Seamless Animated Wave Ribbons (Continuous Horizontal Sine Motion) */}
+      <div
+        className={`absolute inset-x-0 bottom-4 sm:bottom-8 h-44 sm:h-52 overflow-hidden transition-opacity duration-500 ${
+          isPrivate ? 'opacity-65' : 'opacity-90'
+        }`}
       >
-        <defs>
-          <linearGradient id="speakerAura" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#BAE6FD" stopOpacity="0.72" />
-            <stop offset="100%" stopColor="#0284C7" stopOpacity="0.14" />
-          </linearGradient>
-          <linearGradient id="speakerCoat" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#0284C7" />
-            <stop offset="100%" stopColor="#1D4ED8" />
-          </linearGradient>
-          <linearGradient id="speakerSkin" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FDE2C8" />
-            <stop offset="100%" stopColor="#F3B892" />
-          </linearGradient>
-          <linearGradient id="speakerHair" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#334155" />
-            <stop offset="100%" stopColor="#0F172A" />
-          </linearGradient>
-          <linearGradient id="megaphoneBody" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#38BDF8" />
-            <stop offset="55%" stopColor="#0284C7" />
-            <stop offset="100%" stopColor="#0369A1" />
-          </linearGradient>
-          <linearGradient id="megaphoneBell" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FBBF24" />
-            <stop offset="100%" stopColor="#F59E0B" />
-          </linearGradient>
-        </defs>
+        <svg
+          viewBox="0 0 2880 200"
+          preserveAspectRatio="none"
+          className="pa-ribbon-flow-a h-full w-[200%] max-w-none"
+        >
+          <path
+            d={RIBBON_PATH_A}
+            fill="none"
+            stroke="var(--pa-wave-stroke)"
+            strokeWidth={isPrivate ? 1.8 : 2.5}
+            strokeLinecap="round"
+            strokeDasharray={isPrivate ? '6 10' : undefined}
+          />
+          <path
+            d={RIBBON_PATH_C}
+            fill="none"
+            stroke="var(--pa-wave-stroke-soft)"
+            strokeWidth={isPrivate ? 1.3 : 1.9}
+            strokeLinecap="round"
+          />
+        </svg>
+        <svg
+          viewBox="0 0 2880 200"
+          preserveAspectRatio="none"
+          className="pa-ribbon-flow-b absolute inset-0 h-full w-[200%] max-w-none"
+        >
+          <path
+            d={RIBBON_PATH_B}
+            fill="none"
+            stroke="var(--pa-wave-stroke-soft)"
+            strokeWidth={isPrivate ? 1.4 : 2.1}
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
 
-        {/* Soft atmospheric halo */}
-        <circle cx="52" cy="52" r="42" fill="url(#speakerAura)" />
+      {/* Gentle Floating Bokeh Shimmer Particles */}
+      <span
+        className="pa-particle-1 absolute bottom-[18%] left-[12%] h-2.5 w-2.5 rounded-full blur-[0.5px]"
+        style={{ backgroundColor: 'var(--pa-particle-color)' }}
+      />
+      <span
+        className="pa-particle-2 absolute bottom-[26%] left-[34%] h-2 w-2 rounded-full blur-[0.5px]"
+        style={{ backgroundColor: 'var(--pa-particle-color)' }}
+      />
+      <span
+        className="pa-particle-3 absolute bottom-[22%] right-[28%] h-3 w-3 rounded-full blur-[1px]"
+        style={{ backgroundColor: 'var(--pa-particle-color)' }}
+      />
+      <span
+        className="pa-particle-4 absolute bottom-[34%] right-[14%] h-2 w-2 rounded-full blur-[0.5px]"
+        style={{ backgroundColor: 'var(--pa-particle-color)' }}
+      />
 
-        {/* Torso */}
-        <path
-          d="M12 96 C15 73, 29 66, 43 66 C56 66, 65 74, 68 96 Z"
-          fill="url(#speakerCoat)"
-        />
-        <path d="M35 67 L43 79 L51 67" fill="#FFFFFF" opacity="0.9" />
+      {/* Embedded Large Transparent Background Illustration (Theme-Matched Palette, Breathing + Pulsing Waves) */}
+      <div className="absolute inset-0 flex items-center justify-center sm:justify-end sm:pr-8 md:pr-16">
+        <AnimatePresence mode="wait">
+          {isPrivate ? (
+            <motion.div
+              key="backdrop-murmur"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.16] dark:opacity-[0.22]"
+              style={{
+                maskImage:
+                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
+                WebkitMaskImage:
+                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
+              }}
+            >
+              <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
+                <defs>
+                  <linearGradient id="bgUnifiedAuraPriv" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedBodyPriv" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedSkinPriv" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-skin)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedHairPriv" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body-deep)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-stroke)" />
+                  </linearGradient>
+                </defs>
 
-        {/* Neck & Head */}
-        <rect x="35" y="52" width="12" height="15" rx="6" fill="url(#speakerSkin)" />
-        <ellipse cx="42" cy="39" rx="17" ry="18.5" fill="url(#speakerSkin)" />
+                <circle cx="56" cy="54" r="46" fill="url(#bgUnifiedAuraPriv)" />
 
-        {/* Stylized hair */}
-        <path
-          d="M24 37 C23 22, 36 14, 49 17 C57 19, 61 27, 59 34 C53 26, 43 24, 32 28 C28 30, 26 33, 24 37 Z"
-          fill="url(#speakerHair)"
-        />
-        <circle cx="25" cy="40" r="3.8" fill="#F6C3A0" />
+                {/* Leaning shoulders / quiet posture */}
+                <path
+                  d="M16 98 C18 75, 34 67, 49 67 C62 67, 72 74, 76 98 Z"
+                  fill="url(#bgUnifiedBodyPriv)"
+                />
+                <path d="M40 69 L50 79 L59 69" fill="var(--pa-fig-stroke)" opacity="0.35" />
 
-        {/* Enthusiastic eyes & brow */}
-        <path
-          d="M46 32.5 C49 30.5, 53 31, 55 33"
-          stroke="#1E293B"
-          strokeWidth="2"
-          strokeLinecap="round"
-          fill="none"
-        />
-        <ellipse cx="51" cy="38" rx="2.4" ry="2.8" fill="#0F172A" />
-        <circle cx="51.8" cy="37" r="0.8" fill="#FFFFFF" />
+                {/* Neck & Head */}
+                <rect x="43" y="54" width="12" height="15" rx="6" fill="url(#bgUnifiedSkinPriv)" />
+                <ellipse cx="49" cy="41" rx="18" ry="19" fill="url(#bgUnifiedSkinPriv)" />
 
-        {/* Open speaking mouth */}
-        <ellipse cx="56.5" cy="47.5" rx="3.2" ry="3.6" fill="#9F1239" />
+                {/* Hair */}
+                <path
+                  d="M31 38 C30 23, 43 16, 56 19 C65 21, 69 30, 67 37 C61 29, 50 27, 39 31 C35 33, 33 36, 31 38 Z"
+                  fill="url(#bgUnifiedHairPriv)"
+                />
+                <circle cx="32" cy="42" r="4" fill="var(--pa-fig-skin-mid)" />
 
-        {/* Hand holding megaphone handle */}
-        <rect x="65" y="55" width="7" height="16" rx="3" transform="rotate(-10 68 62)" fill="#1E293B" />
-        <circle cx="67" cy="64" r="5" fill="url(#speakerSkin)" />
+                {/* Side eye & brow */}
+                <path
+                  d="M53 35 C56 33.5, 60 34, 62 36"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <ellipse cx="58" cy="40.5" rx="2.3" ry="2.7" fill="var(--pa-fig-stroke)" />
 
-        {/* Catchy 3D Megaphone / Loudspeaker */}
-        <path
-          d="M59 46 L86 32 L89 64 L59 53 Z"
-          fill="url(#megaphoneBody)"
-          stroke="#FFFFFF"
-          strokeWidth="1.4"
-          strokeLinejoin="round"
-        />
-        <ellipse cx="87.5" cy="48" rx="4.5" ry="16" fill="url(#megaphoneBell)" stroke="#FFFFFF" strokeWidth="1.2" />
-        <ellipse cx="88" cy="48" rx="2" ry="9" fill="#0F172A" opacity="0.22" />
+                {/* Soft whispering mouth */}
+                <ellipse cx="64.5" cy="49.5" rx="2.6" ry="2" fill="var(--pa-fig-body-deep)" opacity="0.72" />
 
-        {/* Vibrant broadcast sound waves */}
-        <path
-          d="M95 39 C100 43, 100 53, 95 57"
-          stroke="#0284C7"
-          strokeWidth="2.8"
-          strokeLinecap="round"
-          fill="none"
-        />
-        <path
-          d="M101 33 C108 40, 108 56, 101 63"
-          stroke="#38BDF8"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          fill="none"
-        />
-        <path
-          d="M107.5 28 C115 37, 115 59, 107.5 68"
-          stroke="#F59E0B"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </svg>
-    </motion.div>
+                {/* Cupped hand beside mouth (murmuring gesture) */}
+                <path
+                  d="M56 77 C60 65, 65 53, 69 45 C72 43, 75.5 45.5, 74.5 50 C73 57, 69 66, 66 77 Z"
+                  fill="url(#bgUnifiedSkinPriv)"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.45"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M69 45 C70.5 42.5, 73.5 43.5, 73 46.5"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.45"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+
+                {/* Pulsing quiet murmur ripples */}
+                <path
+                  className="pa-ripple-1"
+                  d="M80 45 C84 47.5, 84 53.5, 80 56"
+                  stroke="var(--pa-fig-body-deep)"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  className="pa-ripple-2"
+                  d="M86.5 40.5 C92.5 45.5, 92.5 55.5, 86.5 60.5"
+                  stroke="var(--pa-fig-body)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeDasharray="3 3"
+                  fill="none"
+                />
+                <path
+                  className="pa-ripple-3"
+                  d="M93.5 36 C101 43.5, 101 57.5, 93.5 65"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.65"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeDasharray="2 4"
+                  fill="none"
+                />
+              </svg>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="backdrop-speaker"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.16] dark:opacity-[0.22]"
+              style={{
+                maskImage:
+                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
+                WebkitMaskImage:
+                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
+              }}
+            >
+              <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
+                <defs>
+                  <linearGradient id="bgUnifiedAuraPub" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedBodyPub" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedSkinPub" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-skin)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedHairPub" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body-deep)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-stroke)" />
+                  </linearGradient>
+                  <linearGradient id="bgUnifiedSpeaker" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
+                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
+                  </linearGradient>
+                </defs>
+
+                <circle cx="54" cy="54" r="46" fill="url(#bgUnifiedAuraPub)" />
+
+                {/* Torso */}
+                <path
+                  d="M12 98 C15 75, 29 68, 43 68 C56 68, 65 76, 68 98 Z"
+                  fill="url(#bgUnifiedBodyPub)"
+                />
+                <path d="M35 69 L43 81 L51 69" fill="var(--pa-fig-skin-mid)" opacity="0.65" />
+
+                {/* Neck & Head */}
+                <rect x="35" y="54" width="12" height="15" rx="6" fill="url(#bgUnifiedSkinPub)" />
+                <ellipse cx="42" cy="41" rx="17" ry="18.5" fill="url(#bgUnifiedSkinPub)" />
+
+                {/* Hair */}
+                <path
+                  d="M24 39 C23 24, 36 16, 49 19 C57 21, 61 29, 59 36 C53 28, 43 26, 32 30 C28 32, 26 35, 24 39 Z"
+                  fill="url(#bgUnifiedHairPub)"
+                />
+                <circle cx="25" cy="42" r="3.8" fill="var(--pa-fig-skin-mid)" />
+
+                {/* Eye & brow */}
+                <path
+                  d="M46 34.5 C49 32.5, 53 33, 55 35"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <ellipse cx="51" cy="40" rx="2.3" ry="2.7" fill="var(--pa-fig-stroke)" />
+
+                {/* Open speaking mouth */}
+                <ellipse cx="56.5" cy="49.5" rx="3" ry="3.4" fill="var(--pa-fig-body-deep)" opacity="0.72" />
+
+                {/* Hand holding speaker handle */}
+                <rect
+                  x="65"
+                  y="57"
+                  width="7"
+                  height="16"
+                  rx="3"
+                  transform="rotate(-10 68 64)"
+                  fill="var(--pa-fig-body-deep)"
+                />
+                <circle cx="67" cy="66" r="5" fill="url(#bgUnifiedSkinPub)" />
+
+                {/* Speaker / Megaphone (matched active theme palette) */}
+                <path
+                  d="M59 48 L86 34 L89 66 L59 55 Z"
+                  fill="url(#bgUnifiedSpeaker)"
+                  stroke="var(--pa-fig-skin)"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+                <ellipse
+                  cx="87.5"
+                  cy="50"
+                  rx="4.5"
+                  ry="16"
+                  fill="var(--pa-fig-skin-mid)"
+                  stroke="var(--pa-fig-skin)"
+                  strokeWidth="1.2"
+                />
+                <ellipse cx="88" cy="50" rx="2" ry="9" fill="var(--pa-fig-stroke)" opacity="0.35" />
+
+                {/* Pulsing broadcast sound arcs (same color family) */}
+                <path
+                  className="pa-ripple-1"
+                  d="M95 41 C100 45, 100 55, 95 59"
+                  stroke="var(--pa-fig-body-deep)"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  className="pa-ripple-2"
+                  d="M101 35 C108 42, 108 58, 101 65"
+                  stroke="var(--pa-fig-body)"
+                  strokeWidth="2.3"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+                <path
+                  className="pa-ripple-3"
+                  d="M107.5 30 C115 39, 115 61, 107.5 70"
+                  stroke="var(--pa-fig-stroke)"
+                  strokeOpacity="0.65"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </svg>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
   );
 }
+
 
 function getDomainIconFromPromptDomain(domain?: PromptDomain): EventCardIconType {
   switch (domain) {
@@ -885,34 +1021,8 @@ export function WorkbenchPage({
 
   return (
     <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Light Translucent Scope-Tinted Atmospheric Backdrop */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div
-          className="pa-mist-a absolute -top-28 -left-24 w-[560px] h-[420px] rounded-full blur-3xl opacity-55 dark:opacity-20"
-          style={{
-            background:
-              scope === 'private'
-                ? 'radial-gradient(circle, rgba(16,185,129,0.18) 0%, rgba(255,255,255,0.10) 65%, transparent 100%)'
-                : 'radial-gradient(circle, rgba(125,211,252,0.28) 0%, rgba(255,255,255,0.08) 65%, transparent 100%)',
-          }}
-        />
-        <div
-          className="pa-mist-b absolute -bottom-24 -right-24 w-[520px] h-[380px] rounded-full blur-3xl opacity-50 dark:opacity-20"
-          style={{
-            background:
-              scope === 'private'
-                ? 'radial-gradient(circle, rgba(167,243,208,0.24) 0%, rgba(255,255,255,0.12) 60%, transparent 100%)'
-                : 'radial-gradient(circle, rgba(186,230,253,0.32) 0%, rgba(255,255,255,0.10) 60%, transparent 100%)',
-          }}
-        />
-        <div
-          className={`absolute inset-0 bg-gradient-to-b ${
-            scope === 'private'
-              ? 'from-emerald-50/55 via-white/45 to-emerald-50/50 dark:from-slate-950/30 dark:via-slate-900/20 dark:to-slate-950/40'
-              : 'from-sky-50/55 via-white/45 to-sky-50/50 dark:from-slate-950/30 dark:via-slate-900/20 dark:to-slate-950/40'
-          }`}
-        />
-      </div>
+      {/* Very Light Transparent Scope Watermark Backdrop */}
+      <ScopeWatermarkBackdrop scope={scope} />
 
       {/* Top-Right New Thread Shaka Icon (shown in main pane only after response arrives) */}
       {!isWaitingForReply && activeExchange && (activeAssistantReply || activeErrorReply) && (
@@ -926,21 +1036,20 @@ export function WorkbenchPage({
           whileTap={{ scale: 0.94 }}
           title="Start a new thread"
           aria-label="Start a new thread"
-          className="absolute top-4 right-5 sm:top-5 sm:right-8 z-20 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 backdrop-blur-xl shadow-md hover:shadow-lg hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
+          className="absolute top-4 right-5 sm:top-5 sm:right-8 z-20 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/90 dark:border-slate-700/85 bg-white/85 dark:bg-slate-900/80 backdrop-blur-xl shadow-md hover:shadow-lg hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
         >
-          <WhatsAppSymbol className="w-6 h-6" />
+          <WhatsAppSymbol className="w-7 h-7" />
         </motion.button>
       )}
 
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-4 sm:py-6 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-          {/* STAGE 1: Scope Intro Illustration + Medium Period Message + 4 Prompt Builder Domain Cards */}
+          {/* STAGE 1: Enlarged Shaka Hand Symbol + Period Message + 4 Icon-Only 3D Domain Bubbles */}
           {!activeExchange && (
             <div className="my-auto py-4 space-y-8">
-              <div className="flex items-center gap-4 sm:gap-5">
-                <ScopeIntroIllustration scope={scope} />
-                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center">
+                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-3.5 flex-wrap">
                   <motion.span
                     role="img"
                     aria-label="What's up"
@@ -954,16 +1063,13 @@ export function WorkbenchPage({
                       repeat: Infinity,
                       ease: 'easeInOut',
                     }}
-                    className="inline-block text-2xl sm:text-3xl leading-none select-none origin-bottom-right"
+                    className="inline-block text-4xl sm:text-5xl leading-none select-none origin-bottom-right"
                   >
                     🤙
                   </motion.span>
                   <span
-                    className={`tabular-nums ${
-                      scope === 'private'
-                        ? 'text-emerald-700 dark:text-emerald-300'
-                        : 'text-sky-700 dark:text-sky-300'
-                    }`}
+                    className="tabular-nums"
+                    style={{ color: 'var(--pa-accent-text)' }}
                   >
                     {activePeriodFullLabel} ..
                   </span>
@@ -971,75 +1077,77 @@ export function WorkbenchPage({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 place-items-center pt-4 pb-6">
-                {DOMAIN_HOME_CARDS.map((card, idx) => (
-                  <div
-                    key={card.domain}
-                    className={`flex flex-col items-center ${idx % 2 === 1 ? 'sm:mt-6' : ''}`}
-                  >
-                    <motion.button
-                      type="button"
-                      disabled={isSending}
-                      onClick={() => handleDomainCardClick(card)}
-                      aria-label={card.label}
-                      initial={{ opacity: 0, scale: 0.84, y: 24 }}
-                      animate={{
-                        opacity: 1,
-                        scale: 1,
-                        y: [0, -18, 0, -9, 0],
-                        rotateZ:
-                          idx % 2 === 0
-                            ? [-0.8, 0.8, -0.4, 0.5, -0.8]
-                            : [0.8, -0.8, 0.4, -0.5, 0.8],
-                      }}
-                      transition={{
-                        opacity: { duration: 0.26, delay: idx * 0.06 },
-                        scale: { type: 'spring', stiffness: 260, damping: 18, delay: idx * 0.06 },
-                        y: {
+                {DOMAIN_HOME_CARDS.map((card, idx) => {
+                  const isActiveDomainBubble = card.domain === activePromptDomain;
+                  return (
+                    <div
+                      key={card.domain}
+                      className={`flex flex-col items-center ${idx % 2 === 1 ? 'sm:mt-6' : ''}`}
+                    >
+                      <motion.button
+                        type="button"
+                        disabled={isSending}
+                        onClick={() => handleDomainCardClick(card)}
+                        aria-label={card.label}
+                        title={card.label}
+                        data-active-bubble={isActiveDomainBubble ? 'true' : undefined}
+                        initial={{ opacity: 0, scale: 0.84, y: 24 }}
+                        animate={{
+                          opacity: 1,
+                          scale: 1,
+                          y: [0, -18, 0, -9, 0],
+                          rotateZ:
+                            idx % 2 === 0
+                              ? [-0.8, 0.8, -0.4, 0.5, -0.8]
+                              : [0.8, -0.8, 0.4, -0.5, 0.8],
+                        }}
+                        transition={{
+                          opacity: { duration: 0.26, delay: idx * 0.06 },
+                          scale: { type: 'spring', stiffness: 260, damping: 18, delay: idx * 0.06 },
+                          y: {
+                            duration: 2.3 + idx * 0.22,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: idx * 0.35,
+                          },
+                          rotateZ: {
+                            duration: 3.1 + idx * 0.25,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: idx * 0.35,
+                          },
+                        }}
+                        whileHover={{ scale: 1.07 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="group fluent-3d-bubble relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex items-center justify-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
+                      >
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute top-3 left-10 right-10 h-3 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                        />
+                        <span className="scale-150 sm:scale-[1.7] transition-transform duration-200 group-hover:scale-[1.82]">
+                          <EventCategoryEmblem icon={card.icon} />
+                        </span>
+                      </motion.button>
+
+                      {/* Reactive Shadow beneath Jumping Bubble */}
+                      <motion.div
+                        aria-hidden="true"
+                        animate={{
+                          scaleX: [1, 0.72, 1, 0.84, 1],
+                          opacity: [0.26, 0.12, 0.26, 0.18, 0.26],
+                        }}
+                        transition={{
                           duration: 2.3 + idx * 0.22,
                           repeat: Infinity,
                           ease: 'easeInOut',
                           delay: idx * 0.35,
-                        },
-                        rotateZ: {
-                          duration: 3.1 + idx * 0.25,
-                          repeat: Infinity,
-                          ease: 'easeInOut',
-                          delay: idx * 0.35,
-                        },
-                      }}
-                      whileHover={{ scale: 1.07 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="group fluent-3d-bubble relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center gap-2.5 px-4 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
-                    >
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute top-3 left-10 right-10 h-3 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[2px]"
+                        }}
+                        className="mt-3 h-2.5 w-24 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
                       />
-                      <span className="scale-125 transition-transform duration-200 group-hover:scale-[1.32]">
-                        <EventCategoryEmblem icon={card.icon} />
-                      </span>
-                      <span className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-white whitespace-nowrap">
-                        {card.label}
-                      </span>
-                    </motion.button>
-
-                    {/* Reactive Shadow beneath Jumping Bubble */}
-                    <motion.div
-                      aria-hidden="true"
-                      animate={{
-                        scaleX: [1, 0.72, 1, 0.84, 1],
-                        opacity: [0.26, 0.12, 0.26, 0.18, 0.26],
-                      }}
-                      transition={{
-                        duration: 2.3 + idx * 0.22,
-                        repeat: Infinity,
-                        ease: 'easeInOut',
-                        delay: idx * 0.35,
-                      }}
-                      className="mt-3 h-2.5 w-24 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
-                    />
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1073,7 +1181,10 @@ export function WorkbenchPage({
                   }}
                   className="relative flex flex-col items-center"
                 >
-                  <div className="fluent-3d-bubble relative w-[264px] sm:w-[300px] aspect-square px-7 py-6 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
+                  <div
+                    data-active-bubble="true"
+                    className="fluent-3d-bubble relative w-[264px] sm:w-[300px] aspect-square px-7 py-6 flex flex-col items-center justify-center text-center gap-2 overflow-hidden"
+                  >
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute top-4 left-16 right-16 h-4 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[3px]"
@@ -1180,7 +1291,10 @@ export function WorkbenchPage({
                   transition={{ type: 'spring', stiffness: 280, damping: 24 }}
                   className="relative flex flex-col items-start"
                 >
-                  <div className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden">
+                  <div
+                    data-active-bubble="true"
+                    className="fluent-3d-bubble relative w-[300px] sm:w-[340px] aspect-square px-8 py-7 flex flex-col items-center justify-center text-center gap-2 overflow-hidden"
+                  >
                     <div
                       aria-hidden="true"
                       className="pointer-events-none absolute top-4 left-14 right-14 h-3.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"

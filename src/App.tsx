@@ -69,9 +69,9 @@ import {
 
 const THEME_CYCLE: ThemeMode[] = [
   'arctic-sky',
-  'midnight-slate',
   'emerald-mist',
   'royal-amethyst',
+  'midnight-slate',
 ];
 
 function extractMajorTemplate(template: string): string {
@@ -292,8 +292,7 @@ export default function App() {
           ? 'midnight-slate'
           : settings.theme;
 
-  const isDarkActive =
-    effectiveTheme === 'midnight-slate' || effectiveTheme === 'royal-amethyst';
+  const isDarkActive = effectiveTheme === 'midnight-slate';
 
   const reloadReportsFromDisk = useCallback(async (dirOverride?: string) => {
     try {
@@ -486,13 +485,14 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-pa-theme', effectiveTheme);
+    root.setAttribute('data-pa-scope', scope);
     root.setAttribute('data-pa-font', settings.fontFamily || 'segoe');
     if (isDarkActive) {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
-  }, [effectiveTheme, isDarkActive, settings.fontFamily]);
+  }, [effectiveTheme, isDarkActive, scope, settings.fontFamily]);
 
   useEffect(() => {
     saveSettings(settings);
@@ -1495,7 +1495,7 @@ export default function App() {
               title="What's up"
               className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
             >
-              <WhatsAppSymbol className="w-6 h-6 shrink-0" />
+              <WhatsAppSymbol className="w-7 h-7 shrink-0" />
               {(isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen || activeReportRecord) && (
                 <>
                   <span className="text-slate-400 dark:text-slate-500 font-normal">·</span>

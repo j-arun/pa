@@ -107,30 +107,30 @@ const THEME_OPTIONS: Array<{
   {
     id: 'arctic-sky',
     label: 'Arctic Sky',
-    code: '#0284C7',
-    swatchBg: '#f0f7ff',
+    code: 'Light Sky',
+    swatchBg: '#f0f8ff',
     swatchAccent: '#0284c7',
-  },
-  {
-    id: 'midnight-slate',
-    label: 'Midnight Slate',
-    code: '#38BDF8',
-    swatchBg: '#0f172a',
-    swatchAccent: '#38bdf8',
   },
   {
     id: 'emerald-mist',
     label: 'Emerald Mist',
-    code: '#059669',
+    code: 'Light Mint',
     swatchBg: '#ecfdf5',
     swatchAccent: '#059669',
   },
   {
     id: 'royal-amethyst',
     label: 'Royal Amethyst',
-    code: '#A855F7',
-    swatchBg: '#170e26',
-    swatchAccent: '#a855f7',
+    code: 'Light Lavender',
+    swatchBg: '#faf5ff',
+    swatchAccent: '#9333ea',
+  },
+  {
+    id: 'midnight-slate',
+    label: 'Midnight Slate',
+    code: 'Dark Slate',
+    swatchBg: '#0f172a',
+    swatchAccent: '#38bdf8',
   },
 ];
 
@@ -481,7 +481,7 @@ export function SettingsPage({
               What&apos;s up Settings
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Themes, Windows account profile, Ollama, Public adapters &amp; local storage
+              Themes, Font, Windows account profile, Ollama, Public adapters &amp; local storage
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -519,7 +519,7 @@ export function SettingsPage({
                   <span>Color Themes &amp; Account Profile</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  Theme palette, conversation font, and Windows account display name
+                  Animated theme palette, conversation font, and Windows account display name
                 </p>
               </div>
               {expandedSections.appearance ? (
