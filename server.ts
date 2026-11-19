@@ -316,7 +316,7 @@ async function startServer() {
           : options || {};
 
       let clientClosed = false;
-      req.on('close', () => {
+      res.on('close', () => {
         if (!res.writableEnded) {
           clientClosed = true;
         }
@@ -333,7 +333,7 @@ async function startServer() {
       }
       return res.json(reply);
     } catch (err) {
-      if (res.writableEnded || res.headersSent) {
+      if (res.closed || res.writableEnded || res.headersSent) {
         return;
       }
       const message = err instanceof Error ? err.message : 'Adapter request failed.';
