@@ -84,7 +84,9 @@ export function showDesktopNotification(title: string, body: string): boolean {
   try {
     const cleanBody = body.replace(/\s+/g, ' ').trim();
     const preview = cleanBody.length > 180 ? `${cleanBody.slice(0, 177)}...` : cleanBody;
-    const note = new Notification(title, {
+    const brandedTitle = title.includes("What's up") ? title : `What's up · ${title}`;
+    const finalTitle = brandedTitle.includes('🤙') ? brandedTitle : `🤙 ${brandedTitle}`;
+    const note = new Notification(finalTitle, {
       body: preview,
       icon: '/favicon.svg',
       silent: true, // Custom Web Audio chime handles sound cleanly without double beep

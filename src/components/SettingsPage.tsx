@@ -475,9 +475,10 @@ export function SettingsPage({
           <div>
             <h1
               id="settings-page-title"
-              className="font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
+              className="inline-flex items-center gap-1.5 font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
             >
-              Personal Assistant Settings
+              <span>What&apos;s up Settings</span>
+              <span aria-hidden="true" className="leading-none">🤙</span>
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Themes, Windows account profile, Ollama, Public adapters &amp; local storage
@@ -494,8 +495,8 @@ export function SettingsPage({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Return to Personal Assistant"
-              title="Back to Personal Assistant"
+              aria-label="Return to What's up"
+              title="Back to What's up"
               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -1424,7 +1425,7 @@ export function SettingsPage({
                 onClick={() =>
                   speech.speakText(
                     'voice-test',
-                    'Windows native speaker playback is ready for Personal Assistant.',
+                    "Windows native speaker playback is ready for What's up.",
                   )
                 }
                 disabled={!speech.speechSynthesisSupported}
@@ -1572,13 +1573,13 @@ export function SettingsPage({
                     const sent =
                       perm === 'granted' &&
                       showDesktopNotification(
-                        'WhatsApp · Notification Test',
+                        "🤙 What's up · Notification Test",
                         'Reply chime and notifications are ready.',
                       );
                     setNotifyFeedback(
                       sent
-                        ? 'Played reply chime and sent desktop notification.'
-                        : 'Played reply chime (in-app notifications are active).',
+                        ? "🤙 What's up · Played reply chime and sent desktop notification."
+                        : "🤙 What's up · Played reply chime (in-app notifications are active).",
                     );
                     setTimeout(() => setNotifyFeedback(null), 3000);
                   }}
@@ -2031,8 +2032,8 @@ export function SettingsPage({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Back to Assistant"
-              title="Back to Assistant"
+              aria-label="Back to What's up"
+              title="Back to What's up"
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />

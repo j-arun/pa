@@ -437,7 +437,10 @@ export function ReferenceContextPage({
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               )}
               <div>
-                <div className="font-semibold">{feedback.title}</div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <span aria-hidden="true">🤙</span>
+                  <span>What&apos;s up · {feedback.title}</span>
+                </div>
                 <div className="mt-0.5 leading-relaxed">{feedback.message}</div>
               </div>
             </div>

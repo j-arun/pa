@@ -1091,7 +1091,7 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(false);
       }
-      const replyTitle = `WhatsApp · ${targetScope === 'private' ? 'Private' : 'Public'} reply ready`;
+      const replyTitle = `What's up · ${targetScope === 'private' ? 'Private' : 'Public'} reply ready`;
       const cleanedPreview = cleanMarkdown.replace(/\s+/g, ' ').trim();
       const shortPreview =
         cleanedPreview.length > 110 ? `${cleanedPreview.slice(0, 107)}...` : cleanedPreview;
@@ -1147,7 +1147,7 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(true);
       }
-      const errTitle = 'WhatsApp · Response Error';
+      const errTitle = "What's up · Response Error";
       const shortPreview =
         errorMessage.length > 110 ? `${errorMessage.slice(0, 107)}...` : errorMessage;
       setReplyToast({ title: errTitle, preview: shortPreview, isError: true });
@@ -1433,18 +1433,20 @@ export default function App() {
               <Home className="w-4 h-4" />
             </button>
             <span className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
-              {isSettingsOpen ? (
-                'Settings'
-              ) : isPromptBuilderOpen ? (
-                'Prompt Builder'
-              ) : isReferenceContextOpen ? (
-                'Reference Context'
-              ) : activeReportRecord ? (
-                'Reference Report'
-              ) : (
+              <span>What&apos;s up</span>
+              <WhatsAppSymbol className="w-5 h-5 shrink-0" />
+              {(isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen || activeReportRecord) && (
                 <>
-                  <span>WhatsApp</span>
-                  <WhatsAppSymbol className="w-5 h-5 shrink-0" />
+                  <span className="text-slate-400 dark:text-slate-500 font-normal">·</span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    {isSettingsOpen
+                      ? 'Settings'
+                      : isPromptBuilderOpen
+                        ? 'Prompt Builder'
+                        : isReferenceContextOpen
+                          ? 'Reference Context'
+                          : 'Reference Report'}
+                  </span>
                 </>
               )}
             </span>

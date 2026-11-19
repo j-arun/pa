@@ -389,6 +389,7 @@ async function startServer() {
         contentType.includes('text/html') &&
         (rawBody.includes('<div id="root"') ||
           rawBody.includes('/src/main.tsx') ||
+          rawBody.includes("<title>What's up") ||
           rawBody.includes('<title>Personal Assistant'));
 
       if (looksLikeSpaShell) {

@@ -140,7 +140,7 @@ function escapePdfString(input: string): string {
 function buildPdfBytes(turns: ConversationTurn[]): Uint8Array {
   const exchanges = groupTurnsForExport(turns);
   const lines: PdfLine[] = [
-    { text: 'Personal Assistant Conversation', bold: true, fontSize: 16, lineHeight: 22 },
+    { text: "What's up Conversation", bold: true, fontSize: 16, lineHeight: 22 },
     { text: `Exported ${new Date().toLocaleString()}`, bold: false, fontSize: 10, lineHeight: 16 },
     { text: '-'.repeat(72), bold: false, fontSize: 10, lineHeight: 14 },
   ];
@@ -247,7 +247,7 @@ export async function exportConversationToPdf(turns: ConversationTurn[]): Promis
   const bytes = buildPdfBytes(turns);
   const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' });
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-  const suggestedName = `PersonalAssistant-Conversation-${stamp}.pdf`;
+  const suggestedName = `WhatsUp-Conversation-${stamp}.pdf`;
 
   const win = window as unknown as {
     showSaveFilePicker?: (opts: unknown) => Promise<{

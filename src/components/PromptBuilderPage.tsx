@@ -178,7 +178,7 @@ export function PromptBuilderPage({
                 : 'text-emerald-700 dark:text-emerald-300'
             }`}
           >
-            {saveNotice}
+            🤙 What&apos;s up · {saveNotice}
           </p>
         )}
 
@@ -190,6 +190,7 @@ export function PromptBuilderPage({
             role="alert"
             className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
           >
+            <span className="font-semibold">🤙 What&apos;s up · </span>
             Settings could not be saved to the application file: {saveError}
           </div>
         )}

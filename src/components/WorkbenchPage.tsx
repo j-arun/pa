@@ -1261,10 +1261,14 @@ export function WorkbenchPage({
               {/* Error State if Provider Failed — with Retry right inside */}
               {activeErrorReply && !activeAssistantReply && (
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/70 bg-red-50/90 dark:bg-red-950/40 p-6 text-red-900 dark:text-red-200 max-w-2xl">
-                  <div className="text-xs font-semibold mb-1">
-                    {activeErrorReply.scope === 'private'
-                      ? 'Private · Ollama Unavailable'
-                      : `Public · ${activeErrorReply.adapterId} Unavailable`}
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold mb-1">
+                    <WhatsAppSymbol className="w-4 h-4 shrink-0" />
+                    <span>
+                      What&apos;s up ·{' '}
+                      {activeErrorReply.scope === 'private'
+                        ? 'Private · Ollama Unavailable'
+                        : `Public · ${activeErrorReply.adapterId} Unavailable`}
+                    </span>
                   </div>
                   <p className="text-sm leading-relaxed">{activeErrorReply.content}</p>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1498,7 +1502,7 @@ export function WorkbenchPage({
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-1.5 font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    <span>{`WhatsApp · ${getPromptDomainShortLabel(activePromptDomain)}`}</span>
+                    <span>{`What's up · ${getPromptDomainShortLabel(activePromptDomain)}`}</span>
                     <WhatsAppSymbol className="w-4 h-4 shrink-0" />
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
