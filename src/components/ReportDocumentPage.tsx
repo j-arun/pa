@@ -1,15 +1,4 @@
-import {
-  ArrowLeft,
-  Check,
-  Code2,
-  Columns2,
-  Copy,
-  FileDown,
-  Globe,
-  Layers,
-  RotateCcw,
-  Save,
-} from 'lucide-react';
+import { ArrowLeft, FileDown, Layers } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ConversationTurn } from '../types/workbench';
 import {
@@ -21,12 +10,12 @@ import {
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
 
-type ReportViewMode = 'browser' | 'editor' | 'split';
-
 interface ReportDocumentPageProps {
   exchangeId: string;
   turns: ConversationTurn[];
-  onSaveHtmlReport: (exchangeId: string, html: string) => void;
+  reportFilePath?: string;
+  reportsDir?: string;
+  isExternalFile?: boolean;
   onViewEventCards: (exchangeId: string) => void;
   onClose: () => void;
 }
@@ -34,7 +23,9 @@ interface ReportDocumentPageProps {
 export function ReportDocumentPage({
   exchangeId,
   turns,
-  onSaveHtmlReport,
+  reportFilePath,
+  reportsDir,
+  isExternalFile,
   onViewEventCards,
   onClose,
 }: ReportDocumentPageProps) {
@@ -75,17 +66,21 @@ export function ReportDocumentPage({
 
   const generatedHtml = useMemo(
     () =>
-      buildThreadHtmlDocument({
-        title,
-        exchanges,
-        domain: rootQuestion?.promptDomain,
-        month: rootQuestion?.threadMonth,
-        year: rootQuestion?.threadYear,
-        rating: rootQuestion?.threadRating,
-        createdAt: latestReply?.timestamp || rootQuestion?.timestamp,
-      }),
+      isExternalFile
+        ? latestReply?.htmlReport || ''
+        : buildThreadHtmlDocument({
+            title,
+            exchanges,
+            domain: rootQuestion?.promptDomain,
+            month: rootQuestion?.threadMonth,
+            year: rootQuestion?.threadYear,
+            rating: rootQuestion?.threadRating,
+            createdAt: latestReply?.timestamp || rootQuestion?.timestamp,
+          }),
     [
       exchanges,
+      isExternalFile,
+      latestReply?.htmlReport,
       latestReply?.timestamp,
       rootQuestion?.promptDomain,
       rootQuestion?.threadMonth,
@@ -96,50 +91,47 @@ export function ReportDocumentPage({
     ],
   );
 
-  const savedHtml = latestReply?.htmlReport || generatedHtml;
-
-  const [viewMode, setViewMode] = useState<ReportViewMode>('browser');
-  const [draftHtml, setDraftHtml] = useState<string>(savedHtml);
-  const [copied, setCopied] = useState(false);
-  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const fallbackHtml = latestReply?.htmlReport || generatedHtml;
+  const [diskHtml, setDiskHtml] = useState<string | null>(null);
+  const [diskFilePath, setDiskFilePath] = useState<string | undefined>(reportFilePath);
 
   useEffect(() => {
-    setDraftHtml(savedHtml);
-    setSaveNotice(null);
-  }, [exchangeId, savedHtml]);
+    let cancelled = false;
+    setDiskHtml(null);
+    setDiskFilePath(reportFilePath);
 
-  const isDirty = draftHtml !== savedHtml;
+    const query = reportsDir ? `?dir=${encodeURIComponent(reportsDir)}` : '';
+    void fetch(`/api/reports/${encodeURIComponent(exchangeId)}/html${query}`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { html?: string; filePath?: string };
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        if (typeof data.html === 'string' && data.html.trim().length > 0) {
+          setDiskHtml(data.html);
+        }
+        if (typeof data.filePath === 'string' && data.filePath.trim()) {
+          setDiskFilePath(data.filePath);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [exchangeId, reportFilePath, reportsDir]);
+
+  const renderedHtml = diskHtml ?? fallbackHtml;
+
   const safeSlug =
     title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'reference-report';
 
-  const handleSave = () => {
-    onSaveHtmlReport(exchangeId, draftHtml);
-    setSaveNotice('Saved HTML document');
-    window.setTimeout(() => setSaveNotice(null), 2200);
-  };
-
-  const handleReset = () => {
-    setDraftHtml(generatedHtml);
-    onSaveHtmlReport(exchangeId, generatedHtml);
-    setSaveNotice('Reset to generated HTML');
-    window.setTimeout(() => setSaveNotice(null), 2200);
-  };
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(draftHtml);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Ignore clipboard failures
-    }
-  };
-
   const handleDownload = () => {
-    const blob = new Blob([draftHtml], { type: 'text/html;charset=utf-8' });
+    const blob = new Blob([renderedHtml], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -161,7 +153,9 @@ export function ReportDocumentPage({
       : '',
     exchanges.length > 1 ? `${exchanges.length} turns` : '',
     latestReply
-      ? `${latestReply.scope === 'private' ? 'Private' : 'Public'} · ${latestReply.model}`
+      ? isExternalFile
+        ? latestReply.model
+        : `${latestReply.scope === 'private' ? 'Private' : 'Public'} · ${latestReply.model}`
       : '',
   ].filter(Boolean);
 
@@ -182,175 +176,50 @@ export function ReportDocumentPage({
             <h1 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 truncate">
               {title}
             </h1>
-            {metaParts.length > 0 && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums">
-                {metaParts.join(' · ')}
+            {(metaParts.length > 0 || diskFilePath) && (
+              <p
+                title={diskFilePath}
+                className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums"
+              >
+                {[...metaParts, diskFilePath || ''].filter(Boolean).join(' · ')}
               </p>
             )}
           </div>
         </div>
 
-        {/* Mode Switcher: Browser / HTML Editor / Split */}
-        <div
-          role="group"
-          aria-label="HTML document view mode"
-          className="inline-flex items-center p-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/85 dark:bg-slate-800/90 shrink-0"
-        >
-          <button
-            type="button"
-            onClick={() => setViewMode('browser')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-              viewMode === 'browser'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>Browser View</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('editor')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-              viewMode === 'editor'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Code2 className="w-3.5 h-3.5" />
-            <span>HTML Editor</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('split')}
-            className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-              viewMode === 'split'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Columns2 className="w-3.5 h-3.5" />
-            <span>Split View</span>
-          </button>
-        </div>
-
         {/* Document Actions */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {saveNotice && (
-            <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
-              {saveNotice}
-            </span>
+          {!isExternalFile && (
+            <button
+              type="button"
+              onClick={() => onViewEventCards(exchangeId)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
+            >
+              <Layers className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
+              <span>Event Cards</span>
+            </button>
           )}
-          <button
-            type="button"
-            onClick={() => onViewEventCards(exchangeId)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-          >
-            <Layers className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
-            <span>Event Cards</span>
-          </button>
-          {(viewMode === 'editor' || viewMode === 'split') && (
-            <>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!isDirty}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 text-white text-xs font-medium transition-colors whitespace-nowrap shrink-0"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save HTML</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                title="Reset HTML document to the generated report"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => void handleCopy()}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy HTML</span>
-              </>
-            )}
-          </button>
           <button
             type="button"
             onClick={handleDownload}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
           >
             <FileDown className="w-3.5 h-3.5" />
-            <span>Download .html</span>
+            <span>Download</span>
           </button>
         </div>
       </header>
 
-      {/* Main Viewer / Editor Area */}
-      <div
-        className={`flex-1 min-h-0 p-4 sm:p-6 gap-4 overflow-hidden ${
-          viewMode === 'split' ? 'grid grid-cols-1 lg:grid-cols-2' : 'flex flex-col'
-        }`}
-      >
-        {(viewMode === 'editor' || viewMode === 'split') && (
-          <section
-            aria-label="HTML Source Editor"
-            className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-950 overflow-hidden shadow-sm"
-          >
-            <div className="shrink-0 px-4 py-2 border-b border-slate-800 bg-slate-900/90 flex items-center justify-between gap-3 text-xs text-slate-300">
-              <span className="font-mono">{safeSlug}.html</span>
-              <span className="font-mono text-[11px] text-slate-400 tabular-nums">
-                {draftHtml.length.toLocaleString()} chars · {draftHtml.split('\n').length} lines
-                {isDirty ? ' · Unsaved edits' : ''}
-              </span>
-            </div>
-            <textarea
-              aria-label="HTML Document Source"
-              value={draftHtml}
-              onChange={(e) => setDraftHtml(e.target.value)}
-              spellCheck={false}
-              className="flex-1 w-full min-h-0 resize-none bg-slate-950 p-4 font-mono text-[13px] leading-relaxed text-slate-100 focus:outline-none fluent-scroll"
-            />
-          </section>
-        )}
-
-        {(viewMode === 'browser' || viewMode === 'split') && (
-          <section
-            aria-label="Browser HTML Preview"
-            className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white overflow-hidden shadow-sm"
-          >
-            <div className="shrink-0 px-4 py-2 border-b border-slate-200 bg-slate-100/90 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <Globe className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span className="font-mono text-xs text-slate-600 truncate">
-                  local-report://{safeSlug}.html
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500 whitespace-nowrap shrink-0">
-                Standalone HTML Document
-              </span>
-            </div>
-            <iframe
-              title={`${title} Browser Preview`}
-              srcDoc={draftHtml}
-              sandbox="allow-same-origin"
-              className="flex-1 w-full min-h-0 border-0 bg-white"
-            />
-          </section>
-        )}
+      {/* Rendered Local HTML Report */}
+      <div className="flex-1 min-h-0 p-4 sm:p-6 flex flex-col overflow-hidden">
+        <section className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white overflow-hidden shadow-sm">
+          <iframe
+            title={`${title} Report`}
+            srcDoc={renderedHtml}
+            sandbox="allow-same-origin"
+            className="flex-1 w-full min-h-0 border-0 bg-white"
+          />
+        </section>
       </div>
     </main>
   );

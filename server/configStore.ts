@@ -99,9 +99,37 @@ function normalizeServerFont(raw?: string): WorkbenchSettings['fontFamily'] {
 
 const initialProfile = detectWindowsAccountProfile();
 
+export function resolveConfigDir(): string {
+  if (process.env.WORKBENCH_DATA_DIR?.trim()) {
+    return path.resolve(process.env.WORKBENCH_DATA_DIR.trim());
+  }
+  if (process.platform === 'win32') {
+    const localAppData =
+      process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    return path.join(localAppData, 'FluentAssistantWorkbench');
+  }
+  return path.join(process.cwd(), '.workbench-local');
+}
+
+export function resolveDefaultReportsDir(): string {
+  return path.join(resolveConfigDir(), 'reports');
+}
+
+export function resolveReportsDir(customDir?: string): string {
+  const trimmed = (customDir || '').trim();
+  if (!trimmed) {
+    return resolveDefaultReportsDir();
+  }
+  if (trimmed === '~' || trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.resolve(path.join(os.homedir(), trimmed.slice(2)));
+  }
+  return path.resolve(trimmed);
+}
+
 export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
   theme: 'arctic-sky',
   fontFamily: 'segoe',
+  reportsDir: resolveDefaultReportsDir(),
   profile: {
     displayName: initialProfile.displayName,
     avatarDataUrl: initialProfile.avatarDataUrl,
@@ -139,16 +167,16 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
           'You are a helpful, articulate personal assistant responding through the Public Gemini Adapter. Keep answers clear and well-structured.',
       },
       claude: {
-        model: 'claude-sonnet-4-20250514',
-        maxTokens: 2048,
+        model: 'claude-sonnet-5-5',
+        maxTokens: 8192,
         endpointUrl:
           process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Claude Adapter.',
       },
       fable: {
-        model: 'claude-fable-5-1',
-        maxTokens: 2048,
+        model: 'claude-fable-5-2',
+        maxTokens: 8192,
         endpointUrl:
           process.env.FABLE_API_URL?.trim() &&
           process.env.FABLE_API_URL.trim().replace(/\/+$/, '').toLowerCase() !==
@@ -175,18 +203,6 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
   requestTimeoutSeconds: 0,
 };
 
-export function resolveConfigDir(): string {
-  if (process.env.WORKBENCH_DATA_DIR?.trim()) {
-    return path.resolve(process.env.WORKBENCH_DATA_DIR.trim());
-  }
-  if (process.platform === 'win32') {
-    const localAppData =
-      process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    return path.join(localAppData, 'FluentAssistantWorkbench');
-  }
-  return path.join(process.cwd(), '.workbench-local');
-}
-
 export function resolveConfigFilePath(): string {
   return path.join(resolveConfigDir(), 'workbench.config.json');
 }
@@ -210,6 +226,10 @@ export function mergeConfigWithDefaults(
   return {
     theme,
     fontFamily,
+    reportsDir:
+      typeof parsed.reportsDir === 'string' && parsed.reportsDir.trim()
+        ? parsed.reportsDir.trim()
+        : resolveDefaultReportsDir(),
     profile: {
       ...DEFAULT_WORKBENCH_CONFIG.profile,
       ...(parsed.profile || {}),
@@ -296,8 +316,10 @@ export function mergeConfigWithDefaults(
           return {
             ...mergedFable,
             model:
-              !mergedFable.model || mergedFable.model === 'fable-1-pro'
-                ? 'claude-fable-5-1'
+              !mergedFable.model ||
+              mergedFable.model === 'fable-1-pro' ||
+              mergedFable.model === 'claude-fable-5-1'
+                ? 'claude-fable-5-2'
                 : mergedFable.model,
             endpointUrl:
               !normalizedEndpoint ||
@@ -332,9 +354,12 @@ export function readLocalConfigFile(): {
   filePath: string;
   platform: string;
   hasPromptBuilderSettings: boolean;
+  defaultReportsDir: string;
+  resolvedReportsDir: string;
 } {
   const filePath = resolveConfigFilePath();
   const dir = path.dirname(filePath);
+  const defaultReportsDir = resolveDefaultReportsDir();
 
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -351,18 +376,23 @@ export function readLocalConfigFile(): {
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings: true,
+      defaultReportsDir,
+      resolvedReportsDir: resolveReportsDir(DEFAULT_WORKBENCH_CONFIG.reportsDir),
     };
   }
 
   try {
     const text = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(text) as Partial<WorkbenchSettings>;
+    const merged = mergeConfigWithDefaults(parsed);
     return {
-      config: mergeConfigWithDefaults(parsed),
+      config: merged,
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings:
         Boolean(parsed.promptBuilder) && typeof parsed.promptBuilder === 'object',
+      defaultReportsDir,
+      resolvedReportsDir: resolveReportsDir(merged.reportsDir),
     };
   } catch {
     return {
@@ -370,6 +400,8 @@ export function readLocalConfigFile(): {
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings: false,
+      defaultReportsDir,
+      resolvedReportsDir: resolveReportsDir(DEFAULT_WORKBENCH_CONFIG.reportsDir),
     };
   }
 }
@@ -378,6 +410,8 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
   config: WorkbenchSettings;
   filePath: string;
   savedAt: string;
+  defaultReportsDir: string;
+  resolvedReportsDir: string;
 } {
   const filePath = resolveConfigFilePath();
   const dir = path.dirname(filePath);
@@ -391,5 +425,7 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
     config: merged,
     filePath,
     savedAt: new Date().toISOString(),
+    defaultReportsDir: resolveDefaultReportsDir(),
+    resolvedReportsDir: resolveReportsDir(merged.reportsDir),
   };
 }

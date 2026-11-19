@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
+  FolderOpen,
   Globe,
   HardDrive,
   Lock,
@@ -74,6 +75,8 @@ interface ConfigFileInfo {
   platform: string;
   lastSavedAt?: string;
   syncError?: string;
+  defaultReportsDir?: string;
+  resolvedReportsDir?: string;
 }
 
 interface SettingsPageProps {
@@ -171,6 +174,8 @@ export function SettingsPage({
     ok: boolean;
     message: string;
   } | null>(null);
+  const [reportsRescanning, setReportsRescanning] = useState(false);
+  const [reportsFolderStatus, setReportsFolderStatus] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<{
     appearance: boolean;
     privateLlm: boolean;
@@ -1194,13 +1199,27 @@ export function SettingsPage({
                         Model
                       </label>
                       {adapterId === 'fable' ? (
-                        <input
-                          type="text"
-                          value={cfg.model}
-                          onChange={(e) => updatePublicAdapter('fable', { model: e.target.value })}
-                          placeholder="Enter the model ID supported by the endpoint"
-                          className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                        />
+                        <>
+                          <input
+                            type="text"
+                            list="fable-model-presets"
+                            value={cfg.model}
+                            onChange={(e) => updatePublicAdapter('fable', { model: e.target.value })}
+                            placeholder="claude-fable-5-2"
+                            className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                          />
+                          <datalist id="fable-model-presets">
+                            {(summary?.availableModels || [
+                              'claude-fable-5-2',
+                              'claude-fable-5-1',
+                              'claude-sonnet-5-5',
+                              'claude-opus-5-5',
+                              'claude-sonnet-4-20250514',
+                            ]).map((modelOpt) => (
+                              <option key={modelOpt} value={modelOpt} />
+                            ))}
+                          </datalist>
+                        </>
                       ) : (
                         <select
                           value={cfg.model}
@@ -1216,7 +1235,7 @@ export function SettingsPage({
                       )}
                       {adapterId === 'fable' && (
                         <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          For Anthropic endpoints, enter a model ID enabled for your Anthropic API key.
+                          Recommended current model: <code className="font-mono">claude-fable-5-2</code> (or any Anthropic / compatible model ID enabled for your API key).
                         </p>
                       )}
                     </div>
@@ -1250,7 +1269,7 @@ export function SettingsPage({
                           value={cfg.endpointUrl || ''}
                           placeholder={
                             adapterId === 'fable'
-                              ? 'e.g. https://api.anthropic.com/v1/messages'
+                              ? 'https://api.anthropic.com/v1/messages'
                               : undefined
                           }
                           onChange={(e) =>
@@ -1260,11 +1279,7 @@ export function SettingsPage({
                         />
                         {adapterId === 'fable' && (
                           <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                            Anthropic /v1/messages endpoints use x-api-key and
-                            anthropic-version automatically. Keys may be provided per
-                            request or through FABLE_API_KEY, ANTHROPIC_API_KEY, or
-                            CLAUDE_API_KEY on the server. Other endpoints use Bearer
-                            authentication.
+                            Uses <code className="font-mono">https://api.anthropic.com/v1/messages</code> with <code className="font-mono">x-api-key</code> and <code className="font-mono">anthropic-version: 2023-06-01</code> (or Bearer auth for custom OpenAI-compatible gateways). Configure your key via server secrets (<code className="font-mono">FABLE_API_KEY</code> or <code className="font-mono">ANTHROPIC_API_KEY</code>).
                           </p>
                         )}
                       </div>
@@ -1799,7 +1814,7 @@ export function SettingsPage({
           )}
         </section>
 
-        {/* Section 6: Local Configuration File & Windows Storage */}
+        {/* Section 6: Local Configuration File & Report Storage */}
         <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           <button
             type="button"
@@ -1810,10 +1825,10 @@ export function SettingsPage({
             <div className="min-w-0">
               <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-slate-600 dark:text-slate-400 shrink-0" />
-                <span>Local Configuration File &amp; Windows Storage</span>
+                <span>Report Storage &amp; Local Configuration</span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                Disk persistence path (workbench.config.json), Ollama memory relief, and reset defaults
+                Local HTML reports storage directory, workbench.config.json path, Ollama memory relief, and reset defaults
               </p>
             </div>
             {expandedSections.storage ? (
@@ -1825,6 +1840,111 @@ export function SettingsPage({
 
           {expandedSections.storage && (
           <div className="border-t border-slate-200/80 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="p-5 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <label
+                    htmlFor="reports-storage-dir"
+                    className="text-xs font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
+                    <span>HTML Reports Storage Folder (Local File System)</span>
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Generated HTML reports are saved directly into this folder and loaded as-is when opened.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {configFileInfo.defaultReportsDir && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateDraft((prev) => ({
+                          ...prev,
+                          reportsDir: configFileInfo.defaultReportsDir || '',
+                        }))
+                      }
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
+                    >
+                      Use Default Folder
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={reportsRescanning}
+                    onClick={async () => {
+                      setReportsRescanning(true);
+                      setReportsFolderStatus(null);
+                      try {
+                        const target = (draft.reportsDir || '').trim();
+                        const query = target ? `?dir=${encodeURIComponent(target)}` : '';
+                        const res = await fetch(`/api/reports${query}`);
+                        const data = (await res.json()) as {
+                          reportsDir?: string;
+                          reports?: unknown[];
+                          error?: string;
+                        };
+                        if (!res.ok || data.error) {
+                          throw new Error(data.error || `HTTP ${res.status}`);
+                        }
+                        const count = Array.isArray(data.reports) ? data.reports.length : 0;
+                        setReportsFolderStatus(
+                          `Verified folder: ${data.reportsDir || target} (${count} report${count === 1 ? '' : 's'} found on disk)`,
+                        );
+                      } catch (err) {
+                        setReportsFolderStatus(
+                          err instanceof Error
+                            ? err.message
+                            : 'Unable to access reports storage folder.',
+                        );
+                      } finally {
+                        setReportsRescanning(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${reportsRescanning ? 'animate-spin' : ''}`} />
+                    <span>Verify Folder</span>
+                  </button>
+                </div>
+              </div>
+
+              <input
+                id="reports-storage-dir"
+                type="text"
+                value={draft.reportsDir ?? ''}
+                onChange={(e) =>
+                  updateDraft((prev) => ({
+                    ...prev,
+                    reportsDir: e.target.value,
+                  }))
+                }
+                placeholder={
+                  configFileInfo.defaultReportsDir ||
+                  (configFileInfo.platform === 'win32'
+                    ? 'C:\\Users\\<User>\\AppData\\Local\\FluentAssistantWorkbench\\reports'
+                    : './.workbench-local/reports')
+                }
+                className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-xs sm:text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+              />
+
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
+                Active folder:{' '}
+                <code className="font-mono text-slate-700 dark:text-slate-300">
+                  {draft.reportsDir?.trim() ||
+                    configFileInfo.resolvedReportsDir ||
+                    configFileInfo.defaultReportsDir ||
+                    'Default reports directory'}
+                </code>
+              </div>
+
+              {reportsFolderStatus && (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400 break-all">
+                  {reportsFolderStatus}
+                </div>
+              )}
+            </div>
+
             <div className="p-5 space-y-2">
               <div className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Active application configurations are stored automatically in <code className="font-mono">workbench.config.json</code> ({configFileInfo.platform === 'win32' ? 'Windows LocalAppData' : 'Local Host Storage'})

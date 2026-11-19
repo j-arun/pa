@@ -4,7 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import type { AnyAdapterId, ConversationScope, WorkbenchSettings } from './src/types/workbench.ts';
+import type {
+  AnyAdapterId,
+  ConversationScope,
+  RatedThreadRecord,
+  WorkbenchSettings,
+} from './src/types/workbench.ts';
 import { adapterRegistry } from './server/adapters/registry.ts';
 import type { AdapterRuntimeOptions, ChatHistoryItem } from './server/adapters/types.ts';
 import {
@@ -12,6 +17,12 @@ import {
   readLocalConfigFile,
   writeLocalConfigFile,
 } from './server/configStore.ts';
+import {
+  deleteStoredReport,
+  listStoredReports,
+  readStoredReportHtml,
+  saveStoredReport,
+} from './server/reportStore.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,6 +60,91 @@ async function startServer() {
     } catch (err) {
       return res.status(500).json({
         error: err instanceof Error ? err.message : 'Unable to write workbench.config.json.',
+      });
+    }
+  });
+
+  app.get('/api/reports', (req, res) => {
+    try {
+      const queryDir =
+        typeof req.query.dir === 'string' && req.query.dir.trim()
+          ? req.query.dir.trim()
+          : readLocalConfigFile().config.reportsDir;
+      const result = listStoredReports(queryDir);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to list reports from local filesystem.',
+      });
+    }
+  });
+
+  app.get('/api/reports/:id/html', (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const queryDir =
+        typeof req.query.dir === 'string' && req.query.dir.trim()
+          ? req.query.dir.trim()
+          : readLocalConfigFile().config.reportsDir;
+      const result = readStoredReportHtml(reportId, queryDir);
+      if (!result) {
+        return res.status(404).json({ error: 'Report HTML file not found on disk.' });
+      }
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to read report HTML from local filesystem.',
+      });
+    }
+  });
+
+  app.put('/api/reports/:id', (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const { record, html, reportsDir } = req.body as {
+        record?: RatedThreadRecord;
+        html?: string;
+        reportsDir?: string;
+      };
+      if (!record || !Array.isArray(record.turns)) {
+        return res.status(400).json({ error: 'Valid report record is required.' });
+      }
+      const targetDir =
+        (typeof reportsDir === 'string' && reportsDir.trim()) ||
+        readLocalConfigFile().config.reportsDir;
+      const saved = saveStoredReport({ ...record, id: reportId || record.id }, targetDir, html);
+      return res.json(saved);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to save report to local filesystem.',
+      });
+    }
+  });
+
+  app.delete('/api/reports/:id', (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const queryDir =
+        typeof req.query.dir === 'string' && req.query.dir.trim()
+          ? req.query.dir.trim()
+          : readLocalConfigFile().config.reportsDir;
+      const result = deleteStoredReport(reportId, queryDir);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to delete report from local filesystem.',
       });
     }
   });

@@ -17,15 +17,15 @@ export const EVENT_EXTRACTION_SYSTEM_DIRECTIVE = [
   'Response formatting rule:',
   '1. Write your complete, thorough report in clean Markdown first. This full report goes into the HTML Reference Document.',
   '2. Structure Section 3 (the 3rd main heading/section of the report) as "## 3. Detailed <Domain> Event Breakdown" (for example: "## 3. Detailed Relationship Event Breakdown", "## 3. Detailed Career Event Breakdown", "## 3. Detailed Family Event Breakdown", or "## 3. Detailed Health Event Breakdown").',
-  '3. Inside Section 3, list every specific event as a numbered event subheading (e.g. "### Event 1: <Specific Event Heading>", "### Event 2: <Specific Event Heading>", etc.) and include all three labeled items under each event:',
+  '3. Inside Section 3, list every specific event as a descriptive event subheading WITHOUT "Event 1", "Event 2", "Event 3" or numeric prefixes (for example: "### Turning Point and Communication Breakthrough", "### Quiet Emotional Pull and Unspoken Longing"). Include all three labeled items under each event:',
   '   - **When it will happen:** Exact date or date range (e.g. 2026-11-12 to 2026-11-19)',
   '   - **Probability Rating:** Clear rating and percentage (e.g. High · 84%)',
   '   - **How it will happen:** Complete, practical everyday explanation of how the event unfolds.',
-  '4. Keep each event free of raw astrological tables; use clear everyday language.',
-  '5. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing EVERY event listed in Section 3 (matching all Event 1..N items). Do NOT include Overview, Introduction, or Summary cards in <pa_events>.',
-  '6. Schema for each <pa_events> item: {"title":"Event 1: Specific event heading","when":"Exact date or range","probability":"Probability rating e.g. High · 82%","how":"Full explanation of how it will happen.","category":"Relationship|Love|Career|Family|Health|General","icon":"heart|shield|briefcase|layers|calendar|compass|sparkles"}.',
+  '4. STRICTLY NO ASTROLOGICAL INFORMATION IN EVENTS OR CARDS: Do NOT include any astrological terms, planet names (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto, Rahu, Ketu), zodiac signs, houses, transits, aspects, conjunctions, retrogrades, dashas, nakshatras, birth charts, horoscopes, or ascendants in event titles, timing, probability ratings, or "How it will happen" descriptions. Describe every event purely in clear, everyday human and practical terms.',
+  '5. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing EVERY event listed in Section 3. Do NOT include Overview, Introduction, or Summary cards in <pa_events>.',
+  '6. Schema for each <pa_events> item: {"title":"Turning Point and Communication Breakthrough","when":"Exact date or range","probability":"High · 82%","how":"Full practical everyday explanation of how it will happen, with zero astrological details.","category":"Relationship|Love|Career|Family|Health|General","icon":"heart|shield|briefcase|layers|calendar|compass|sparkles"}. NEVER prefix title with "Event 1:", "Event 2:", or numbers.',
   '7. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates or short date windows to be careful about across domains.',
-  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range","note":"Brief caution note on what to watch out for.","severity":"high|caution|watch"}.',
+  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range","note":"Brief caution note on what to watch out for, with no astrological terms.","severity":"high|caution|watch"}.',
 ].join('\n');
 
 const VALID_ICONS: readonly EventCardIconType[] = [
@@ -144,6 +144,118 @@ function truncateText(text: string, maxLength: number): string {
   return `${(lastSpace > 42 ? sliced.slice(0, lastSpace) : sliced).trim()}…`;
 }
 
+const ASTROLOGY_PARENTHETICAL_REGEX =
+  /\b(?:transit(?:ing|s)?|retrograde|conjunction|opposition|sextile|trine|dasha|antardasha|mahadasha|bhukti|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|birth\s+chart|natal\s+chart|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|mars|uranus|neptune|pluto|aries|taurus|gemini|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces)\b/i;
+
+const ASTROLOGY_SENTENCE_REGEX =
+  /\b(?:transit(?:ing|s)?|retrograde|conjunction|opposition|sextile|trine|dasha|antardasha|mahadasha|bhukti|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|birth\s+chart|natal\s+chart|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|uranus|neptune|pluto)\b/i;
+
+const ASTROLOGY_CAPITALIZED_ZODIAC_OR_MARS_REGEX =
+  /\b(?:Aries|Taurus|Gemini|Leo|Virgo|Libra|Scorpio|Sagittarius|Capricorn|Aquarius|Pisces|Mars)\b/;
+
+const ASTROLOGY_CANCER_CONTEXT_REGEX =
+  /\bCancer\b(?=[^.!?]{0,40}\b(?:sign|house|moon|sun|rising|ascendant|transit|venus|mars|jupiter|saturn|mercury)\b)|\b(?:in|sign\s+of|house\s+of|transit(?:ing)?\s+in)\s+Cancer\b/;
+
+function containsAstrologicalContent(text: string): boolean {
+  return (
+    ASTROLOGY_SENTENCE_REGEX.test(text) ||
+    ASTROLOGY_CAPITALIZED_ZODIAC_OR_MARS_REGEX.test(text) ||
+    ASTROLOGY_CANCER_CONTEXT_REGEX.test(text)
+  );
+}
+
+export function stripEventNumberPrefix(rawTitle: string): string {
+  let cleaned = (rawTitle || '').trim();
+  // Strip repeated prefixes like "Event 1:", "Event #2 -", "1.", "Event 3 —"
+  for (let pass = 0; pass < 2; pass += 1) {
+    cleaned = cleaned
+      .replace(/^(?:event\s*#?\s*\d+\s*[:.\-–—]*\s*)/i, '')
+      .replace(/^(?:\d+\s*[.):\-–—]\s+)/, '')
+      .trim();
+  }
+  return cleaned;
+}
+
+export function stripAstrologicalInfo(rawText: string): string {
+  if (!rawText) return '';
+
+  // 1. Strip parenthetical or bracketed astrological asides
+  let text = rawText.replace(/\(([^()]{1,180})\)|\[([^\[\]]{1,180})\]/g, (full, p1, p2) => {
+    const inner = String(p1 ?? p2 ?? '');
+    return ASTROLOGY_PARENTHETICAL_REGEX.test(inner) ? '' : full;
+  });
+
+  // 2. Strip trailing attribution clauses after commas/dashes
+  text = text.replace(
+    /(?:,\s*|\s+[–—-]\s+)(?:driven|triggered|sparked|influenced|shaped|activated|marked|guided|caused)\s+by\s+(?:the\s+)?[^.!?\n]*(?:transit|retrograde|conjunction|dasha|nakshatra|planetary|astrolog|house|saturn|jupiter|venus|mercury|mars|rahu|ketu|aries|taurus|gemini|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces)[^.!?\n]*/gi,
+    '',
+  );
+
+  // 3. Filter out sentences that carry astrological mechanics
+  const lines = text.split(/\n+/);
+  const keptLines: string[] = [];
+
+  for (const line of lines) {
+    const sentences = line.split(/(?<=[.!?])\s+/);
+    const cleanSentences = sentences.filter((sentence) => {
+      const trimmed = sentence.trim();
+      if (!trimmed) return false;
+      return !containsAstrologicalContent(trimmed);
+    });
+    if (cleanSentences.length > 0) {
+      keptLines.push(cleanSentences.join(' '));
+    }
+  }
+
+  return keptLines
+    .join('\n')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/,\s*,+/g, ',')
+    .replace(/[:\-–—]\s*$/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+export function sanitizeEventTitle(rawTitle: string): string {
+  const withoutNumber = stripEventNumberPrefix(rawTitle);
+  let cleaned = withoutNumber;
+  // If title has "Actual Name: Saturn Transit" or "Actual Name - Venus Aspect", drop the astrological side
+  const colonSplit = cleaned.split(/\s*[:\-–—]\s+/);
+  if (colonSplit.length >= 2) {
+    const nonAstroParts = colonSplit.filter((part) => !containsAstrologicalContent(part));
+    if (nonAstroParts.length > 0) {
+      cleaned = nonAstroParts.join(' — ');
+    }
+  }
+  cleaned = stripAstrologicalInfo(cleaned);
+  return cleaned || withoutNumber || 'Key Milestone';
+}
+
+export function normalizeEventCardItem(card: EventCardItem, index = 0): EventCardItem {
+  const cleanTitle = sanitizeEventTitle(card.title || `Milestone ${index + 1}`);
+  const rawWhen = card.when || card.dateRange || card.timeframe || '';
+  const cleanWhen = rawWhen ? stripAstrologicalInfo(rawWhen) || rawWhen.trim() : undefined;
+  const rawProb = card.probability || card.likelihood || '';
+  const cleanProb = rawProb ? stripAstrologicalInfo(rawProb) || rawProb.trim() : undefined;
+  const rawHow = card.how || card.summary || '';
+  const strippedHow = stripAstrologicalInfo(rawHow);
+  const cleanHow =
+    strippedHow ||
+    'Practical real-world developments around this milestone unfold through everyday conversations, timing, and personal decisions.';
+
+  return {
+    ...card,
+    title: cleanTitle,
+    when: cleanWhen,
+    dateRange: cleanWhen,
+    timeframe: cleanWhen,
+    probability: cleanProb,
+    likelihood: cleanProb,
+    how: cleanHow,
+    summary: cleanHow,
+  };
+}
+
 function normalizeIcon(
   rawIcon: unknown,
   hintText: string,
@@ -220,11 +332,20 @@ function parseEventHeadingLine(line: string, sectionHeadingLevel: number): strin
     return cleanLineKeepText(plainEventMatch[1]);
   }
 
-  const boldNumberedMatch = line.match(
-    /^\s*(\d+\.\s+(?:\*\*|__)[^*_]+(?:\*\*|__))\s*:?\s*$/,
+  const boldStandaloneMatch = line.match(
+    /^\s*(?:[-*•]\s*|\d+\.\s*)?(?:\*\*|__)([^*\n_]{4,96})(?:\*\*|__)\s*:?\s*$/,
   );
-  if (boldNumberedMatch) {
-    return cleanLineKeepText(boldNumberedMatch[1]);
+  if (boldStandaloneMatch) {
+    const inner = cleanLineKeepText(boldStandaloneMatch[1]);
+    if (
+      inner &&
+      !WHEN_LABEL_REGEX.test(`${inner}:`) &&
+      !PROB_LABEL_REGEX.test(`${inner}:`) &&
+      !HOW_LABEL_REGEX.test(`${inner}:`) &&
+      !isOverviewHeading(inner)
+    ) {
+      return inner;
+    }
   }
 
   return null;
@@ -307,19 +428,22 @@ function parseSingleEventBlock(
     fallbackDomain,
   );
 
-  return {
-    id: `evt-${index + 1}`,
-    title,
-    summary: fullHowText,
-    how: fullHowText,
-    category,
-    dateRange: whenText,
-    when: whenText,
-    likelihood: probText,
-    probability: probText,
-    timeframe: whenText,
-    icon,
-  };
+  return normalizeEventCardItem(
+    {
+      id: `evt-${index + 1}`,
+      title,
+      summary: fullHowText,
+      how: fullHowText,
+      category,
+      dateRange: whenText,
+      when: whenText,
+      likelihood: probText,
+      probability: probText,
+      timeframe: whenText,
+      icon,
+    },
+    index,
+  );
 }
 
 function extractBreakdownSectionEvents(
@@ -799,6 +923,8 @@ export function parseResponseEventsAndReport(
     finalEvents = extractFallbackEvents(normalizedMarkdown, fallbackDomain);
   }
 
+  finalEvents = finalEvents.map((evt, idx) => normalizeEventCardItem(evt, idx));
+
   let parsedCarefulDates: CarefulDateItem[] = [];
   if (cautionMatch && cautionMatch[1]) {
     try {
@@ -820,10 +946,12 @@ export function parseResponseEventsAndReport(
               typeof item.date === 'string' && item.date.trim()
                 ? item.date.trim()
                 : 'Upcoming window';
-            const note =
+            const rawNote =
               typeof item.note === 'string' && item.note.trim()
                 ? cleanPlainSummary(item.note.trim())
-                : 'Exercise extra care and patience.';
+                : '';
+            const note =
+              stripAstrologicalInfo(rawNote) || 'Exercise extra care and patience.';
             const rawSev =
               typeof item.severity === 'string' ? item.severity.trim().toLowerCase() : '';
             const severity: CarefulDateItem['severity'] =

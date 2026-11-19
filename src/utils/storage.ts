@@ -116,6 +116,7 @@ function loadLegacyPromptBuilderSettings(): PromptBuilderSettings {
 export const DEFAULT_SETTINGS: WorkbenchSettings = {
   theme: 'arctic-sky',
   fontFamily: 'segoe',
+  reportsDir: '',
   profile: {
     displayName: 'Local User',
     avatarDataUrl: '',
@@ -153,15 +154,15 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
           'You are a helpful, articulate personal assistant responding through the Public Gemini Adapter. Keep answers clear and well-structured.',
       },
       claude: {
-        model: 'claude-sonnet-4-20250514',
-        maxTokens: 2048,
+        model: 'claude-sonnet-5-5',
+        maxTokens: 8192,
         endpointUrl: 'https://api.anthropic.com/v1/messages',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Claude Adapter.',
       },
       fable: {
-        model: 'claude-fable-5-1',
-        maxTokens: 2048,
+        model: 'claude-fable-5-2',
+        maxTokens: 8192,
         endpointUrl: 'https://api.anthropic.com/v1/messages',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Fable Adapter.',
@@ -222,6 +223,8 @@ export function loadSettings(): WorkbenchSettings {
     return {
       theme,
       fontFamily,
+      reportsDir:
+        typeof parsed.reportsDir === 'string' ? parsed.reportsDir.trim() : '',
       profile: {
         ...DEFAULT_SETTINGS.profile,
         ...(parsed.profile || {}),
@@ -306,8 +309,10 @@ export function loadSettings(): WorkbenchSettings {
             return {
               ...mergedFable,
               model:
-                !mergedFable.model || mergedFable.model === 'fable-1-pro'
-                  ? 'claude-fable-5-1'
+                !mergedFable.model ||
+                mergedFable.model === 'fable-1-pro' ||
+                mergedFable.model === 'claude-fable-5-1'
+                  ? 'claude-fable-5-2'
                   : mergedFable.model,
               endpointUrl:
                 !normalizedEndpoint ||

@@ -8,6 +8,7 @@ import {
   PanelBottom,
   PanelLeft,
   PanelRight,
+  Plus,
   Settings,
   Sparkles,
   Star,
@@ -149,11 +150,14 @@ export default function App() {
     platform: string;
     lastSavedAt?: string;
     syncError?: string;
+    defaultReportsDir?: string;
+    resolvedReportsDir?: string;
   }>({
     filePath: 'workbench.config.json',
     platform: 'unknown',
   });
   const configHydratedRef = useRef(false);
+  const reportsHydratedRef = useRef(false);
   const replyToastTimerRef = useRef<number | null>(null);
   const [replyToast, setReplyToast] = useState<{
     title: string;
@@ -284,7 +288,95 @@ export default function App() {
   const isDarkActive =
     effectiveTheme === 'midnight-slate' || effectiveTheme === 'royal-amethyst';
 
+  const reloadReportsFromDisk = useCallback(async (dirOverride?: string) => {
+    try {
+      const query = dirOverride ? `?dir=${encodeURIComponent(dirOverride)}` : '';
+      const res = await fetch(`/api/reports${query}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        reportsDir?: string;
+        reports?: RatedThreadRecord[];
+      };
+      if (Array.isArray(data.reports)) {
+        const diskReports = data.reports;
+        setRatedThreads((prev) => {
+          const byId = new Map<string, RatedThreadRecord>();
+          for (const rec of diskReports) {
+            byId.set(rec.id, rec);
+          }
+          for (const localRec of prev) {
+            if (!byId.has(localRec.id) && !localRec.isExternalFile) {
+              byId.set(localRec.id, localRec);
+              // Persist browser-only report onto disk folder too
+              void fetch(`/api/reports/${encodeURIComponent(localRec.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  record: localRec,
+                  reportsDir: data.reportsDir || dirOverride,
+                }),
+              }).catch(() => undefined);
+            }
+          }
+          return Array.from(byId.values()).sort(
+            (a, b) => Date.parse(b.ratedAt || '') - Date.parse(a.ratedAt || ''),
+          );
+        });
+      }
+      if (data.reportsDir) {
+        setConfigFileInfo((prev) => ({
+          ...prev,
+          resolvedReportsDir: data.reportsDir,
+        }));
+      }
+    } catch {
+      // Ignore offline/network errors when loading local reports
+    } finally {
+      reportsHydratedRef.current = true;
+    }
+  }, []);
+
+  const syncReportToDisk = useCallback(
+    async (record: RatedThreadRecord, explicitHtml?: string, dirOverride?: string) => {
+      if (record.isExternalFile) return;
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(record.id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            record,
+            html: explicitHtml,
+            reportsDir: dirOverride ?? settings.reportsDir,
+          }),
+        });
+        if (!res.ok) return;
+        const saved = (await res.json()) as {
+          fileName?: string;
+          filePath?: string;
+          reportsDir?: string;
+        };
+        if (saved.filePath || saved.fileName) {
+          setRatedThreads((prev) =>
+            prev.map((item) =>
+              item.id === record.id
+                ? {
+                    ...item,
+                    fileName: saved.fileName || item.fileName,
+                    filePath: saved.filePath || item.filePath,
+                  }
+                : item,
+            ),
+          );
+        }
+      } catch {
+        // Non-fatal if server unavailable
+      }
+    },
+    [settings.reportsDir],
+  );
+
   const reloadConfigFromFile = useCallback(async () => {
+    let loadedReportsDir = '';
     try {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -293,10 +385,14 @@ export default function App() {
         filePath?: string;
         platform?: string;
         hasPromptBuilderSettings?: boolean;
+        defaultReportsDir?: string;
+        resolvedReportsDir?: string;
       };
       if (data.config) {
+        loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
         setSettings((previous) => ({
           ...data.config!,
+          reportsDir: data.config!.reportsDir || data.resolvedReportsDir || previous.reportsDir || '',
           promptBuilder: data.hasPromptBuilderSettings
             ? data.config!.promptBuilder
             : previous.promptBuilder,
@@ -306,6 +402,8 @@ export default function App() {
         ...prev,
         filePath: data.filePath || prev.filePath,
         platform: data.platform || prev.platform,
+        defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
+        resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
         syncError: undefined,
       }));
     } catch (err) {
@@ -316,8 +414,9 @@ export default function App() {
       }));
     } finally {
       configHydratedRef.current = true;
+      await reloadReportsFromDisk(loadedReportsDir || undefined);
     }
-  }, []);
+  }, [reloadReportsFromDisk]);
 
   const persistSettingsToFile = useCallback(async (nextSettings: WorkbenchSettings) => {
     try {
@@ -330,11 +429,15 @@ export default function App() {
       const data = (await res.json()) as {
         filePath?: string;
         savedAt?: string;
+        defaultReportsDir?: string;
+        resolvedReportsDir?: string;
       };
       setConfigFileInfo((prev) => ({
         ...prev,
         filePath: data.filePath || prev.filePath,
         lastSavedAt: data.savedAt || new Date().toISOString(),
+        defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
+        resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
         syncError: undefined,
       }));
       return true;
@@ -388,8 +491,15 @@ export default function App() {
     const hasAssistantReply = turns.some((candidate) => candidate.role === 'assistant');
     if (!hasAssistantReply && !rootUserTurn.threadRating) return;
 
+    const recordId = rootUserTurn.id;
+    const updatedRecord: RatedThreadRecord = {
+      id: recordId,
+      turns,
+      ratedAt: new Date().toISOString(),
+    };
+
     setRatedThreads((prevRated) => {
-      const existingIdx = prevRated.findIndex((item) => item.id === rootUserTurn.id);
+      const existingIdx = prevRated.findIndex((item) => item.id === recordId);
       if (existingIdx >= 0) {
         const existing = prevRated[existingIdx];
         if (JSON.stringify(existing.turns) === JSON.stringify(turns)) {
@@ -399,21 +509,20 @@ export default function App() {
         nextRated[existingIdx] = {
           ...existing,
           turns,
-          ratedAt: new Date().toISOString(),
+          ratedAt: updatedRecord.ratedAt,
         };
+        if (hasAssistantReply && reportsHydratedRef.current) {
+          void syncReportToDisk({ ...existing, turns, ratedAt: updatedRecord.ratedAt });
+        }
         return nextRated;
       }
 
-      return [
-        {
-          id: rootUserTurn.id,
-          turns,
-          ratedAt: new Date().toISOString(),
-        },
-        ...prevRated,
-      ];
+      if (hasAssistantReply && reportsHydratedRef.current) {
+        void syncReportToDisk(updatedRecord);
+      }
+      return [updatedRecord, ...prevRated];
     });
-  }, [turns]);
+  }, [turns, syncReportToDisk]);
 
   useEffect(() => {
     saveScope(scope);
@@ -503,38 +612,22 @@ export default function App() {
     [],
   );
 
-  const handleSaveHtmlReport = useCallback((exchangeId: string, nextHtml: string) => {
-    setTurns((previous) => {
-      const assistantIndices = previous
-        .map((t, idx) => (t.role === 'assistant' ? idx : -1))
-        .filter((idx) => idx >= 0);
-      const lastAssistantIdx = assistantIndices[assistantIndices.length - 1];
-      return previous.map((turn, idx) =>
-        idx === lastAssistantIdx ||
-        (turn.exchangeId === exchangeId && turn.role === 'assistant')
-          ? { ...turn, htmlReport: nextHtml }
-          : turn,
-      );
+  const handleStartNewThread = useCallback(() => {
+    setIsSettingsOpen(false);
+    setIsPromptBuilderOpen(false);
+    setIsReferenceContextOpen(false);
+    setActiveReportExchangeId(null);
+    setTurns([]);
+    setIsChatBarOpen(true);
+    setTelemetry({
+      phase: 'Idle',
+      isThinking: false,
+      promptChars: 0,
+      historyTurnsUsed: 0,
+      lastError: '',
     });
-    setRatedThreads((prevRated) =>
-      prevRated.map((record) => {
-        if (record.id !== exchangeId) return record;
-        const assistantIndices = record.turns
-          .map((t, idx) => (t.role === 'assistant' ? idx : -1))
-          .filter((idx) => idx >= 0);
-        const lastAssistantIdx = assistantIndices[assistantIndices.length - 1];
-        return {
-          ...record,
-          turns: record.turns.map((turn, idx) =>
-            idx === lastAssistantIdx ||
-            (turn.exchangeId === exchangeId && turn.role === 'assistant')
-              ? { ...turn, htmlReport: nextHtml }
-              : turn,
-          ),
-        };
-      }),
-    );
-  }, []);
+    pushContextLog('info', 'Started new thread; stage cleared');
+  }, [pushContextLog]);
 
   const activeReportRecord = useMemo(() => {
     if (!activeReportExchangeId) return null;
@@ -1323,6 +1416,17 @@ export default function App() {
             >
               <PanelRight className="w-4 h-4" />
             </button>
+
+            <button
+              type="button"
+              onClick={handleStartNewThread}
+              disabled={isSending}
+              title="Start a brand new conversation thread"
+              className="ml-1.5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-sky-600 hover:from-violet-500 hover:via-indigo-500 hover:to-sky-500 text-white text-xs sm:text-sm font-semibold shadow-sm shadow-indigo-500/25 disabled:opacity-50 transition-all whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>New Thread</span>
+            </button>
           </div>
         </header>
 
@@ -1331,7 +1435,13 @@ export default function App() {
           {isSettingsOpen ? (
             <SettingsPage
               settings={settings}
-              onApplySettings={(next) => setSettings(next)}
+              onApplySettings={(next) => {
+                const dirChanged = (next.reportsDir || '').trim() !== (settings.reportsDir || '').trim();
+                setSettings(next);
+                if (dirChanged) {
+                  void reloadReportsFromDisk(next.reportsDir || undefined);
+                }
+              }}
               onClose={() => setIsSettingsOpen(false)}
               speech={speech}
               messageCount={turns.length}
@@ -1381,7 +1491,9 @@ export default function App() {
             <ReportDocumentPage
               exchangeId={activeReportRecord.id}
               turns={activeReportRecord.turns}
-              onSaveHtmlReport={handleSaveHtmlReport}
+              reportFilePath={activeReportRecord.filePath}
+              reportsDir={settings.reportsDir}
+              isExternalFile={activeReportRecord.isExternalFile}
               onViewEventCards={(exchangeId) => {
                 const record = ratedThreads.find((r) => r.id === exchangeId);
                 if (record) {
@@ -1426,24 +1538,19 @@ export default function App() {
               onSendMessage={(payload) => void handleSendMessage(payload)}
               onRetryExchange={(exchangeId) => void handleRetryExchange(exchangeId)}
               onUpdateExchangeMetadata={handleUpdateExchangeMetadata}
-              onClearConversation={() => {
-                setTurns([]);
-                setIsChatBarOpen(true);
-                setTelemetry({
-                  phase: 'Idle',
-                  isThinking: false,
-                  promptChars: 0,
-                  historyTurnsUsed: 0,
-                  lastError: '',
-                });
-                pushContextLog('info', 'Started new thread; stage cleared');
-              }}
+              onClearConversation={handleStartNewThread}
               onDeleteExchange={(exchangeId) => {
                 setTurns([]);
                 setRatedThreads((previous) =>
                   previous.filter((item) => item.id !== exchangeId),
                 );
-                pushContextLog('info', 'Conversation thread deleted from session');
+                const query = settings.reportsDir
+                  ? `?dir=${encodeURIComponent(settings.reportsDir)}`
+                  : '';
+                void fetch(`/api/reports/${encodeURIComponent(exchangeId)}${query}`, {
+                  method: 'DELETE',
+                }).catch(() => undefined);
+                pushContextLog('info', 'Conversation thread deleted from session and local folder');
               }}
               onOpenSettings={() => {
                 setIsReferenceContextOpen(false);

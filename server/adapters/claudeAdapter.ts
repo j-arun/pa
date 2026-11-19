@@ -24,10 +24,12 @@ interface AnthropicMessageResponse {
 }
 
 const CLAUDE_MODELS = [
+  'claude-fable-5-2',
+  'claude-sonnet-5-5',
+  'claude-opus-5-5',
+  'claude-haiku-5-5',
   'claude-fable-5-1',
   'claude-sonnet-4-20250514',
-  'claude-3-7-sonnet-latest',
-  'claude-3-5-haiku-latest',
 ] as const;
 
 export class ClaudeAdapter implements ILlmAdapter {
@@ -167,17 +169,30 @@ export class ClaudeAdapter implements ILlmAdapter {
     }
 
     const model = request.options.model?.trim() || CLAUDE_MODELS[0];
-    const messages = [
-      ...request.history.map((turn) => ({
-        role: turn.role,
-        content: turn.content,
-      })),
-      { role: 'user' as const, content: request.message },
+    const combined = [
+      ...request.history
+        .filter((turn) => typeof turn.content === 'string' && turn.content.trim().length > 0)
+        .map((turn) => ({
+          role: (turn.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: turn.content.trim(),
+        })),
+      { role: 'user' as const, content: request.message.trim() },
     ];
+    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (const msg of combined) {
+      if (!msg.content) continue;
+      if (messages.length === 0 && msg.role !== 'user') continue;
+      const prev = messages[messages.length - 1];
+      if (prev && prev.role === msg.role) {
+        prev.content = `${prev.content}\n\n${msg.content}`;
+      } else {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
 
     const body: Record<string, unknown> = {
       model,
-      max_tokens: request.options.maxTokens || 2048,
+      max_tokens: request.options.maxTokens || 8192,
       messages,
     };
     if (request.options.systemInstruction?.trim()) {

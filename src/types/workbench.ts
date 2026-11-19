@@ -87,6 +87,9 @@ export interface RatedThreadRecord {
   id: string;
   turns: ConversationTurn[];
   ratedAt: string;
+  fileName?: string;
+  filePath?: string;
+  isExternalFile?: boolean;
 }
 
 export interface OllamaModelInfo {
@@ -195,6 +198,7 @@ export interface NotificationConfig {
 export interface WorkbenchSettings {
   theme: ThemeMode;
   fontFamily: FontOption;
+  reportsDir?: string;
   profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
   contextCache: ContextCacheConfig;
