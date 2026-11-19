@@ -14,7 +14,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
-  X,
+  Zap,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -41,6 +41,50 @@ import {
   getMonthNameFromNumber,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
+
+const FLASH_DURATION_SECONDS = 25;
+const FLASH_DURATION_MS = FLASH_DURATION_SECONDS * 1000;
+
+function splitProbabilityAndRating(rawValue?: string): {
+  probabilityLine: string;
+  ratingLine?: string;
+} {
+  const cleaned = (rawValue || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return { probabilityLine: 'Not specified' };
+  }
+
+  const ratingMatch = cleaned.match(/^(.*?)[\s|·/•–—,-]*\b(rating\b.*)$/i);
+  if (ratingMatch) {
+    const probPart = ratingMatch[1].replace(/[\s|·/•–—,-]+$/, '').trim();
+    const ratingPart = ratingMatch[2].trim();
+    if (probPart && ratingPart) {
+      return { probabilityLine: probPart, ratingLine: ratingPart };
+    }
+    return { probabilityLine: ratingPart || probPart };
+  }
+
+  const segments = cleaned
+    .split(/\s*(?:\||\/|·|•)\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (segments.length >= 2) {
+    if (/^\d{1,3}%$/.test(segments[1]) && !/\d{1,3}%/.test(segments[0])) {
+      const firstLine = `${segments[0]} ${segments[1]}`;
+      const rest = segments.slice(2).join(' | ');
+      return rest
+        ? { probabilityLine: firstLine, ratingLine: rest }
+        : { probabilityLine: firstLine };
+    }
+    return {
+      probabilityLine: segments[0],
+      ratingLine: segments.slice(1).join(' | '),
+    };
+  }
+
+  return { probabilityLine: cleaned };
+}
 
 const DOMAIN_HOME_CARDS: Array<{
   domain: PromptDomain;
@@ -665,7 +709,6 @@ export function WorkbenchPage({
 
   useEffect(() => {
     if (!flashedEvent) return;
-    const FLASH_DURATION_MS = 60_000;
     const timeoutId = window.setTimeout(() => {
       setFlashedEvent(null);
     }, FLASH_DURATION_MS);
@@ -1102,20 +1145,12 @@ export function WorkbenchPage({
                         const topDomainLabel = isHealthCard
                           ? 'Health'
                           : evt.category || (isRelationshipCard ? 'Relationship' : 'Event');
+                        const { probabilityLine, ratingLine } =
+                          splitProbabilityAndRating(displayProbability);
 
                         return (
                           <motion.article
                             key={evt.id}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => openEventFlash(evt)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                openEventFlash(evt);
-                              }
-                            }}
-                            aria-label={`${evt.title}. Click to view how it will happen.`}
                             initial={{ opacity: 0, x: 28, y: 8 }}
                             animate={{ opacity: 1, x: 0, y: 0 }}
                             whileHover={{ y: -3 }}
@@ -1124,56 +1159,55 @@ export function WorkbenchPage({
                               delay: idx * 0.06,
                               ease: [0.16, 1, 0.3, 1],
                             }}
-                            className="group cursor-pointer fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between min-h-[210px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)] focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                            className="group fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between min-h-[210px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)]"
                           >
                             <div className="space-y-3.5">
-                              {/* Top Row: Left = Domain Emblem & Category | Right = Probability & Rating */}
+                              {/* Top Row: Left = Domain Icon Only | Right = Probability (Line 1) + Rating (Line 2) */}
                               <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  title={topDomainLabel}
+                                  aria-label={topDomainLabel}
+                                  className="inline-flex shrink-0"
+                                >
                                   <EventCategoryEmblem icon={resolvedIcon} />
-                                  <span
-                                    className={`text-xs font-semibold uppercase tracking-wide truncate ${
-                                      isHealthCard
-                                        ? 'text-emerald-700 dark:text-emerald-300'
-                                        : isRelationshipCard
-                                          ? 'text-rose-700 dark:text-rose-300'
-                                          : 'text-slate-700 dark:text-slate-200'
-                                    }`}
-                                  >
-                                    {topDomainLabel}
-                                  </span>
-                                </div>
+                                </span>
 
-                                <div className="text-right tabular-nums shrink-0">
-                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                    Probability &amp; Rating
+                                <div className="text-right tabular-nums min-w-0">
+                                  <div className="inline-flex items-center justify-end gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{probabilityLine}</span>
                                   </div>
-                                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center justify-end gap-1">
-                                    <Sparkles className="w-3 h-3 shrink-0" />
-                                    <span>{displayProbability || 'Not specified'}</span>
-                                  </div>
+                                  {ratingLine && (
+                                    <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                      {ratingLine}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* Event Name (clean descriptive title without Event N prefix) */}
+                              {/* Event Name */}
                               <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
                                 {evt.title}
                               </h2>
 
-                              {/* When it will happen */}
-                              <div className="rounded-xl bg-sky-50/75 dark:bg-sky-950/35 border border-sky-200/70 dark:border-sky-800/60 px-3 py-2">
-                                <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
-                                  When it will happen
-                                </div>
-                                <div className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                                  <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
-                                  <span>{displayDate || 'Timing detailed in report'}</span>
-                                </div>
+                              {/* Timeline */}
+                              <div className="inline-flex items-center gap-2 rounded-xl bg-sky-50/75 dark:bg-sky-950/35 border border-sky-200/70 dark:border-sky-800/60 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                                <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                                <span>{displayDate || 'Timing detailed in report'}</span>
                               </div>
                             </div>
 
-                            <div className="pt-3.5 flex items-center justify-between text-[11px] font-medium text-sky-700 dark:text-sky-300 group-hover:translate-x-0.5 transition-transform">
-                              <span>Click to view how it will happen →</span>
+                            {/* Glimmering Flash Button (Icon-only) */}
+                            <div className="pt-4 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => openEventFlash(evt)}
+                                aria-label={`Open flash for ${evt.title}`}
+                                title="Flash"
+                                className="pa-glimmer-btn relative inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white overflow-hidden transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-sky-400/70"
+                              >
+                                <Zap className="relative z-10 w-4 h-4 fill-current" />
+                              </button>
                             </div>
                           </motion.article>
                         );
@@ -1485,7 +1519,7 @@ export function WorkbenchPage({
         </AnimatePresence>
       </div>
 
-      {/* 1-Minute Auto-Closing Flash Popup for "How it will happen" */}
+      {/* Auto-Closing Flash Popup showing ONLY "How it will happen" */}
       <AnimatePresence>
         {flashedEvent && (
           <motion.div
@@ -1493,12 +1527,12 @@ export function WorkbenchPage({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18 }}
             onClick={() => setFlashedEvent(null)}
             className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 backdrop-blur-sm p-4 sm:p-6"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="event-flash-title"
+            aria-label="Event details flash"
           >
             <motion.div
               key={`event-how-flash-${flashedEvent.card.id}-${flashedEvent.openedAt}`}
@@ -1507,88 +1541,19 @@ export function WorkbenchPage({
               exit={{ opacity: 0, scale: 0.72, y: 14 }}
               transition={{ type: 'spring', stiffness: 360, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl rounded-[28px] border border-white/95 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl shadow-[0_32px_90px_-18px_rgba(15,23,42,0.45),0_0_0_1px_rgba(255,255,255,0.5)_inset] overflow-hidden"
+              className="relative w-full max-w-lg rounded-[28px] border border-white/95 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl shadow-[0_32px_90px_-18px_rgba(15,23,42,0.45),0_0_0_1px_rgba(255,255,255,0.5)_inset] overflow-hidden"
             >
-              {/* Soft Top Ambient Accent Glow */}
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-80 h-32 rounded-full blur-3xl opacity-25 dark:opacity-20"
+                className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-28 rounded-full blur-3xl opacity-25 dark:opacity-20"
                 style={{ backgroundColor: 'var(--pa-accent)' }}
               />
 
-              <div className="relative p-6 sm:p-7 space-y-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="p-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/70 shrink-0 shadow-2xs">
-                      <EventCategoryEmblem icon={flashedEvent.card.icon} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                        {flashedEvent.card.category || 'Event'}
-                      </div>
-                      <h2
-                        id="event-flash-title"
-                        className="font-display text-lg sm:text-xl font-bold leading-snug text-slate-900 dark:text-white"
-                      >
-                        {flashedEvent.card.title}
-                      </h2>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFlashedEvent(null)}
-                    aria-label="Dismiss flash"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-sky-50/85 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 px-4 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-300">
-                      When it will happen
-                    </div>
-                    <div className="mt-1 inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                      <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
-                      <span>
-                        {flashedEvent.card.when ||
-                          flashedEvent.card.dateRange ||
-                          flashedEvent.card.timeframe ||
-                          'Timing detailed in report'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-emerald-50/85 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 px-4 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                      Probability &amp; Rating
-                    </div>
-                    <div className="mt-1 inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-emerald-800 dark:text-emerald-200 tabular-nums">
-                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                      <span>
-                        {flashedEvent.card.probability ||
-                          flashedEvent.card.likelihood ||
-                          'Not specified'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    How it will happen
-                  </div>
-                  <div
-                    className="rounded-2xl bg-gradient-to-br from-slate-50/95 to-sky-50/40 dark:from-slate-950/75 dark:to-slate-900/80 border border-slate-200/85 dark:border-slate-800 border-l-4 p-4 sm:p-5 text-[15px] leading-relaxed text-slate-800 dark:text-slate-100 max-h-64 overflow-y-auto fluent-scroll whitespace-pre-line shadow-2xs"
-                    style={{
-                      fontFamily: 'var(--pa-font-body)',
-                      borderLeftColor: 'var(--pa-accent)',
-                    }}
-                  >
-                    {flashedEvent.card.how || flashedEvent.card.summary}
-                  </div>
-                </div>
+              <div
+                className="relative p-6 sm:p-7 text-[15px] sm:text-base leading-relaxed text-slate-800 dark:text-slate-100 max-h-[60vh] overflow-y-auto fluent-scroll whitespace-pre-line"
+                style={{ fontFamily: 'var(--pa-font-body)' }}
+              >
+                {flashedEvent.card.how || flashedEvent.card.summary}
               </div>
 
               {/* Smooth Progress Bar (auto-retracts when complete) */}
@@ -1597,7 +1562,7 @@ export function WorkbenchPage({
                   key={`flash-bar-${flashedEvent.card.id}-${flashedEvent.openedAt}`}
                   initial={{ scaleX: 1 }}
                   animate={{ scaleX: 0 }}
-                  transition={{ duration: 60, ease: 'linear' }}
+                  transition={{ duration: FLASH_DURATION_SECONDS, ease: 'linear' }}
                   className="h-full w-full"
                   style={{
                     transformOrigin: 'left',
