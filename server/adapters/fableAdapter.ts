@@ -19,6 +19,7 @@ interface FableChatCompletionResponse {
   content?: Array<{
     type?: string;
     text?: string;
+    thinking?: string;
   }>;
   choices?: Array<{
     message?: {
@@ -32,6 +33,8 @@ interface FableChatCompletionResponse {
     total_tokens?: number;
     input_tokens?: number;
     output_tokens?: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
   };
   error?: {
     message?: string;
@@ -39,14 +42,25 @@ interface FableChatCompletionResponse {
 }
 
 const FABLE_MODELS = [
-  'claude-fable-5-2',
   'claude-fable-5-1',
+  'claude-fable-5-2',
   'claude-sonnet-5-5',
   'claude-opus-5-5',
   'claude-sonnet-4-20250514',
 ] as const;
 const DEFAULT_ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const RETIRED_FABLE_ENDPOINT = 'https://api.fable.ai/v1/chat/completions';
+
+function isPlaceholderApiKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized === 'my_anthropic_api_key' ||
+    normalized === 'my_fable_api_key' ||
+    normalized.includes('placeholder') ||
+    normalized.includes('your_api_key')
+  );
+}
 
 function normalizeAnthropicMessages(
   history: AdapterChatRequest['history'],
@@ -83,31 +97,37 @@ export class FableAdapter implements ILlmAdapter {
   readonly id = 'fable' as const;
   readonly scope = 'public' as const;
   readonly displayName = 'Fable';
-  readonly protocol = 'Anthropic Messages / OpenAI-compatible Chat Completions';
+  readonly protocol = 'Anthropic Messages v1';
 
   private resolveApiKey(endpoint: string, options?: AdapterRuntimeOptions): string {
-    const raw =
-      options?.apiKey?.trim() ||
-      resolveServerEnvSecret(
-        endpoint && this.usesAnthropicMessagesApi(endpoint)
-          ? [
-              'FABLE_API_KEY',
-              'ANTHROPIC_API_KEY',
-              'CLAUDE_API_KEY',
-              'VITE_FABLE_API_KEY',
-              'VITE_ANTHROPIC_API_KEY',
-              'VITE_CLAUDE_API_KEY',
-            ]
-          : [
-              'FABLE_API_KEY',
-              'ANTHROPIC_API_KEY',
-              'CLAUDE_API_KEY',
-              'VITE_FABLE_API_KEY',
-              'VITE_ANTHROPIC_API_KEY',
-              'VITE_CLAUDE_API_KEY',
-            ],
-      );
-    return raw.replace(/^Bearer\s+/i, '').trim();
+    const candidates = [
+      options?.apiKey,
+      ...(this.usesAnthropicMessagesApi(endpoint)
+        ? [
+            resolveServerEnvSecret(['ANTHROPIC_API_KEY']),
+            resolveServerEnvSecret(['CLAUDE_API_KEY']),
+            resolveServerEnvSecret(['FABLE_API_KEY']),
+            resolveServerEnvSecret(['VITE_ANTHROPIC_API_KEY']),
+            resolveServerEnvSecret(['VITE_CLAUDE_API_KEY']),
+            resolveServerEnvSecret(['VITE_FABLE_API_KEY']),
+          ]
+        : [
+            resolveServerEnvSecret(['FABLE_API_KEY']),
+            resolveServerEnvSecret(['ANTHROPIC_API_KEY']),
+            resolveServerEnvSecret(['CLAUDE_API_KEY']),
+            resolveServerEnvSecret(['VITE_FABLE_API_KEY']),
+            resolveServerEnvSecret(['VITE_ANTHROPIC_API_KEY']),
+            resolveServerEnvSecret(['VITE_CLAUDE_API_KEY']),
+          ]),
+    ];
+
+    for (const candidate of candidates) {
+      const cleaned = (candidate || '').replace(/^Bearer\s+/i, '').trim();
+      if (cleaned && !isPlaceholderApiKey(cleaned)) {
+        return cleaned;
+      }
+    }
+    return '';
   }
 
   private resolveEndpoint(options?: AdapterRuntimeOptions): string {
@@ -140,6 +160,16 @@ export class FableAdapter implements ILlmAdapter {
     }
   }
 
+  private resolveEffort(
+    thinkingLevel?: AdapterRuntimeOptions['thinkingLevel'],
+    isHealthPing = false,
+  ): 'low' | 'medium' | 'high' {
+    if (isHealthPing) return 'low';
+    if (thinkingLevel === 'LOW') return 'low';
+    if (thinkingLevel === 'MEDIUM') return 'medium';
+    return 'high';
+  }
+
   private buildRequest(
     endpoint: string,
     apiKey: string,
@@ -148,6 +178,8 @@ export class FableAdapter implements ILlmAdapter {
     history: AdapterChatRequest['history'],
     userMessage: string,
     systemInstruction?: string,
+    thinkingLevel?: AdapterRuntimeOptions['thinkingLevel'],
+    isHealthPing = false,
   ): { body: Record<string, unknown>; headers: Record<string, string>; isAnthropic: boolean } {
     const isAnthropic = this.usesAnthropicMessagesApi(endpoint);
     const messages = isAnthropic
@@ -157,16 +189,36 @@ export class FableAdapter implements ILlmAdapter {
           { role: 'user' as const, content: userMessage },
         ];
     const system = systemInstruction?.trim();
+    const isFableModel = model.toLowerCase().includes('fable');
+    const effectiveMaxTokens = isHealthPing
+      ? Math.max(10, Math.min(maxTokens || 16, 64))
+      : isAnthropic && isFableModel
+        ? Math.max(maxTokens || 16000, 16000)
+        : maxTokens || 8192;
+
     const body: Record<string, unknown> = {
       model,
-      max_tokens: maxTokens,
+      max_tokens: effectiveMaxTokens,
       messages: isAnthropic || !system
         ? messages
         : [{ role: 'system', content: system }, ...messages],
     };
 
     if (isAnthropic && system) {
-      body.system = system;
+      body.system = [
+        {
+          type: 'text',
+          text: system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ];
+    }
+
+    if (isAnthropic && isFableModel) {
+      body.thinking = { type: 'adaptive' };
+      body.output_config = {
+        effort: this.resolveEffort(thinkingLevel, isHealthPing),
+      };
     }
 
     return {
@@ -182,6 +234,57 @@ export class FableAdapter implements ILlmAdapter {
             Authorization: `Bearer ${apiKey}`,
           },
       isAnthropic,
+    };
+  }
+
+  private async postWithAnthropicRecovery(
+    endpoint: string,
+    body: Record<string, unknown>,
+    headers: Record<string, string>,
+    isAnthropic: boolean,
+    timeoutSeconds: number,
+  ): Promise<{ statusCode: number; bodyText: string; payload: FableChatCompletionResponse }> {
+    let result = await postJsonConfigurable(endpoint, body, headers, timeoutSeconds);
+    let payload = this.parseResponse(result.bodyText);
+
+    if (
+      isAnthropic &&
+      (result.statusCode < 200 || result.statusCode >= 300) &&
+      payload.error?.message
+    ) {
+      const errMsg = payload.error.message;
+      const currentThinking = (body.thinking as { type?: string } | undefined)?.type;
+
+      if (errMsg.includes('between_tools') && currentThinking !== 'between_tools') {
+        const retryBody = { ...body, thinking: { type: 'between_tools' } };
+        result = await postJsonConfigurable(endpoint, retryBody, headers, timeoutSeconds);
+        payload = this.parseResponse(result.bodyText);
+      } else if (errMsg.includes('"disabled"') && currentThinking !== 'disabled') {
+        const retryBody = { ...body, thinking: { type: 'disabled' } };
+        result = await postJsonConfigurable(endpoint, retryBody, headers, timeoutSeconds);
+        payload = this.parseResponse(result.bodyText);
+      } else if (
+        (errMsg.includes('cache_control') || errMsg.includes('ephemeral')) &&
+        Array.isArray(body.system)
+      ) {
+        const textSystem = body.system
+          .map((item) =>
+            item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string'
+              ? (item as { text: string }).text
+              : '',
+          )
+          .filter(Boolean)
+          .join('\n\n');
+        const retryBody = { ...body, system: textSystem || undefined };
+        result = await postJsonConfigurable(endpoint, retryBody, headers, timeoutSeconds);
+        payload = this.parseResponse(result.bodyText);
+      }
+    }
+
+    return {
+      statusCode: result.statusCode,
+      bodyText: result.bodyText,
+      payload,
     };
   }
 
@@ -210,12 +313,20 @@ export class FableAdapter implements ILlmAdapter {
 
   private getResponseText(payload: FableChatCompletionResponse, isAnthropic: boolean): string {
     if (isAnthropic || Array.isArray(payload.content)) {
-      const text = (payload.content || [])
+      const blocks = payload.content || [];
+      const text = blocks
         .filter((block) => block.type === 'text' && typeof block.text === 'string')
         .map((block) => block.text)
         .join('\n')
         .trim();
       if (text) return text;
+
+      const thinkingFallback = blocks
+        .filter((block) => block.type === 'thinking')
+        .map((block) => block.thinking || block.text || '')
+        .join('\n')
+        .trim();
+      if (thinkingFallback) return thinkingFallback;
     }
     return payload.choices?.[0]?.message?.content?.trim() || '';
   }
@@ -237,12 +348,14 @@ export class FableAdapter implements ILlmAdapter {
       defaultModel: FABLE_MODELS[0],
       availableModels: [...FABLE_MODELS],
       description:
-        'Routes Fable prompts through Anthropic Messages v1 (claude-fable-5-2) or an OpenAI-compatible Chat Completions endpoint.',
+        'Routes Claude Fable 5.1 prompts through Anthropic Messages v1 with adaptive thinking, effort output config, and ephemeral system caching.',
       requestEnvelopePreview: JSON.stringify(
         {
           model: FABLE_MODELS[0],
-          max_tokens: 8192,
-          system: '<publicSystemInstruction>',
+          max_tokens: 16000,
+          thinking: { type: 'adaptive' },
+          output_config: { effort: 'high' },
+          system: [{ type: 'text', text: '<publicSystemInstruction>', cache_control: { type: 'ephemeral' } }],
           messages: [{ role: 'user', content: '<userPrompt>' }],
         },
         null,
@@ -289,28 +402,32 @@ export class FableAdapter implements ILlmAdapter {
         configured: false,
         statusLabel: 'Server Env Unset',
         detail:
-          'Not found in server process.env (FABLE_API_KEY, ANTHROPIC_API_KEY, or CLAUDE_API_KEY). Add them in AI Studio Secrets if using the cloud preview, or restart the local server after setting Windows/.env variables.',
+          'ANTHROPIC_API_KEY (or CLAUDE_API_KEY / FABLE_API_KEY) is unset or still a placeholder. Set a valid Anthropic sk-ant-... key in AI Studio Secrets or .env and restart.',
         latencyMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       };
     }
 
     try {
+      const model = options?.model?.trim() || FABLE_MODELS[0];
       const request = this.buildRequest(
         endpoint,
         apiKey,
-        options?.model?.trim() || FABLE_MODELS[0],
-        64,
+        model,
+        16,
         [],
-        'Reply OK',
+        'hi',
+        undefined,
+        options?.thinkingLevel,
+        true,
       );
-      const { statusCode, bodyText } = await postJsonConfigurable(
+      const { statusCode, bodyText, payload } = await this.postWithAnthropicRecovery(
         endpoint,
         request.body,
         request.headers,
+        request.isAnthropic,
         20,
       );
-      const payload = this.parseResponse(bodyText);
       if (statusCode < 200 || statusCode >= 300) {
         throw new Error(this.formatHttpError(statusCode, payload, bodyText));
       }
@@ -324,7 +441,7 @@ export class FableAdapter implements ILlmAdapter {
         reachable: true,
         configured: true,
         statusLabel: 'Ready',
-        detail: `Fable adapter verified (${payload.model || options?.model || FABLE_MODELS[0]}) at ${endpoint}.`,
+        detail: `Fable adapter verified (${payload.model || model}) at ${endpoint}.`,
         latencyMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       };
@@ -355,7 +472,7 @@ export class FableAdapter implements ILlmAdapter {
 
     if (!apiKey) {
       throw new Error(
-        'Fable API key is missing. Configure FABLE_API_KEY, ANTHROPIC_API_KEY, or CLAUDE_API_KEY in server secrets.',
+        'ANTHROPIC_API_KEY is not configured (or is still a placeholder). Set ANTHROPIC_API_KEY / CLAUDE_API_KEY / FABLE_API_KEY in server secrets.',
       );
     }
 
@@ -364,21 +481,23 @@ export class FableAdapter implements ILlmAdapter {
       endpoint,
       apiKey,
       model,
-      request.options.maxTokens || 8192,
+      request.options.maxTokens || 16000,
       request.history,
       request.message,
       request.options.systemInstruction,
+      request.options.thinkingLevel,
+      false,
     );
 
     const timeoutSeconds = Math.max(0, Number(request.options.requestTimeoutSeconds) || 0);
-    const { statusCode, bodyText } = await postJsonConfigurable(
+    const { statusCode, bodyText, payload } = await this.postWithAnthropicRecovery(
       endpoint,
       protocolRequest.body,
       protocolRequest.headers,
+      protocolRequest.isAnthropic,
       timeoutSeconds,
     );
 
-    const payload = this.parseResponse(bodyText);
     if (statusCode < 200 || statusCode >= 300) {
       throw new Error(this.formatHttpError(statusCode, payload, bodyText));
     }
@@ -393,7 +512,14 @@ export class FableAdapter implements ILlmAdapter {
       (request.options.systemInstruction?.length ?? 0) +
       request.history.reduce((sum, turn) => sum + turn.content.length, 0) +
       request.message.length;
-    const rawInput = payload.usage?.input_tokens ?? payload.usage?.prompt_tokens;
+    const rawInput =
+      typeof payload.usage?.input_tokens === 'number' ||
+      typeof payload.usage?.cache_creation_input_tokens === 'number' ||
+      typeof payload.usage?.cache_read_input_tokens === 'number'
+        ? Number(payload.usage?.input_tokens ?? 0) +
+          Number(payload.usage?.cache_creation_input_tokens ?? 0) +
+          Number(payload.usage?.cache_read_input_tokens ?? 0)
+        : payload.usage?.prompt_tokens;
     const rawOutput = payload.usage?.output_tokens ?? payload.usage?.completion_tokens;
     const inputTokens =
       typeof rawInput === 'number' && rawInput > 0

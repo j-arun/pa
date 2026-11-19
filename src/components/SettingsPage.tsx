@@ -351,6 +351,7 @@ export function SettingsPage({
           : {
               model: draft.publicLlm.adapters[adapterId].model,
               endpointUrl: draft.publicLlm.adapters[adapterId].endpointUrl,
+              thinkingLevel: draft.publicLlm.adapters[adapterId].thinkingLevel,
             };
 
       const res = await fetch('/api/adapters/health', {
@@ -1205,13 +1206,13 @@ export function SettingsPage({
                             list="fable-model-presets"
                             value={cfg.model}
                             onChange={(e) => updatePublicAdapter('fable', { model: e.target.value })}
-                            placeholder="claude-fable-5-2"
+                            placeholder="claude-fable-5-1"
                             className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
                           />
                           <datalist id="fable-model-presets">
                             {(summary?.availableModels || [
-                              'claude-fable-5-2',
                               'claude-fable-5-1',
+                              'claude-fable-5-2',
                               'claude-sonnet-5-5',
                               'claude-opus-5-5',
                               'claude-sonnet-4-20250514',
@@ -1235,7 +1236,7 @@ export function SettingsPage({
                       )}
                       {adapterId === 'fable' && (
                         <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          Recommended current model: <code className="font-mono">claude-fable-5-2</code> (or any Anthropic / compatible model ID enabled for your API key).
+                          Recommended model: <code className="font-mono">claude-fable-5-1</code> (uses Anthropic adaptive thinking + effort config).
                         </p>
                       )}
                     </div>
@@ -1279,9 +1280,30 @@ export function SettingsPage({
                         />
                         {adapterId === 'fable' && (
                           <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                            Uses <code className="font-mono">https://api.anthropic.com/v1/messages</code> with <code className="font-mono">x-api-key</code> and <code className="font-mono">anthropic-version: 2023-06-01</code> (or Bearer auth for custom OpenAI-compatible gateways). Configure your key via server secrets (<code className="font-mono">FABLE_API_KEY</code> or <code className="font-mono">ANTHROPIC_API_KEY</code>).
+                            Uses <code className="font-mono">https://api.anthropic.com/v1/messages</code> with <code className="font-mono">x-api-key</code> and <code className="font-mono">anthropic-version: 2023-06-01</code>. Configure <code className="font-mono">ANTHROPIC_API_KEY</code> (or <code className="font-mono">CLAUDE_API_KEY</code> / <code className="font-mono">FABLE_API_KEY</code>) in server secrets.
                           </p>
                         )}
+                      </div>
+                    )}
+
+                    {adapterId === 'fable' && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                          Adaptive Thinking Effort
+                        </label>
+                        <select
+                          value={cfg.thinkingLevel || 'HIGH'}
+                          onChange={(e) =>
+                            updatePublicAdapter('fable', {
+                              thinkingLevel: e.target.value as 'LOW' | 'MEDIUM' | 'HIGH',
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                        >
+                          <option value="LOW">Low (Fastest)</option>
+                          <option value="MEDIUM">Medium (Balanced)</option>
+                          <option value="HIGH">High (Default Adaptive)</option>
+                        </select>
                       </div>
                     )}
 

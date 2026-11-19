@@ -52,6 +52,7 @@ import {
 import {
   formatShortYearMonth,
   getMonthNameFromNumber,
+  hasCustomPromptTemplates,
 } from './utils/promptTemplates';
 import {
   EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
@@ -150,6 +151,11 @@ export default function App() {
   });
   const configHydratedRef = useRef(false);
   const reportsHydratedRef = useRef(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const userEditedPromptsRef = useRef(false);
+  const skipNextAutoPersistRef = useRef(false);
+  const persistDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const replyToastTimerRef = useRef<number | null>(null);
   const [replyToast, setReplyToast] = useState<{
     title: string;
@@ -376,52 +382,11 @@ export default function App() {
     [settings.reportsDir],
   );
 
-  const reloadConfigFromFile = useCallback(async () => {
-    let loadedReportsDir = '';
-    try {
-      const res = await fetch('/api/config');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        config?: WorkbenchSettings;
-        filePath?: string;
-        platform?: string;
-        hasPromptBuilderSettings?: boolean;
-        defaultReportsDir?: string;
-        resolvedReportsDir?: string;
-        promptFiles?: Record<PromptDomain, string>;
-      };
-      if (data.config) {
-        loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
-        setSettings((previous) => ({
-          ...data.config!,
-          reportsDir: data.config!.reportsDir || data.resolvedReportsDir || previous.reportsDir || '',
-          promptBuilder: data.hasPromptBuilderSettings
-            ? data.config!.promptBuilder
-            : previous.promptBuilder,
-        }));
-      }
-      setConfigFileInfo((prev) => ({
-        ...prev,
-        filePath: data.filePath || prev.filePath,
-        platform: data.platform || prev.platform,
-        defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
-        resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
-        promptFiles: data.promptFiles || prev.promptFiles,
-        syncError: undefined,
-      }));
-    } catch (err) {
-      setConfigFileInfo((prev) => ({
-        ...prev,
-        syncError:
-          err instanceof Error ? err.message : 'Unable to read local config file.',
-      }));
-    } finally {
-      configHydratedRef.current = true;
-      await reloadReportsFromDisk(loadedReportsDir || undefined);
-    }
-  }, [reloadReportsFromDisk]);
-
   const persistSettingsToFile = useCallback(async (nextSettings: WorkbenchSettings) => {
+    if (persistDebounceTimerRef.current) {
+      clearTimeout(persistDebounceTimerRef.current);
+      persistDebounceTimerRef.current = null;
+    }
     try {
       const res = await fetch('/api/config', {
         method: 'PUT',
@@ -456,6 +421,64 @@ export default function App() {
     }
   }, []);
 
+  const reloadConfigFromFile = useCallback(async () => {
+    let loadedReportsDir = '';
+    try {
+      const res = await fetch('/api/config');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        config?: WorkbenchSettings;
+        filePath?: string;
+        platform?: string;
+        hasPromptBuilderSettings?: boolean;
+        hasCustomPromptTemplates?: boolean;
+        defaultReportsDir?: string;
+        resolvedReportsDir?: string;
+        promptFiles?: Record<PromptDomain, string>;
+      };
+      if (data.config) {
+        loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
+        const clientHasCustom = hasCustomPromptTemplates(settingsRef.current.promptBuilder.templates);
+        const serverHasCustom = Boolean(data.hasCustomPromptTemplates);
+        const shouldAdoptServerPrompts =
+          !userEditedPromptsRef.current &&
+          Boolean(data.hasPromptBuilderSettings) &&
+          (serverHasCustom || !clientHasCustom);
+
+        skipNextAutoPersistRef.current = shouldAdoptServerPrompts;
+        setSettings((previous) => {
+          const next = {
+            ...data.config!,
+            reportsDir: data.config!.reportsDir || data.resolvedReportsDir || previous.reportsDir || '',
+            promptBuilder: shouldAdoptServerPrompts
+              ? data.config!.promptBuilder
+              : previous.promptBuilder,
+          };
+          settingsRef.current = next;
+          return next;
+        });
+      }
+      setConfigFileInfo((prev) => ({
+        ...prev,
+        filePath: data.filePath || prev.filePath,
+        platform: data.platform || prev.platform,
+        defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
+        resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        promptFiles: data.promptFiles || prev.promptFiles,
+        syncError: undefined,
+      }));
+    } catch (err) {
+      setConfigFileInfo((prev) => ({
+        ...prev,
+        syncError:
+          err instanceof Error ? err.message : 'Unable to read local config file.',
+      }));
+    } finally {
+      configHydratedRef.current = true;
+      await reloadReportsFromDisk(loadedReportsDir || undefined);
+    }
+  }, [reloadReportsFromDisk]);
+
   useEffect(() => {
     void reloadConfigFromFile();
   }, [reloadConfigFromFile]);
@@ -474,12 +497,25 @@ export default function App() {
   useEffect(() => {
     saveSettings(settings);
     if (!configHydratedRef.current) return;
+    if (skipNextAutoPersistRef.current) {
+      skipNextAutoPersistRef.current = false;
+      return;
+    }
 
-    const timer = setTimeout(() => {
-      void persistSettingsToFile(settings);
+    if (persistDebounceTimerRef.current) {
+      clearTimeout(persistDebounceTimerRef.current);
+    }
+    persistDebounceTimerRef.current = setTimeout(() => {
+      persistDebounceTimerRef.current = null;
+      void persistSettingsToFile(settingsRef.current);
     }, 250);
 
-    return () => clearTimeout(timer);
+    return () => {
+      if (persistDebounceTimerRef.current) {
+        clearTimeout(persistDebounceTimerRef.current);
+        persistDebounceTimerRef.current = null;
+      }
+    };
   }, [settings, persistSettingsToFile]);
 
   useEffect(() => {
@@ -1684,26 +1720,49 @@ export default function App() {
               templates={promptTemplates}
               settingsFilePath={configFileInfo.filePath}
               domainPromptFilePath={configFileInfo.promptFiles?.[activePromptDomain]}
+              promptFiles={configFileInfo.promptFiles}
               saveError={configFileInfo.syncError}
-              onApplySettings={() => persistSettingsToFile(settings)}
-              onSelectDomain={(activeDomain) =>
-                setSettings((previous) => ({
-                  ...previous,
+              onApplySettings={(overrideTemplates) => {
+                const nextSettings: WorkbenchSettings = {
+                  ...settingsRef.current,
                   promptBuilder: {
-                    ...previous.promptBuilder,
-                    activeDomain,
+                    ...settingsRef.current.promptBuilder,
+                    templates: overrideTemplates ?? settingsRef.current.promptBuilder.templates,
                   },
-                }))
-              }
-              onChangeTemplates={(templates) =>
-                setSettings((previous) => ({
-                  ...previous,
-                  promptBuilder: {
-                    ...previous.promptBuilder,
-                    templates,
-                  },
-                }))
-              }
+                };
+                settingsRef.current = nextSettings;
+                setSettings(nextSettings);
+                saveSettings(nextSettings);
+                return persistSettingsToFile(nextSettings);
+              }}
+              onSelectDomain={(activeDomain) => {
+                userEditedPromptsRef.current = true;
+                setSettings((previous) => {
+                  const next = {
+                    ...previous,
+                    promptBuilder: {
+                      ...previous.promptBuilder,
+                      activeDomain,
+                    },
+                  };
+                  settingsRef.current = next;
+                  return next;
+                });
+              }}
+              onChangeTemplates={(templates) => {
+                userEditedPromptsRef.current = true;
+                setSettings((previous) => {
+                  const next = {
+                    ...previous,
+                    promptBuilder: {
+                      ...previous.promptBuilder,
+                      templates,
+                    },
+                  };
+                  settingsRef.current = next;
+                  return next;
+                });
+              }}
             />
           ) : isReferenceContextOpen ? (
             <ReferenceContextPage

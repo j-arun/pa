@@ -4,6 +4,7 @@ import type { PromptDomain, PromptTemplates } from '../src/types/workbench.ts';
 import {
   DEFAULT_PROMPT_TEMPLATES,
   PROMPT_DOMAINS,
+  hasCustomPromptTemplates,
 } from '../src/utils/promptTemplates.ts';
 
 export const DOMAIN_PROMPT_FILES: Record<
@@ -37,12 +38,26 @@ interface StoredDomainPromptFile {
   classic?: unknown;
 }
 
+function buildDomainPromptPayload(
+  domain: PromptDomain,
+  formal: string,
+  classic: string,
+) {
+  const meta = DOMAIN_PROMPT_FILES[domain];
+  return {
+    domain: meta.label,
+    formal,
+    classic,
+  };
+}
+
 export function readDomainPromptsFromFiles(
   fallback: PromptTemplates = DEFAULT_PROMPT_TEMPLATES,
 ): {
   templates: PromptTemplates;
   filePaths: Record<PromptDomain, string>;
   hasAnyFile: boolean;
+  hasCustomTemplates: boolean;
 } {
   const dir = resolvePromptsDir();
   if (!fs.existsSync(dir)) {
@@ -54,15 +69,15 @@ export function readDomainPromptsFromFiles(
   const entries = PROMPT_DOMAINS.map((domain) => {
     const filePath = filePaths[domain];
     const meta = DOMAIN_PROMPT_FILES[domain];
-    const base = fallback[domain] ?? DEFAULT_PROMPT_TEMPLATES[domain];
+    const defaults = DEFAULT_PROMPT_TEMPLATES[domain];
+    const base = fallback[domain] ?? defaults;
 
     if (!fs.existsSync(filePath)) {
-      const initialPayload = {
+      const initialPayload = buildDomainPromptPayload(
         domain,
-        label: meta.label,
-        formal: base.formal,
-        classic: base.classic,
-      };
+        base.formal,
+        base.classic,
+      );
       fs.writeFileSync(
         filePath,
         `${JSON.stringify(initialPayload, null, 2)}\n`,
@@ -76,11 +91,45 @@ export function readDomainPromptsFromFiles(
       const parsed = JSON.parse(
         fs.readFileSync(filePath, 'utf-8'),
       ) as StoredDomainPromptFile;
+      const diskFormal =
+        typeof parsed.formal === 'string' ? parsed.formal : base.formal;
+      const diskClassic =
+        typeof parsed.classic === 'string' ? parsed.classic : base.classic;
+
+      // Never let an untouched default prompt file overwrite customized config prompts
+      const resolvedFormal =
+        diskFormal === defaults.formal && base.formal !== defaults.formal
+          ? base.formal
+          : diskFormal;
+      const resolvedClassic =
+        diskClassic === defaults.classic && base.classic !== defaults.classic
+          ? base.classic
+          : diskClassic;
+
+      const needsSchemaOrMigrationWrite =
+        parsed.domain !== meta.label ||
+        'label' in parsed ||
+        resolvedFormal !== diskFormal ||
+        resolvedClassic !== diskClassic;
+
+      if (needsSchemaOrMigrationWrite) {
+        const nextPayload = buildDomainPromptPayload(
+          domain,
+          resolvedFormal,
+          resolvedClassic,
+        );
+        fs.writeFileSync(
+          filePath,
+          `${JSON.stringify(nextPayload, null, 2)}\n`,
+          'utf-8',
+        );
+      }
+
       return [
         domain,
         {
-          formal: typeof parsed.formal === 'string' ? parsed.formal : base.formal,
-          classic: typeof parsed.classic === 'string' ? parsed.classic : base.classic,
+          formal: resolvedFormal,
+          classic: resolvedClassic,
         },
       ] as const;
     } catch {
@@ -88,10 +137,12 @@ export function readDomainPromptsFromFiles(
     }
   });
 
+  const templates = Object.fromEntries(entries) as PromptTemplates;
   return {
-    templates: Object.fromEntries(entries) as PromptTemplates,
+    templates,
     filePaths,
     hasAnyFile,
+    hasCustomTemplates: hasCustomPromptTemplates(templates),
   };
 }
 
@@ -106,14 +157,12 @@ export function writeDomainPromptsToFiles(
   const filePaths = getDomainPromptFilePaths();
   for (const domain of PROMPT_DOMAINS) {
     const filePath = filePaths[domain];
-    const meta = DOMAIN_PROMPT_FILES[domain];
     const current = templates[domain] ?? DEFAULT_PROMPT_TEMPLATES[domain];
-    const payload = {
+    const payload = buildDomainPromptPayload(
       domain,
-      label: meta.label,
-      formal: current.formal,
-      classic: current.classic,
-    };
+      current.formal,
+      current.classic,
+    );
     fs.writeFileSync(
       filePath,
       `${JSON.stringify(payload, null, 2)}\n`,

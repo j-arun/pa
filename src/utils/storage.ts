@@ -161,8 +161,9 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
           'You are a helpful personal assistant responding through the Public Claude Adapter.',
       },
       fable: {
-        model: 'claude-fable-5-2',
-        maxTokens: 8192,
+        model: 'claude-fable-5-1',
+        maxTokens: 16000,
+        thinkingLevel: 'HIGH',
         endpointUrl: 'https://api.anthropic.com/v1/messages',
         systemInstruction:
           'You are a helpful personal assistant responding through the Public Fable Adapter.',
@@ -309,11 +310,11 @@ export function loadSettings(): WorkbenchSettings {
             return {
               ...mergedFable,
               model:
-                !mergedFable.model ||
-                mergedFable.model === 'fable-1-pro' ||
-                mergedFable.model === 'claude-fable-5-1'
-                  ? 'claude-fable-5-2'
+                !mergedFable.model || mergedFable.model === 'fable-1-pro'
+                  ? 'claude-fable-5-1'
                   : mergedFable.model,
+              maxTokens: Math.max(Number(mergedFable.maxTokens) || 16000, 16000),
+              thinkingLevel: mergedFable.thinkingLevel || 'HIGH',
               endpointUrl:
                 !normalizedEndpoint ||
                 normalizedEndpoint === 'https://api.fable.ai/v1/chat/completions'

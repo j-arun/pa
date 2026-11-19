@@ -207,3 +207,13 @@ export function normalizePromptBuilderSettings(
     templates,
   };
 }
+
+export function hasCustomPromptTemplates(templates?: PromptTemplates | null): boolean {
+  if (!templates) return false;
+  return PROMPT_DOMAINS.some((domain) =>
+    PROMPT_STYLES.some((style) => {
+      const current = templates[domain]?.[style];
+      return typeof current === 'string' && current !== DEFAULT_PROMPT_TEMPLATES[domain][style];
+    }),
+  );
+}

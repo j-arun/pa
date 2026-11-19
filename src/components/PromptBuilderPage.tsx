@@ -8,7 +8,7 @@ import {
   Save,
   Sparkles,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PromptDomain, PromptStyle, PromptTemplates } from '../types/workbench';
 import { DEFAULT_PROMPT_TEMPLATES } from '../utils/promptTemplates';
 
@@ -62,8 +62,9 @@ interface PromptBuilderPageProps {
   templates: PromptTemplates;
   settingsFilePath: string;
   domainPromptFilePath?: string;
+  promptFiles?: Record<PromptDomain, string>;
   saveError?: string;
-  onApplySettings: () => Promise<boolean>;
+  onApplySettings: (latestTemplates?: PromptTemplates) => Promise<boolean>;
   onSelectDomain: (domain: PromptDomain) => void;
   onChangeTemplates: (templates: PromptTemplates) => void;
 }
@@ -73,6 +74,7 @@ export function PromptBuilderPage({
   templates,
   settingsFilePath,
   domainPromptFilePath,
+  promptFiles,
   saveError,
   onApplySettings,
   onSelectDomain,
@@ -81,16 +83,25 @@ export function PromptBuilderPage({
   const [isEditingEnabled, setIsEditingEnabled] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const templatesRef = useRef<PromptTemplates>(templates);
+  useEffect(() => {
+    templatesRef.current = templates;
+  }, [templates]);
+
   const domain = DOMAIN_OPTIONS.find((option) => option.id === activeDomain) ?? DOMAIN_OPTIONS[0];
+  const resolvedDomainFile =
+    domainPromptFilePath ||
+    promptFiles?.[activeDomain] ||
+    `prompts/${domain.label.toLowerCase()}.json`;
 
   const handleApplySettings = async () => {
     setIsSaving(true);
     setSaveNotice(null);
     try {
-      const saved = await onApplySettings();
+      const saved = await onApplySettings(templatesRef.current);
       setSaveNotice(
         saved
-          ? 'Prompt Builder settings saved to the application file.'
+          ? `Saved ${domain.label} and all domain prompt files (${resolvedDomainFile}).`
           : 'Save failed. Check the error details below.',
       );
     } catch (error) {
@@ -104,13 +115,16 @@ export function PromptBuilderPage({
 
   const updateTemplate = (style: PromptStyle, value: string) => {
     if (!isEditingEnabled) return;
-    onChangeTemplates({
-      ...templates,
+    const nextTemplates: PromptTemplates = {
+      ...templatesRef.current,
       [activeDomain]: {
-        ...templates[activeDomain],
+        ...templatesRef.current[activeDomain],
         [style]: value,
       },
-    });
+    };
+    templatesRef.current = nextTemplates;
+    setSaveNotice(null);
+    onChangeTemplates(nextTemplates);
   };
 
   return (
@@ -145,7 +159,8 @@ export function PromptBuilderPage({
           <div className="flex flex-wrap items-end justify-between gap-4">
             <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
               Choose the active domain for this session and maintain the Formal and Classic
-              templates used by the chat panel. Changes are saved to the application settings file.
+              templates used by the chat panel. Only each domain&apos;s skeleton prompt is stored in
+              its dedicated file under <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800">prompts/</code>.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200">
@@ -160,7 +175,7 @@ export function PromptBuilderPage({
               >
                 {isSaving ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : saveNotice?.startsWith('Prompt Builder settings saved') ? (
+                ) : saveNotice?.startsWith('Saved ') ? (
                   <Check className="h-4 w-4" />
                 ) : (
                   <Save className="h-4 w-4" />
@@ -185,9 +200,7 @@ export function PromptBuilderPage({
         )}
 
         <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
-          <p className="break-all">
-            Domain prompt file: {domainPromptFilePath || `prompts/${domain.label.toLowerCase()}.json`}
-          </p>
+          <p className="break-all">Domain prompt file: {resolvedDomainFile}</p>
           <p className="break-all">Settings file: {settingsFilePath}</p>
         </div>
         {saveError && (

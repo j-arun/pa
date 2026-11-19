@@ -28,8 +28,9 @@
         "systemInstruction": "You are a helpful personal assistant responding through the Public Claude Adapter."
       },
       "fable": {
-        "model": "claude-fable-5-2",
-        "maxTokens": 8192,
+        "model": "claude-fable-5-1",
+        "maxTokens": 16000,
+        "thinkingLevel": "HIGH",
         "endpointUrl": "https://api.anthropic.com/v1/messages",
         "systemInstruction": "You are a helpful personal assistant responding through the Public Fable Adapter."
       }

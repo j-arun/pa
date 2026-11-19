@@ -179,8 +179,9 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
           'You are a helpful personal assistant responding through the Public Claude Adapter.',
       },
       fable: {
-        model: 'claude-fable-5-2',
-        maxTokens: 8192,
+        model: 'claude-fable-5-1',
+        maxTokens: 16000,
+        thinkingLevel: 'HIGH',
         endpointUrl:
           process.env.FABLE_API_URL?.trim() &&
           process.env.FABLE_API_URL.trim().replace(/\/+$/, '').toLowerCase() !==
@@ -336,11 +337,11 @@ export function mergeConfigWithDefaults(
           return {
             ...mergedFable,
             model:
-              !mergedFable.model ||
-              mergedFable.model === 'fable-1-pro' ||
-              mergedFable.model === 'claude-fable-5-1'
-                ? 'claude-fable-5-2'
+              !mergedFable.model || mergedFable.model === 'fable-1-pro'
+                ? 'claude-fable-5-1'
                 : mergedFable.model,
+            maxTokens: Math.max(Number(mergedFable.maxTokens) || 16000, 16000),
+            thinkingLevel: mergedFable.thinkingLevel || 'HIGH',
             endpointUrl:
               !normalizedEndpoint ||
               normalizedEndpoint === 'https://api.fable.ai/v1/chat/completions' ||
@@ -377,6 +378,7 @@ export function readLocalConfigFile(): {
   filePath: string;
   platform: string;
   hasPromptBuilderSettings: boolean;
+  hasCustomPromptTemplates: boolean;
   defaultReportsDir: string;
   resolvedReportsDir: string;
   promptFiles: Record<PromptDomain, string>;
@@ -410,6 +412,7 @@ export function readLocalConfigFile(): {
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings: true,
+      hasCustomPromptTemplates: domainPromptData.hasCustomTemplates,
       defaultReportsDir,
       resolvedReportsDir: resolveReportsDir(initialConfig.reportsDir),
       promptFiles: domainPromptData.filePaths,
@@ -435,6 +438,7 @@ export function readLocalConfigFile(): {
       hasPromptBuilderSettings:
         (Boolean(parsed.promptBuilder) && typeof parsed.promptBuilder === 'object') ||
         domainPromptData.hasAnyFile,
+      hasCustomPromptTemplates: domainPromptData.hasCustomTemplates,
       defaultReportsDir,
       resolvedReportsDir: resolveReportsDir(syncedConfig.reportsDir),
       promptFiles: domainPromptData.filePaths,
@@ -455,6 +459,7 @@ export function readLocalConfigFile(): {
       filePath,
       platform: process.platform,
       hasPromptBuilderSettings: domainPromptData.hasAnyFile,
+      hasCustomPromptTemplates: domainPromptData.hasCustomTemplates,
       defaultReportsDir,
       resolvedReportsDir: resolveReportsDir(fallbackConfig.reportsDir),
       promptFiles: domainPromptData.filePaths,
