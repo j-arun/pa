@@ -475,10 +475,9 @@ export function SettingsPage({
           <div>
             <h1
               id="settings-page-title"
-              className="inline-flex items-center gap-1.5 font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
+              className="font-display text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100"
             >
-              <span>What&apos;s up Settings</span>
-              <span aria-hidden="true" className="leading-none">🤙</span>
+              What&apos;s up Settings
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Themes, Windows account profile, Ollama, Public adapters &amp; local storage

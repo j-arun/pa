@@ -38,9 +38,7 @@ import {
 } from '../utils/eventParser';
 import {
   PROMPT_DOMAINS,
-  THREAD_RATING_OPTIONS,
   formatShortYearMonth,
-  formatThreadDisplayTitle,
   getMonthNameFromNumber,
   getPromptDomainShortLabel,
 } from '../utils/promptTemplates';
@@ -694,7 +692,6 @@ export function WorkbenchPage({
   isSending,
   onSendMessage,
   onRetryExchange,
-  onUpdateExchangeMetadata,
   onClearConversation,
   onDeleteExchange,
   onOpenSettings,
@@ -915,6 +912,24 @@ export function WorkbenchPage({
         />
       </div>
 
+      {/* Top-Right New Thread Shaka Icon (shown in main pane only after response arrives) */}
+      {!isWaitingForReply && activeExchange && (activeAssistantReply || activeErrorReply) && (
+        <motion.button
+          type="button"
+          onClick={onClearConversation}
+          disabled={isSending}
+          initial={{ opacity: 0, scale: 0.85, y: -6 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.94 }}
+          title="Start a new thread"
+          aria-label="Start a new thread"
+          className="absolute top-4 right-5 sm:top-5 sm:right-8 z-20 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 backdrop-blur-xl shadow-md hover:shadow-lg hover:bg-white dark:hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
+        >
+          <WhatsAppSymbol className="w-6 h-6" />
+        </motion.button>
+      )}
+
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-4 sm:py-6 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
@@ -1116,51 +1131,6 @@ export function WorkbenchPage({
           {/* STAGE 3: Response Arrived — Settled Round 3D Speech Bubble + Sliding Event Cards */}
           {!isWaitingForReply && activeExchange && (
             <div className="my-auto py-4 space-y-6">
-              {/* Beginning of Thread: 1-star / 2-star / 3-star Rating followed by Thread Name */}
-              {rootExchange?.questionTurn && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <div
-                    role="group"
-                    aria-label="Thread star rating"
-                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200/85 dark:border-slate-700/80 bg-white/85 dark:bg-slate-900/80 p-1 shadow-2xs shrink-0"
-                  >
-                    {THREAD_RATING_OPTIONS.map((opt) => {
-                      const selected = rootExchange.questionTurn?.threadRating === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() =>
-                            onUpdateExchangeMetadata(rootExchange.id, {
-                              threadRating: selected ? undefined : opt.id,
-                            })
-                          }
-                          aria-pressed={selected}
-                          title={opt.description}
-                          className={`inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
-                            selected
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 shadow-2xs'
-                              : 'text-slate-400 hover:text-amber-500 hover:bg-slate-100/80 dark:text-slate-500 dark:hover:text-amber-300 dark:hover:bg-slate-800/80'
-                          }`}
-                        >
-                          {opt.starGlyphs}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <h2 className="font-display text-base sm:text-lg font-semibold tracking-tight text-slate-900 dark:text-white truncate">
-                    {rootExchange.questionTurn.threadName?.trim() ||
-                      formatThreadDisplayTitle({
-                        domain: rootExchange.questionTurn.promptDomain,
-                        month: rootExchange.questionTurn.threadMonth,
-                        year: rootExchange.questionTurn.threadYear,
-                        fallbackNumber: 1,
-                      })}
-                  </h2>
-                </div>
-              )}
-
               {/* Follow-up Turn Switcher when >1 turn exists in this thread */}
               {exchanges.length > 1 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1258,19 +1228,16 @@ export function WorkbenchPage({
                 </div>
               </div>
 
-              {/* Error State if Provider Failed — with Retry right inside */}
+              {/* Error State if Provider Failed — Friendly message with Retry & Settings */}
               {activeErrorReply && !activeAssistantReply && (
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/70 bg-red-50/90 dark:bg-red-950/40 p-6 text-red-900 dark:text-red-200 max-w-2xl">
-                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold mb-1">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold mb-1.5">
                     <WhatsAppSymbol className="w-4 h-4 shrink-0" />
-                    <span>
-                      What&apos;s up ·{' '}
-                      {activeErrorReply.scope === 'private'
-                        ? 'Private · Ollama Unavailable'
-                        : `Public · ${activeErrorReply.adapterId} Unavailable`}
-                    </span>
+                    <span>What&apos;s up</span>
                   </div>
-                  <p className="text-sm leading-relaxed">{activeErrorReply.content}</p>
+                  <p className="text-sm font-medium leading-relaxed">
+                    Try &quot;What&apos;s up&quot; little later ..
+                  </p>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -1503,7 +1470,6 @@ export function WorkbenchPage({
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-1.5 font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                     <span>{`What's up · ${getPromptDomainShortLabel(activePromptDomain)}`}</span>
-                    <WhatsAppSymbol className="w-4 h-4 shrink-0" />
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
                     {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()

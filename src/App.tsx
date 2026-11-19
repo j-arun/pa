@@ -8,7 +8,6 @@ import {
   PanelLeft,
   PanelRight,
   Pencil,
-  Plus,
   Settings,
   Sparkles,
   Trash2,
@@ -1147,10 +1146,9 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(true);
       }
-      const errTitle = "What's up · Response Error";
-      const shortPreview =
-        errorMessage.length > 110 ? `${errorMessage.slice(0, 107)}...` : errorMessage;
-      setReplyToast({ title: errTitle, preview: shortPreview, isError: true });
+      const errTitle = "What's up";
+      const friendlyError = 'Try "What\'s up" little later ..';
+      setReplyToast({ title: errTitle, preview: friendlyError, isError: true });
       if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
       replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
     } finally {
@@ -1434,7 +1432,6 @@ export default function App() {
             </button>
             <span className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
               <span>What&apos;s up</span>
-              <WhatsAppSymbol className="w-5 h-5 shrink-0" />
               {(isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen || activeReportRecord) && (
                 <>
                   <span className="text-slate-400 dark:text-slate-500 font-normal">·</span>
@@ -1630,17 +1627,6 @@ export default function App() {
               style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
             >
               <PanelRight className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={handleStartNewThread}
-              disabled={isSending}
-              title="Start a brand new conversation thread"
-              className="ml-1.5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-sky-600 hover:from-violet-500 hover:via-indigo-500 hover:to-sky-500 text-white text-xs sm:text-sm font-semibold shadow-sm shadow-indigo-500/25 disabled:opacity-50 transition-all whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>New Thread</span>
             </button>
           </div>
         </header>
