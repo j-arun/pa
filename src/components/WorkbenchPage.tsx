@@ -35,6 +35,7 @@ import type {
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
 import {
   deriveThreadTitleFromPrompt,
+  extractReadOutSections,
   normalizeEventCardItem,
   parseResponseEventsAndReport,
 } from '../utils/eventParser';
@@ -510,6 +511,14 @@ export function WorkbenchPage({
       .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx))
       .map((entry) => entry.evt);
   }, [activeAssistantReply, activeQuestionTurn?.promptDomain]);
+
+  const readOutSections = useMemo(
+    () =>
+      activeAssistantReply
+        ? extractReadOutSections(activeAssistantReply.content)
+        : null,
+    [activeAssistantReply],
+  );
 
   useEffect(() => {
     setCarouselIndex(0);
@@ -1452,29 +1461,9 @@ export function WorkbenchPage({
                     transition={{ duration: 0.22 }}
                     className="space-y-6"
                   >
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white inline-flex items-center">
-                        <motion.span
-                          role="img"
-                          aria-label="What's up"
-                          animate={{
-                            rotate: [-10, 14, -8, 12, -10],
-                            y: [0, -3, 0, -2, 0],
-                            scale: [1, 1.08, 1, 1.05, 1],
-                          }}
-                          transition={{
-                            duration: 2.2,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                          }}
-                          className="inline-block text-4xl sm:text-5xl leading-none select-none origin-bottom-right"
-                        >
-                          🤙
-                        </motion.span>
-                      </h1>
-
-                      <AnimatePresence>
-                        {(dropHintVisible || isDraggingOrb) && (
+                    <AnimatePresence>
+                      {(dropHintVisible || isDraggingOrb) && (
+                        <div className="flex justify-center">
                           <motion.span
                             key="orb-drop-hint"
                             initial={{ opacity: 0, y: 4 }}
@@ -1489,9 +1478,9 @@ export function WorkbenchPage({
                                 : 'Drop into any month bucket above'
                               : 'Drag and drop a ball into any month bucket above'}
                           </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                        </div>
+                      )}
+                    </AnimatePresence>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 sm:gap-7 place-items-center pt-3 pb-5">
                       {DOMAIN_HOME_CARDS.map((card, idx) => {
@@ -1810,6 +1799,145 @@ export function WorkbenchPage({
                 </div>
                 );
               })()}
+
+              {/* Floating Light-Theme Read Out Bubbles (Summary & Answer) — Shown ONLY if LLM response contains Read Out */}
+              {activeAssistantReply &&
+                readOutSections &&
+                (readOutSections.summary || readOutSections.answer) && (
+                  <div
+                    aria-label="Read Out"
+                    className={`max-w-4xl grid grid-cols-1 ${
+                      readOutSections.summary && readOutSections.answer
+                        ? 'md:grid-cols-2'
+                        : ''
+                    } gap-5 sm:gap-6 items-start`}
+                  >
+                    {readOutSections.summary && (
+                      <motion.div
+                        key={`readout-summary-${activeExchange.id}`}
+                        initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                        className="flex flex-col items-start"
+                      >
+                        <motion.div
+                          animate={{ y: [0, -6, 0, -3, 0] }}
+                          transition={{
+                            duration: 4.1,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="w-full flex flex-col items-start"
+                        >
+                          <div className="pa-readout-bubble relative w-full px-6 py-5 overflow-hidden">
+                            <div
+                              aria-hidden="true"
+                              className="pointer-events-none absolute top-2.5 left-10 right-10 h-2.5 rounded-full bg-white/90 blur-[2px]"
+                            />
+                            <h2
+                              className="relative z-10 font-display text-xs font-bold tracking-wide mb-2 whitespace-nowrap"
+                              style={{ color: '#0369a1' }}
+                            >
+                              Summary
+                            </h2>
+                            <div
+                              className="relative z-10 text-[13px] sm:text-sm leading-relaxed text-slate-800 whitespace-pre-line max-h-56 overflow-y-auto fluent-scroll pr-1"
+                              style={{ fontFamily: 'var(--pa-font-body)' }}
+                            >
+                              {readOutSections.summary}
+                            </div>
+                          </div>
+                          <div
+                            className="flex items-center gap-1.5 ml-10 -mt-1.5"
+                            aria-hidden="true"
+                          >
+                            <span className="pa-readout-tail w-3.5 h-3.5 rounded-full block" />
+                            <span className="pa-readout-tail w-2 h-2 rounded-full mt-2 block" />
+                          </div>
+                        </motion.div>
+                        <motion.div
+                          aria-hidden="true"
+                          animate={{
+                            scaleX: [1, 0.86, 1, 0.92, 1],
+                            opacity: [0.22, 0.13, 0.22, 0.17, 0.22],
+                          }}
+                          transition={{
+                            duration: 4.1,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="mt-1 ml-6 h-2.5 w-36 rounded-full bg-slate-900/15 dark:bg-sky-400/20 blur-md"
+                        />
+                      </motion.div>
+                    )}
+
+                    {readOutSections.answer && (
+                      <motion.div
+                        key={`readout-answer-${activeExchange.id}`}
+                        initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{
+                          type: 'spring',
+                          stiffness: 260,
+                          damping: 22,
+                          delay: 0.06,
+                        }}
+                        className="flex flex-col items-start"
+                      >
+                        <motion.div
+                          animate={{ y: [0, -6, 0, -3, 0] }}
+                          transition={{
+                            duration: 4.1,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: 0.85,
+                          }}
+                          className="w-full flex flex-col items-start"
+                        >
+                          <div className="pa-readout-bubble relative w-full px-6 py-5 overflow-hidden">
+                            <div
+                              aria-hidden="true"
+                              className="pointer-events-none absolute top-2.5 left-10 right-10 h-2.5 rounded-full bg-white/90 blur-[2px]"
+                            />
+                            <h2
+                              className="relative z-10 font-display text-xs font-bold tracking-wide mb-2 whitespace-nowrap"
+                              style={{ color: '#0369a1' }}
+                            >
+                              Answer
+                            </h2>
+                            <div
+                              className="relative z-10 text-[13px] sm:text-sm leading-relaxed text-slate-800 whitespace-pre-line max-h-56 overflow-y-auto fluent-scroll pr-1"
+                              style={{ fontFamily: 'var(--pa-font-body)' }}
+                            >
+                              {readOutSections.answer}
+                            </div>
+                          </div>
+                          <div
+                            className="flex items-center gap-1.5 ml-10 -mt-1.5"
+                            aria-hidden="true"
+                          >
+                            <span className="pa-readout-tail w-3.5 h-3.5 rounded-full block" />
+                            <span className="pa-readout-tail w-2 h-2 rounded-full mt-2 block" />
+                          </div>
+                        </motion.div>
+                        <motion.div
+                          aria-hidden="true"
+                          animate={{
+                            scaleX: [1, 0.86, 1, 0.92, 1],
+                            opacity: [0.22, 0.13, 0.22, 0.17, 0.22],
+                          }}
+                          transition={{
+                            duration: 4.1,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: 0.85,
+                          }}
+                          className="mt-1 ml-6 h-2.5 w-36 rounded-full bg-slate-900/15 dark:bg-sky-400/20 blur-md"
+                        />
+                      </motion.div>
+                    )}
+                  </div>
+                )}
 
               {/* Sliding Event Cards Carousel — Specific Events ONLY (Date Range + Likelihood) */}
               {activeAssistantReply && eventCards.length > 0 && (

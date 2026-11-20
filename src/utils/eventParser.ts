@@ -294,7 +294,7 @@ function extractDateAndLikelihood(text: string): {
 }
 
 function isOverviewHeading(heading: string): boolean {
-  return /^(?:overview|executive summary|summary|introduction|background|context|conclusion|key takeaways)$/i.test(
+  return /^(?:overview|executive summary|summary|introduction|background|context|conclusion|key takeaways|read[\s_-]*out|answers?|questions?\s*(?:&|and)\s*answers?)$/i.test(
     heading.trim(),
   );
 }
@@ -1048,6 +1048,187 @@ export function parseResponseEventsAndReport(
   };
 }
 
+export interface ReadOutSections {
+  summary?: string;
+  answer?: string;
+}
+
+function cleanReadOutBlockText(rawLines: string[]): string {
+  const normalized = rawLines
+    .map((line) =>
+      line
+        .replace(/^\s*#{1,6}\s+/, '')
+        .replace(/^\s*[-*•+]\s+/, '• ')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/[*_`~>]/g, '')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim(),
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return normalized;
+}
+
+export function extractReadOutSections(rawContent: string): ReadOutSections | null {
+  if (!rawContent || !rawContent.trim()) return null;
+
+  const cleanMarkdown = rawContent
+    .replace(/<pa_events>[\s\S]*?<\/pa_events>/gi, '')
+    .replace(/<pa_caution_dates>[\s\S]*?<\/pa_caution_dates>/gi, '')
+    .trim();
+
+  if (!cleanMarkdown) return null;
+
+  const lines = cleanMarkdown.split(/\r?\n/);
+  const readOutHeadingRegex =
+    /^\s{0,3}(#{1,6})\s*(?:\d+[.)]\s*)?read[\s_-]*out\b(.*)$/i;
+  const readOutLabelRegex =
+    /^\s*(?:[-*•+]\s*|\d+[.)]\s*)?(?:\*\*|__)?read[\s_-]*out(?:\*\*|__)?\s*[:\-–—]?\s*(.*)$/i;
+
+  let startLineIdx = -1;
+  let readOutHeadingLevel = 0;
+  let inlineAfterReadOut = '';
+  let inCodeFence = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    if (inCodeFence) continue;
+
+    const headingMatch = line.match(readOutHeadingRegex);
+    if (headingMatch) {
+      startLineIdx = i;
+      readOutHeadingLevel = headingMatch[1].length;
+      inlineAfterReadOut = (headingMatch[2] || '').replace(/^[\s:–—-]+/, '').trim();
+      continue;
+    }
+
+    const labelMatch = line.match(readOutLabelRegex);
+    if (labelMatch) {
+      const cleanedLabelLine = line.replace(/[*_`~]/g, '').trim();
+      if (/^(?:[-*•+]\s*|\d+[.)]\s*)?read[\s_-]*out\s*(?:[:\-–—]|$)/i.test(cleanedLabelLine)) {
+        startLineIdx = i;
+        readOutHeadingLevel = 2;
+        inlineAfterReadOut = (labelMatch[1] || '').trim();
+      }
+    }
+  }
+
+  if (startLineIdx < 0) return null;
+
+  const sectionLines: string[] = [];
+  if (inlineAfterReadOut && !/^[\(\[]/.test(inlineAfterReadOut)) {
+    sectionLines.push(inlineAfterReadOut);
+  }
+
+  for (let i = startLineIdx + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    const headingMatch = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const headingText = cleanLineKeepText(headingMatch[2]);
+      if (
+        level <= readOutHeadingLevel &&
+        !/^(?:\d+[.)]\s*)?(?:summary|executive\s+summary|brief\s+summary|overview|answers?|questions?|q\s*&\s*a|prompt\s+questions?)/i.test(
+          headingText,
+        )
+      ) {
+        break;
+      }
+    }
+    sectionLines.push(line);
+  }
+
+  const summaryHeadingRegex =
+    /^\s{0,3}#{1,6}\s*(?:\d+[.)]\s*)?(?:summary|executive\s+summary|overall\s+summary|brief\s+summary|key\s+takeaways?|overview)\b.*$/i;
+  const summaryLabelRegex =
+    /^\s*(?:[-*•+]\s*|\d+[.)]\s*)?(?:\*\*|__)?(?:summary|executive\s+summary|overall\s+summary|brief\s+summary|key\s+takeaways?)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+  const answerHeadingRegex =
+    /^\s{0,3}#{1,6}\s*(?:\d+[.)]\s*)?(?:answers?(?:\s+to\b.*)?|questions?(?:\s*(?:&|and)\s*answers?|\s+asked\b.*)?|prompt\s+questions?(?:\s+answered)?|focus\s+questions?(?:\s+answer)?|your\s+questions?|direct\s+answers?|q\s*&\s*a|response\s+to\b.*)\b.*$/i;
+  const answerLabelRegex =
+    /^\s*(?:[-*•+]\s*|\d+[.)]\s*)?(?:\*\*|__)?(?:answers?(?:\s+to\s+(?:your\s+|the\s+)?questions?)?|questions?\s*(?:&|and)\s*answers?|questions?\s+asked(?:\s+in\s+.*)?|prompt\s+questions?(?:\s+answered)?|focus\s+questions?(?:\s+answer)?|your\s+questions?|direct\s+answers?|q\s*&\s*a)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+
+  const summaryLines: string[] = [];
+  const answerLines: string[] = [];
+  const unlabeledLines: string[] = [];
+  let activeBucket: 'summary' | 'answer' | null = null;
+
+  for (const rawLine of sectionLines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || /^[-*_]{3,}$/.test(trimmed)) {
+      if (activeBucket === 'summary' && summaryLines.length > 0) summaryLines.push('');
+      else if (activeBucket === 'answer' && answerLines.length > 0) answerLines.push('');
+      else if (unlabeledLines.length > 0) unlabeledLines.push('');
+      continue;
+    }
+
+    if (summaryHeadingRegex.test(trimmed)) {
+      activeBucket = 'summary';
+      continue;
+    }
+
+    const summaryLabelMatch = trimmed.match(summaryLabelRegex);
+    if (summaryLabelMatch) {
+      activeBucket = 'summary';
+      const remainder = summaryLabelMatch[1]?.trim();
+      if (remainder) summaryLines.push(remainder);
+      continue;
+    }
+
+    if (answerHeadingRegex.test(trimmed)) {
+      activeBucket = 'answer';
+      continue;
+    }
+
+    const answerLabelMatch = trimmed.match(answerLabelRegex);
+    if (answerLabelMatch) {
+      activeBucket = 'answer';
+      const remainder = answerLabelMatch[1]?.trim();
+      if (remainder) answerLines.push(remainder);
+      continue;
+    }
+
+    // Any secondary subheading after Summary has been started defaults to the Answer subsection
+    const subHeadingMatch = trimmed.match(/^\s{0,3}#{1,6}\s+(.+)$/);
+    if (subHeadingMatch && activeBucket === 'summary') {
+      activeBucket = 'answer';
+      continue;
+    }
+
+    if (activeBucket === 'summary') {
+      summaryLines.push(rawLine);
+    } else if (activeBucket === 'answer') {
+      answerLines.push(rawLine);
+    } else {
+      unlabeledLines.push(rawLine);
+    }
+  }
+
+  let summary = cleanReadOutBlockText(summaryLines);
+  let answer = cleanReadOutBlockText(answerLines);
+
+  if (!summary && !answer && unlabeledLines.length > 0) {
+    const joined = cleanReadOutBlockText(unlabeledLines);
+    const paragraphs = joined.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    if (paragraphs.length >= 2) {
+      summary = paragraphs[0];
+      answer = paragraphs.slice(1).join('\n\n');
+    } else if (paragraphs.length === 1) {
+      summary = paragraphs[0];
+    }
+  }
+
+  if (!summary && !answer) return null;
+  return {
+    ...(summary ? { summary } : {}),
+    ...(answer ? { answer } : {}),
+  };
+}
+
 export function deriveThreadTitleFromPrompt(prompt: string): string {
   const cleaned = prompt.replace(/\s+/g, ' ').trim();
   if (!cleaned) return 'Assistant Thread';
@@ -1119,7 +1300,7 @@ function isBreakdownHeading(heading: string): boolean {
 }
 
 function isCautionOrClosingHeading(heading: string): boolean {
-  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|warning\s+dates|risk\s+windows|sensitivity\s+dates|conclusion|final\s+notes)\b/i.test(
+  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|warning\s+dates|risk\s+windows|sensitivity\s+dates|conclusion|final\s+notes|read[\s_-]*out)\b/i.test(
     heading,
   );
 }
