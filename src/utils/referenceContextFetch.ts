@@ -4,6 +4,7 @@ export function buildReferenceContextUrl(
   apiConfig: ReferenceContextApiConfig,
   month: number,
   year: number,
+  domain?: string,
 ): string {
   const rawHost = (apiConfig.hostname || 'localhost').trim() || 'localhost';
   const hasScheme = /^https?:\/\//i.test(rawHost);
@@ -13,10 +14,29 @@ export function buildReferenceContextUrl(
   const rawQuery = (
     apiConfig.queryTemplate || 'date={month}/{year}&variant=compact'
   ).trim();
-  const renderedQuery = rawQuery
+  const normalizedDomain = (domain || '').trim().toLowerCase();
+
+  let renderedQuery = rawQuery
     .replace(/^\?/, '')
     .replace(/\{month\}/gi, String(month))
     .replace(/\{year\}/gi, String(year));
+
+  if (normalizedDomain) {
+    if (/\{domain\}/i.test(renderedQuery)) {
+      renderedQuery = renderedQuery.replace(
+        /\{domain\}/gi,
+        encodeURIComponent(normalizedDomain),
+      );
+    } else if (!/(?:^|&)domain=/i.test(renderedQuery)) {
+      renderedQuery = renderedQuery
+        ? `${renderedQuery}&domain=${encodeURIComponent(normalizedDomain)}`
+        : `domain=${encodeURIComponent(normalizedDomain)}`;
+    }
+  } else {
+    renderedQuery = renderedQuery
+      .replace(/&?domain=\{domain\}/gi, '')
+      .replace(/^&+/, '');
+  }
 
   try {
     const urlObj = new URL(baseHost);
@@ -59,18 +79,24 @@ export interface ReferenceContextFetchSuccess {
   url: string;
   fetchedAt: string;
   via: 'proxy' | 'browser';
+  domain?: string;
 }
 
 export async function fetchReferenceContextFromApi({
   month,
   year,
+  domain,
   apiConfig,
+  signal,
 }: {
   month: number;
   year: number;
+  domain?: string;
   apiConfig: ReferenceContextApiConfig;
+  signal?: AbortSignal;
 }): Promise<ReferenceContextFetchSuccess> {
-  const targetUrl = buildReferenceContextUrl(apiConfig, month, year);
+  const normalizedDomain = (domain || '').trim().toLowerCase() || undefined;
+  const targetUrl = buildReferenceContextUrl(apiConfig, month, year, normalizedDomain);
   let proxyErrorMessage = `Reference Context REST endpoint is not available at ${targetUrl}.`;
 
   // 1. Try server-side proxy first (avoids CORS for reachable hosts)
@@ -78,12 +104,14 @@ export async function fetchReferenceContextFromApi({
     const response = await fetch('/api/reference-context/fetch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month, year, apiConfig }),
+      signal,
+      body: JSON.stringify({ month, year, domain: normalizedDomain, apiConfig }),
     });
     const payload = (await response.json()) as {
       text?: string;
       url?: string;
       fetchedAt?: string;
+      domain?: string;
       error?: string;
     };
 
@@ -93,6 +121,7 @@ export async function fetchReferenceContextFromApi({
         url: payload.url || targetUrl,
         fetchedAt: payload.fetchedAt || new Date().toISOString(),
         via: 'proxy',
+        domain: payload.domain || normalizedDomain,
       };
     }
 
@@ -100,13 +129,26 @@ export async function fetchReferenceContextFromApi({
       proxyErrorMessage = payload.error;
     }
   } catch (err) {
+    if (
+      signal?.aborted ||
+      (err instanceof DOMException && err.name === 'AbortError') ||
+      (err instanceof Error && err.name === 'AbortError')
+    ) {
+      throw err;
+    }
     if (err instanceof Error && err.message) {
       proxyErrorMessage = err.message;
     }
   }
 
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
   // 2. Direct browser fallback (crucial when workbench runs in Cloud Run and the user's API runs on their local PC's localhost)
   const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  signal?.addEventListener('abort', onParentAbort, { once: true });
   const timer = window.setTimeout(() => controller.abort(), 7000);
   try {
     const directRes = await fetch(targetUrl, {
@@ -133,12 +175,21 @@ export async function fetchReferenceContextFromApi({
         url: targetUrl,
         fetchedAt: new Date().toISOString(),
         via: 'browser',
+        domain: normalizedDomain,
       };
     }
-  } catch {
+  } catch (err) {
+    if (
+      signal?.aborted ||
+      (err instanceof DOMException && err.name === 'AbortError') ||
+      (err instanceof Error && err.name === 'AbortError')
+    ) {
+      throw err;
+    }
     // Ignore direct fallback failure (e.g., CORS / mixed content / server offline) and surface clear proxy error
   } finally {
     window.clearTimeout(timer);
+    signal?.removeEventListener('abort', onParentAbort);
   }
 
   throw new Error(proxyErrorMessage);

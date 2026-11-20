@@ -20,6 +20,19 @@ export const PROMPT_DOMAIN_SHORT_LABELS: Record<PromptDomain, string> = {
   general: 'Love',
 };
 
+export function getDomainQueryValue(domain: PromptDomain): string {
+  switch (domain) {
+    case 'astrology':
+      return 'career';
+    case 'finance':
+      return 'family';
+    case 'general':
+      return 'love';
+    case 'health':
+      return 'health';
+  }
+}
+
 export const PROMPT_STYLES: PromptStyle[] = ['formal', 'classic'];
 
 export const THREAD_MONTHS: readonly string[] = [

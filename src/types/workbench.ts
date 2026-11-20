@@ -83,6 +83,9 @@ export interface ConversationTurn {
   outputTokenCount?: number;
   tokensPerSecond?: number;
   adapterProtocol?: string;
+  refContextDomain?: string;
+  refContextTokens?: number;
+  refContextChars?: number;
 }
 
 export interface RatedThreadRecord {
@@ -234,4 +237,7 @@ export interface LlmContextTelemetry {
   tokensPerSecond?: number;
   durationMs?: number;
   lastError: string;
+  refContextDomain?: string;
+  refContextTokens?: number;
+  refContextChars?: number;
 }

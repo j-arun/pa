@@ -347,9 +347,10 @@ async function startServer() {
 
   app.post('/api/reference-context/fetch', async (req, res) => {
     try {
-      const { month, year, apiConfig } = req.body as {
+      const { month, year, domain, apiConfig } = req.body as {
         month?: number;
         year?: number;
+        domain?: string;
         apiConfig?: {
           hostname?: string;
           port?: number;
@@ -366,6 +367,9 @@ async function startServer() {
       if (!Number.isInteger(yearNum) || yearNum < 1990 || yearNum > 2090) {
         return res.status(400).json({ error: 'Year must be between 1990 and 2090.' });
       }
+
+      const normalizedDomain =
+        typeof domain === 'string' ? domain.trim().toLowerCase() : '';
 
       const saved = readLocalConfigFile().config.referenceContextApi;
       const rawHost = (apiConfig?.hostname ?? saved.hostname ?? 'localhost').trim();
@@ -392,10 +396,28 @@ async function startServer() {
       const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
       urlObj.pathname = normalizedPath;
 
-      const renderedQuery = rawQuery
+      let renderedQuery = rawQuery
         .replace(/^\?/, '')
         .replace(/\{month\}/gi, String(monthNum))
         .replace(/\{year\}/gi, String(yearNum));
+
+      if (normalizedDomain) {
+        if (/\{domain\}/i.test(renderedQuery)) {
+          renderedQuery = renderedQuery.replace(
+            /\{domain\}/gi,
+            encodeURIComponent(normalizedDomain),
+          );
+        } else if (!/(?:^|&)domain=/i.test(renderedQuery)) {
+          renderedQuery = renderedQuery
+            ? `${renderedQuery}&domain=${encodeURIComponent(normalizedDomain)}`
+            : `domain=${encodeURIComponent(normalizedDomain)}`;
+        }
+      } else {
+        renderedQuery = renderedQuery
+          .replace(/&?domain=\{domain\}/gi, '')
+          .replace(/^&+/, '');
+      }
+
       urlObj.search = renderedQuery ? `?${renderedQuery}` : '';
       const targetUrl = urlObj.toString();
 
@@ -463,6 +485,7 @@ async function startServer() {
         text: plainText,
         url: targetUrl,
         fetchedAt: new Date().toISOString(),
+        domain: normalizedDomain || undefined,
       });
     } catch (err) {
       return res.status(500).json({

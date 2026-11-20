@@ -1,5 +1,4 @@
 import {
-  BookOpen,
   Cloud,
   Home,
   Lock,
@@ -13,7 +12,6 @@ import { AnimatePresence } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
-import { ReferenceContextPage } from './components/ReferenceContextPage';
 import { ReportDocumentPage } from './components/ReportDocumentPage';
 import {
   ReportTreeSidebar,
@@ -49,8 +47,11 @@ import {
   saveSettings,
 } from './utils/storage';
 import {
+  estimateTokens,
   formatShortYearMonth,
+  getDomainQueryValue,
   getMonthNameFromNumber,
+  getMonthNumberFromName,
   hasCustomPromptTemplates,
 } from './utils/promptTemplates';
 import {
@@ -118,7 +119,6 @@ function buildExchangesFromTurns(threadTurns: ConversationTurn[]): ThreadHtmlExc
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
-  const [isReferenceContextOpen, setIsReferenceContextOpen] = useState(false);
   const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
@@ -518,53 +518,27 @@ export default function App() {
   const handleQuickSelectMonth = useCallback(
     async (month: number, year: number) => {
       if (switchingMonthKey) return;
-      const key = `${year}-${String(month).padStart(2, '0')}`;
-      setSwitchingMonthKey(key);
       setMonthSwitchError(null);
-
-      try {
-        const result = await fetchReferenceContextFromApi({
-          month,
-          year,
-          apiConfig: settingsRef.current.referenceContextApi,
-        });
-        await handleApplyFetchedContext({
-          text: result.text,
-          month,
-          year,
-          fetchedAt: result.fetchedAt,
-        });
-        setHasChosenMonthThisThread(true);
-        pushContextLog(
-          'success',
-          `Switched active period to ${formatShortYearMonth(month, year)} and applied Reference Context automatically.`,
-        );
-      } catch (err) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Reference Context API endpoint is unavailable.';
-        setMonthSwitchError('Month toggling is currently unavailable.');
-        pushContextLog('error', `Month switch failed (${formatShortYearMonth(month, year)}): ${msg}`);
-      } finally {
-        setSwitchingMonthKey(null);
-      }
+      const currentSettings = settingsRef.current;
+      const nextSettings: WorkbenchSettings = {
+        ...currentSettings,
+        contextCache: {
+          ...currentSettings.contextCache,
+          activeMonth: month,
+          activeYear: year,
+        },
+      };
+      settingsRef.current = nextSettings;
+      setSettings(nextSettings);
+      setHasChosenMonthThisThread(true);
+      void persistSettingsToFile(nextSettings);
+      pushContextLog(
+        'info',
+        `Selected active period ${formatShortYearMonth(month, year)}. Reference Context will fetch dynamically per domain.`,
+      );
     },
-    [handleApplyFetchedContext, pushContextLog, switchingMonthKey],
+    [persistSettingsToFile, pushContextLog, switchingMonthKey],
   );
-
-  const handleClearAllReferenceContext = async (): Promise<boolean> => {
-    const nextSettings: WorkbenchSettings = {
-      ...settings,
-      contextCache: {
-        ...settings.contextCache,
-        privateText: '',
-        publicText: '',
-      },
-    };
-    setSettings(nextSettings);
-    return persistSettingsToFile(nextSettings);
-  };
 
   const handleUpdateExchangeMetadata = useCallback(
     (exchangeId: string, patch: ThreadMetadataPatch) => {
@@ -650,7 +624,6 @@ export default function App() {
 
     setIsSettingsOpen(false);
     setIsPromptBuilderOpen(false);
-    setIsReferenceContextOpen(false);
     setActiveReportExchangeId(null);
     setTurns([]);
     setIsChatBarOpen(false);
@@ -916,7 +889,6 @@ export default function App() {
   const canSwitchScope =
     !isSettingsOpen &&
     !isPromptBuilderOpen &&
-    !isReferenceContextOpen &&
     !activeReportRecord &&
     turns.length === 0 &&
     !isSending;
@@ -949,9 +921,10 @@ export default function App() {
 
   const displayedTelemetry = useMemo<LlmContextTelemetry>(() => {
     if (
-      telemetry.isThinking ||
-      telemetry.totalTokens !== undefined ||
-      telemetry.durationMs !== undefined
+      !activeReportRecord &&
+      (telemetry.isThinking ||
+        telemetry.totalTokens !== undefined ||
+        telemetry.durationMs !== undefined)
     ) {
       return telemetry;
     }
@@ -960,7 +933,16 @@ export default function App() {
     const latestAssistant = [...sourceTurns]
       .reverse()
       .find((t) => t.role === 'assistant');
+    const rootQuestion = sourceTurns.find((t) => t.role === 'user');
     if (!latestAssistant) {
+      if (rootQuestion?.refContextDomain) {
+        return {
+          ...telemetry,
+          refContextDomain: rootQuestion.refContextDomain,
+          refContextTokens: rootQuestion.refContextTokens,
+          refContextChars: rootQuestion.refContextChars,
+        };
+      }
       return telemetry;
     }
 
@@ -982,10 +964,24 @@ export default function App() {
         ? Number((effectiveOutput / (durationMs / 1000)).toFixed(1))
         : undefined);
 
+    const refContextDomain =
+      latestAssistant.refContextDomain ??
+      rootQuestion?.refContextDomain ??
+      (!activeReportRecord ? telemetry.refContextDomain : undefined);
+    const refContextTokens =
+      latestAssistant.refContextTokens ??
+      rootQuestion?.refContextTokens ??
+      (!activeReportRecord ? telemetry.refContextTokens : undefined);
+    const refContextChars =
+      latestAssistant.refContextChars ??
+      rootQuestion?.refContextChars ??
+      (!activeReportRecord ? telemetry.refContextChars : undefined);
+
     if (
       totalTokens === undefined &&
       tokensPerSecond === undefined &&
-      durationMs === undefined
+      durationMs === undefined &&
+      refContextDomain === undefined
     ) {
       return telemetry;
     }
@@ -998,6 +994,9 @@ export default function App() {
       totalTokens,
       tokensPerSecond,
       durationMs,
+      refContextDomain,
+      refContextTokens,
+      refContextChars,
     };
   }, [activeReportRecord, telemetry, turns]);
 
@@ -1058,11 +1057,15 @@ export default function App() {
     precedingTurns,
     baseThreadTurns,
     effectiveDomain,
+    overrideCachedContext,
+    abortController: providedAbortController,
   }: {
     userTurn: ConversationTurn;
     precedingTurns: ConversationTurn[];
     baseThreadTurns: ConversationTurn[];
     effectiveDomain: PromptDomain;
+    overrideCachedContext?: string;
+    abortController?: AbortController;
   }) => {
     const targetScope = userTurn.scope ?? scope;
     const targetAdapterId: AnyAdapterId =
@@ -1088,9 +1091,11 @@ export default function App() {
       }));
 
     const targetCachedContext =
-      targetScope === 'private'
-        ? settings.contextCache.privateText.trim()
-        : settings.contextCache.publicText.trim();
+      overrideCachedContext !== undefined
+        ? overrideCachedContext.trim()
+        : (targetScope === 'private'
+            ? settings.contextCache.privateText.trim()
+            : settings.contextCache.publicText.trim());
     const majorTemplate = extractMajorTemplate(
       promptTemplates[effectiveDomain]?.[promptStyle] ?? '',
     );
@@ -1138,6 +1143,15 @@ export default function App() {
       tokensPerSecond: undefined,
       durationMs: undefined,
       lastError: '',
+      refContextDomain: userTurn.refContextDomain ?? prev.refContextDomain,
+      refContextTokens:
+        userTurn.refContextTokens !== undefined
+          ? userTurn.refContextTokens
+          : prev.refContextTokens,
+      refContextChars:
+        userTurn.refContextChars !== undefined
+          ? userTurn.refContextChars
+          : prev.refContextChars,
     }));
 
     const timeoutSec = Math.max(0, Number(settings.requestTimeoutSeconds) || 0);
@@ -1175,14 +1189,17 @@ export default function App() {
             requestTimeoutSeconds: timeoutSec,
           };
 
-    if (activeRequestAbortRef.current) {
-      activeRequestAbortRef.current.controller.abort();
+    let abortController = providedAbortController;
+    if (!abortController) {
+      if (activeRequestAbortRef.current) {
+        activeRequestAbortRef.current.controller.abort();
+      }
+      abortController = new AbortController();
+      activeRequestAbortRef.current = {
+        exchangeId: userTurn.id,
+        controller: abortController,
+      };
     }
-    const abortController = new AbortController();
-    activeRequestAbortRef.current = {
-      exchangeId: userTurn.id,
-      controller: abortController,
-    };
 
     try {
       if (targetScope === 'private' && !settings.privateLlm.selectedModel.trim()) {
@@ -1262,6 +1279,9 @@ export default function App() {
         outputTokenCount: outputTokens,
         tokensPerSecond,
         adapterProtocol: payload.protocol,
+        refContextDomain: userTurn.refContextDomain,
+        refContextTokens: userTurn.refContextTokens,
+        refContextChars: userTurn.refContextChars,
       };
 
       const rootUserTurn =
@@ -1449,6 +1469,7 @@ export default function App() {
       (isFollowUp ? rootUserTurn?.threadYear : undefined) ??
       settings.contextCache.activeYear;
     const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+    const domainQuery = getDomainQueryValue(effectiveDomain);
     let effectiveThreadName =
       isFollowUp && rootUserTurn?.threadName?.trim()
         ? rootUserTurn.threadName.trim()
@@ -1486,8 +1507,9 @@ export default function App() {
       }
     }
 
-    const userTurn: ConversationTurn = {
-      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    const userTurnId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const initialUserTurn: ConversationTurn = {
+      id: userTurnId,
       responseScopes: [effectiveScope],
       role: 'user',
       content: text,
@@ -1501,19 +1523,133 @@ export default function App() {
       threadName: effectiveThreadName,
       threadMonth: inheritedMonth,
       threadYear: inheritedYear,
+      cachedContext: isFollowUp ? rootUserTurn?.cachedContext : undefined,
+      refContextDomain: isFollowUp
+        ? rootUserTurn?.refContextDomain ?? domainQuery
+        : domainQuery,
+      refContextTokens: isFollowUp ? rootUserTurn?.refContextTokens : undefined,
+      refContextChars: isFollowUp ? rootUserTurn?.refContextChars : undefined,
     };
 
-    const nextBaseTurns = [...turns, userTurn];
+    const nextBaseTurns = [...turns, initialUserTurn];
     setMonthSwitchError(null);
     setTurns(nextBaseTurns);
     setActiveReportExchangeId(null);
     setIsChatBarOpen(false);
 
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.controller.abort();
+    }
+    const abortController = new AbortController();
+    activeRequestAbortRef.current = {
+      exchangeId: userTurnId,
+      controller: abortController,
+    };
+
+    let resolvedUserTurn = initialUserTurn;
+    let resolvedBaseTurns = nextBaseTurns;
+    let overrideCachedContext: string | undefined = isFollowUp
+      ? rootUserTurn?.cachedContext
+      : undefined;
+
+    if (!isFollowUp) {
+      const targetMonthNum =
+        getMonthNumberFromName(inheritedMonth) ??
+        settingsRef.current.contextCache.activeMonth ??
+        new Date().getMonth() + 1;
+      const targetYearNum =
+        inheritedYear ??
+        settingsRef.current.contextCache.activeYear ??
+        new Date().getFullYear();
+
+      setIsSending(true);
+      setNowMs(Date.now());
+      setTelemetry((prev) => ({
+        ...prev,
+        phase: 'Thinking',
+        isThinking: true,
+        startedAtMs: Date.now(),
+        promptChars: text.trim().length,
+        historyTurnsUsed: 0,
+        lastError: '',
+        refContextDomain: domainQuery,
+        refContextTokens: undefined,
+        refContextChars: undefined,
+      }));
+
+      let fetchedText = '';
+      let fetchedTokens = 0;
+      let fetchedChars = 0;
+
+      try {
+        const ctxResult = await fetchReferenceContextFromApi({
+          month: targetMonthNum,
+          year: targetYearNum,
+          domain: domainQuery,
+          apiConfig: settingsRef.current.referenceContextApi,
+          signal: abortController.signal,
+        });
+        if (abortController.signal.aborted) return;
+
+        fetchedText = ctxResult.text;
+        fetchedTokens = estimateTokens(ctxResult.text);
+        fetchedChars = ctxResult.text.length;
+
+        void handleApplyFetchedContext({
+          text: ctxResult.text,
+          month: targetMonthNum,
+          year: targetYearNum,
+          fetchedAt: ctxResult.fetchedAt,
+        });
+        pushContextLog(
+          'success',
+          `Fetched Reference Context (domain=${domainQuery} · ${formatShortYearMonth(targetMonthNum, targetYearNum)}): ${fetchedTokens.toLocaleString()} tokens (${fetchedChars.toLocaleString()} ch)`,
+        );
+      } catch (err) {
+        if (
+          abortController.signal.aborted ||
+          (err instanceof DOMException && err.name === 'AbortError') ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          return;
+        }
+        const msg =
+          err instanceof Error ? err.message : 'Reference Context API endpoint is unavailable.';
+        pushContextLog(
+          'error',
+          `Reference Context fetch failed (domain=${domainQuery} · ${formatShortYearMonth(targetMonthNum, targetYearNum)}): ${msg}`,
+        );
+      }
+
+      if (abortController.signal.aborted) return;
+
+      overrideCachedContext = fetchedText;
+      resolvedUserTurn = {
+        ...initialUserTurn,
+        cachedContext: fetchedText,
+        refContextDomain: domainQuery,
+        refContextTokens: fetchedTokens,
+        refContextChars: fetchedChars,
+      };
+      resolvedBaseTurns = nextBaseTurns.map((t) =>
+        t.id === userTurnId ? resolvedUserTurn : t,
+      );
+      setTurns(resolvedBaseTurns);
+      setTelemetry((prev) => ({
+        ...prev,
+        refContextDomain: domainQuery,
+        refContextTokens: fetchedTokens,
+        refContextChars: fetchedChars,
+      }));
+    }
+
     await executeExchangeRequest({
-      userTurn,
+      userTurn: resolvedUserTurn,
       precedingTurns: turns,
-      baseThreadTurns: nextBaseTurns,
+      baseThreadTurns: resolvedBaseTurns,
       effectiveDomain,
+      overrideCachedContext,
+      abortController,
     });
   };
 
@@ -1525,6 +1661,7 @@ export default function App() {
     if (targetIndex < 0) return;
 
     const existingUserTurn = turns[targetIndex];
+    const rootUserTurn = turns.find((t) => t.role === 'user');
     const retryScope: ConversationScope = existingUserTurn.scope ?? scope;
     const selectedAdapterId: AnyAdapterId =
       retryScope === 'private'
@@ -1556,6 +1693,7 @@ export default function App() {
       precedingTurns,
       baseThreadTurns: cleanedTurns,
       effectiveDomain: refreshedUserTurn.promptDomain ?? activePromptDomain,
+      overrideCachedContext: existingUserTurn.cachedContext ?? rootUserTurn?.cachedContext,
     });
   };
 
@@ -1574,7 +1712,6 @@ export default function App() {
                 onClick={() => {
                   setIsSettingsOpen(false);
                   setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(null);
                 }}
                 title="Home"
@@ -1593,7 +1730,6 @@ export default function App() {
                 onSelectReport={(recordId) => {
                   setIsSettingsOpen(false);
                   setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(recordId);
                 }}
                 onRenameReport={(recordId, newName) =>
@@ -1662,7 +1798,6 @@ export default function App() {
               onClick={() => {
                 setIsSettingsOpen(false);
                 setIsPromptBuilderOpen(false);
-                setIsReferenceContextOpen(false);
                 setActiveReportExchangeId(null);
               }}
               title="Home"
@@ -1672,59 +1807,27 @@ export default function App() {
             >
               <Home className="w-4 h-4" />
             </button>
-            <span
-              title="What's up"
-              className="inline-flex items-center gap-1.5 font-display text-sm sm:text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
-            >
-              <WhatsAppSymbol className="w-7 h-7 shrink-0" />
-              {(isSettingsOpen || isPromptBuilderOpen || isReferenceContextOpen || activeReportRecord) && (
-                <>
-                  <span className="text-slate-400 dark:text-slate-500 font-normal">·</span>
-                  <span className="font-medium text-slate-600 dark:text-slate-300">
-                    {isSettingsOpen
-                      ? 'Settings'
-                      : isPromptBuilderOpen
-                        ? 'Prompt Builder'
-                        : isReferenceContextOpen
-                          ? 'Reference Context'
-                          : 'Reference Report'}
-                  </span>
-                </>
-              )}
-            </span>
+            {(isSettingsOpen || isPromptBuilderOpen || activeReportRecord) && (
+              <span className="font-display text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
+                {isSettingsOpen
+                  ? 'Settings'
+                  : isPromptBuilderOpen
+                    ? 'Prompt Builder'
+                    : 'Reference Report'}
+              </span>
+            )}
 
             <span
               aria-hidden="true"
-              className="h-4 w-px bg-slate-200/90 dark:bg-slate-700/80 mx-0.5 shrink-0"
+              className="hidden md:inline-block h-4 w-px bg-slate-200/90 dark:bg-slate-700/80 mx-0.5 shrink-0"
             />
 
             <nav className="flex items-center gap-1 shrink-0" aria-label="Primary pages">
               <button
                 type="button"
                 onClick={() => {
-                  setIsSettingsOpen(false);
-                  setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen((prev) => !prev);
-                  setActiveReportExchangeId(null);
-                }}
-                aria-label="Reference Context"
-                title="Reference Context"
-                aria-current={isReferenceContextOpen ? 'page' : undefined}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                  isReferenceContextOpen
-                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
-                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
-                }`}
-                style={isReferenceContextOpen ? { color: 'var(--pa-accent)' } : undefined}
-              >
-                <BookOpen className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   setIsSettingsOpen((prev) => !prev);
                   setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(null);
                 }}
                 aria-label="Settings"
@@ -1744,7 +1847,6 @@ export default function App() {
                 onClick={() => {
                   setIsSettingsOpen(false);
                   setIsPromptBuilderOpen((prev) => !prev);
-                  setIsReferenceContextOpen(false);
                   setActiveReportExchangeId(null);
                 }}
                 aria-label="Prompt Builder"
@@ -1905,18 +2007,6 @@ export default function App() {
                 });
               }}
             />
-          ) : isReferenceContextOpen ? (
-            <ReferenceContextPage
-              scope={scope}
-              settings={settings}
-              onApplyFetchedContext={handleApplyFetchedContext}
-              onClearAllReferenceContext={handleClearAllReferenceContext}
-              onOpenSettings={() => {
-                setIsReferenceContextOpen(false);
-                setIsSettingsOpen(true);
-              }}
-              onContextLog={pushContextLog}
-            />
           ) : activeReportRecord ? (
             <ReportDocumentPage
               exchangeId={activeReportRecord.id}
@@ -2026,7 +2116,6 @@ export default function App() {
                 pushContextLog('info', 'Conversation thread deleted from session and local folder');
               }}
               onOpenSettings={() => {
-                setIsReferenceContextOpen(false);
                 setIsPromptBuilderOpen(false);
                 setActiveReportExchangeId(null);
                 setIsSettingsOpen(true);
@@ -2043,7 +2132,6 @@ export default function App() {
           <AnimatePresence>
             {!isSettingsOpen &&
               !isPromptBuilderOpen &&
-              !isReferenceContextOpen &&
               isContextRailVisible && (
                 <ContextMonitorRail
                   carefulDates={activeCarefulDates}
@@ -2110,6 +2198,21 @@ export default function App() {
                   : displayedTelemetry.phase}
               </span>
               <span className="text-slate-300 dark:text-slate-700">|</span>
+              {displayedTelemetry.refContextDomain && (
+                <>
+                  <span
+                    title={`Reference Context fetched for domain=${displayedTelemetry.refContextDomain}: ${displayedTelemetry.refContextTokens !== undefined ? `${displayedTelemetry.refContextTokens.toLocaleString()} tokens (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} chars)` : 'fetching…'}`}
+                    className="font-semibold"
+                    style={{ color: 'var(--pa-accent-text)' }}
+                  >
+                    Domain ({displayedTelemetry.refContextDomain}):{' '}
+                    {displayedTelemetry.refContextTokens !== undefined
+                      ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok`
+                      : 'fetching…'}
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                </>
+              )}
               <span
                 title={
                   displayedTelemetry.totalTokens !== undefined
@@ -2150,6 +2253,14 @@ export default function App() {
 
           {bottomBarHeight >= 54 && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/70 dark:border-slate-800/70 select-text">
+              {displayedTelemetry.refContextDomain && (
+                <span>
+                  Ref ({displayedTelemetry.refContextDomain}):{' '}
+                  {displayedTelemetry.refContextTokens !== undefined
+                    ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} ch)`
+                    : 'fetching…'}
+                </span>
+              )}
               <span>
                 Prompt Size:{' '}
                 {displayedTelemetry.promptChars > 0
