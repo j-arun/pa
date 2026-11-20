@@ -12,7 +12,6 @@ import {
   Plus,
   RotateCcw,
   Settings as SettingsIcon,
-  SlidersHorizontal,
   Sparkles,
   Square,
   Trash2,
@@ -843,7 +842,6 @@ export function WorkbenchPage({
 }: WorkbenchPageProps) {
   const [draft, setDraft] = useState('');
   const [threadName, setThreadName] = useState('');
-  const [showComposerOptions, setShowComposerOptions] = useState(false);
   const [selectedExchangeIndex, setSelectedExchangeIndex] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -980,6 +978,18 @@ export function WorkbenchPage({
   const activeMonthName = getMonthNameFromNumber(activeMonthNum) ?? 'November';
   const activePeriodFullLabel = `${activeMonthName} ${activeYearNum}`;
   const activeRefPeriod = formatShortYearMonth(activeMonthNum, activeYearNum);
+  const lockedFollowUpDomain =
+    rootExchange?.questionTurn?.promptDomain ?? activePromptDomain;
+  const effectiveComposerDomain = hasActiveThread
+    ? lockedFollowUpDomain
+    : activePromptDomain;
+  const composerPeriodLabel =
+    (hasActiveThread
+      ? formatShortYearMonth(
+          rootExchange?.questionTurn?.threadMonth,
+          rootExchange?.questionTurn?.threadYear,
+        )
+      : undefined) || activeRefPeriod;
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -997,7 +1007,7 @@ export function WorkbenchPage({
       text: questionText,
       inputMode: 'text',
       threadName: submittedThreadName,
-      promptDomain: activePromptDomain,
+      promptDomain: effectiveComposerDomain,
       isFollowUp,
     });
   };
@@ -1798,7 +1808,7 @@ export function WorkbenchPage({
                               delay: idx * 0.06,
                               ease: [0.16, 1, 0.3, 1],
                             }}
-                            className="group fluent-event-card rounded-3xl bg-white/95 dark:bg-slate-900/90 border border-white/90 dark:border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between min-h-[210px] transition-shadow hover:shadow-[0_22px_48px_-20px_rgba(2,132,199,0.22)]"
+                            className="group fluent-event-card rounded-3xl p-5 sm:p-6 flex flex-col justify-between min-h-[210px]"
                           >
                             <div className="space-y-3.5">
                               {/* Top Row: Left = Domain Icon Only | Right = Probability (Line 1) + Rating (Line 2) */}
@@ -1830,8 +1840,17 @@ export function WorkbenchPage({
                               </h2>
 
                               {/* Timeline */}
-                              <div className="inline-flex items-center gap-2 rounded-xl bg-sky-50/75 dark:bg-sky-950/35 border border-sky-200/70 dark:border-sky-800/60 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-                                <CalendarRange className="w-3.5 h-3.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                              <div
+                                style={{
+                                  backgroundColor: 'var(--pa-q-bg)',
+                                  borderColor: 'var(--pa-bubble-rim)',
+                                }}
+                                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
+                              >
+                                <CalendarRange
+                                  className="w-3.5 h-3.5 shrink-0"
+                                  style={{ color: 'var(--pa-accent)' }}
+                                />
                                 <span>{displayDate || 'Timing detailed in report'}</span>
                               </div>
                             </div>
@@ -1843,7 +1862,7 @@ export function WorkbenchPage({
                                 onClick={() => openEventFlash(evt)}
                                 aria-label={`Open flash for ${evt.title}`}
                                 title="Flash"
-                                className="pa-glimmer-btn relative inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white overflow-hidden transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-sky-400/70"
+                                className="pa-glimmer-btn relative inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white overflow-hidden transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--pa-accent)]"
                               >
                                 <Zap className="relative z-10 w-4 h-4 fill-current" />
                               </button>
@@ -1951,19 +1970,31 @@ export function WorkbenchPage({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 28, scale: 0.9 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-auto w-full max-w-[430px] rounded-3xl border border-white/90 dark:border-slate-700/85 bg-white/92 dark:bg-slate-900/92 backdrop-blur-2xl shadow-[0_24px_60px_-16px_rgba(15,23,42,0.22)] p-4 space-y-2.5"
+              style={{ borderColor: 'var(--pa-bubble-rim)' }}
+              className="pointer-events-auto w-full max-w-[600px] sm:max-w-[640px] rounded-3xl border bg-white/94 dark:bg-slate-900/94 backdrop-blur-2xl shadow-[0_28px_70px_-16px_rgba(15,23,42,0.28)] p-5 sm:p-6 space-y-4"
             >
-              {/* Composer Header with Domain Name */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-1.5 font-display text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    <span>{`What's up · ${getPromptDomainShortLabel(activePromptDomain)}`}</span>
+              {/* Auto-Populated 2-Line Composer Header (Domain + Topic + Period) */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="inline-flex items-center gap-2 font-display text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    <span>{`What's up · ${getPromptDomainShortLabel(effectiveComposerDomain)}`}</span>
+                    {hasActiveThread && (
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: 'var(--pa-accent-text)' }}
+                      >
+                        Follow-up
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate tabular-nums">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums">
                     {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()
-                      ? `${rootExchange.questionTurn.threadName.trim()} · `
-                      : ''}
-                    {activeRefPeriod ? `Period: ${activeRefPeriod}` : 'Choose a domain below'}
+                      ? `${rootExchange.questionTurn.threadName.trim()}${
+                          composerPeriodLabel ? ` · Period: ${composerPeriodLabel}` : ''
+                        }`
+                      : composerPeriodLabel
+                        ? `Period: ${composerPeriodLabel}`
+                        : 'Select Formal or Classic style below'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -1973,32 +2004,18 @@ export function WorkbenchPage({
                       onClick={onClearConversation}
                       disabled={isSending}
                       title="Start a brand new thread"
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-3.5 h-3.5" />
                       <span>New</span>
                     </button>
                   )}
                   <button
                     type="button"
-                    onClick={() => setShowComposerOptions((prev) => !prev)}
-                    aria-expanded={showComposerOptions}
-                    title="Prompt style"
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                      showComposerOptions
-                        ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300'
-                        : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5" />
-                    <span>Style</span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={onToggleChatBar}
                     aria-label="Minimize chat panel"
                     title="Minimize chat panel"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
@@ -2006,7 +2023,7 @@ export function WorkbenchPage({
               </div>
 
               {privateNeedsModel && (
-                <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200">
+                <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
                   <span className="truncate">No Ollama model selected.</span>
                   <button
                     type="button"
@@ -2018,80 +2035,92 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              {/* Always-Visible Domain Selector inside the Chat Box */}
-              <div className="flex items-center gap-2">
-                <span
-                  id="composer-domain-label"
-                  className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 shrink-0"
-                >
-                  Domain
+              {/* Domain Selector & Thread Name are ONLY for fresh threads; Follow-ups lock to active Domain & Period */}
+              {!hasActiveThread && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span
+                      id="composer-domain-label"
+                      className="text-xs font-semibold text-slate-600 dark:text-slate-300 shrink-0"
+                    >
+                      Domain
+                    </span>
+                    <div
+                      role="group"
+                      aria-labelledby="composer-domain-label"
+                      className="flex-1 grid grid-cols-4 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
+                    >
+                      {PROMPT_DOMAINS.map((domain) => {
+                        const selected = activePromptDomain === domain;
+                        return (
+                          <button
+                            key={domain}
+                            type="button"
+                            onClick={() => onPromptDomainChange(domain)}
+                            aria-pressed={selected}
+                            className={`rounded-lg px-2 py-1.5 text-xs font-medium transition-colors truncate cursor-pointer ${
+                              selected
+                                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-white/75 dark:hover:bg-slate-800/75'
+                            }`}
+                          >
+                            {getPromptDomainShortLabel(domain)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={threadName}
+                    onChange={(e) => setThreadName(e.target.value)}
+                    placeholder="Report / Thread name (auto-named if blank)"
+                    aria-label="Thread Name"
+                    className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/80 dark:bg-slate-950/65 px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-[var(--pa-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--pa-bubble-glow)]"
+                  />
+                </>
+              )}
+
+              {/* Prompt Style Selector (Formal / Classic — allowed change on follow-ups) */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 shrink-0">
+                  Style
                 </span>
                 <div
                   role="group"
-                  aria-labelledby="composer-domain-label"
-                  className="flex-1 grid grid-cols-4 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
+                  aria-label="Prompt Style"
+                  className="flex-1 inline-flex rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5 gap-1"
                 >
-                  {PROMPT_DOMAINS.map((domain) => {
-                    const selected = activePromptDomain === domain;
+                  {(['formal', 'classic'] as const).map((style) => {
+                    const selected = promptStyle === style;
                     return (
                       <button
-                        key={domain}
+                        key={style}
                         type="button"
-                        onClick={() => onPromptDomainChange(domain)}
+                        onClick={() => onPromptStyleChange(style)}
                         aria-pressed={selected}
-                        className={`rounded-lg px-2 py-1 text-[11px] font-medium transition-colors truncate ${
+                        style={
                           selected
-                            ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs'
+                            ? { backgroundColor: 'var(--pa-accent)', color: '#ffffff' }
+                            : undefined
+                        }
+                        className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors cursor-pointer ${
+                          selected
+                            ? 'shadow-2xs'
                             : 'text-slate-600 dark:text-slate-300 hover:bg-white/75 dark:hover:bg-slate-800/75'
                         }`}
                       >
-                        {getPromptDomainShortLabel(domain)}
+                        {style}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Thread Name Input (shown for new thread; follow-ups update the active thread automatically) */}
-              {!hasActiveThread && (
-                <input
-                  type="text"
-                  value={threadName}
-                  onChange={(e) => setThreadName(e.target.value)}
-                  placeholder="Report / Thread name (auto-named if blank)"
-                  aria-label="Thread Name"
-                  className="w-full rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/80 dark:bg-slate-950/65 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/15"
-                />
-              )}
-
-              {/* Collapsible Prompt Style Selector */}
-              {showComposerOptions && (
-                <div className="flex items-center gap-2 pt-0.5">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
-                    Prompt Style
-                  </span>
-                  <div className="flex-1 inline-flex rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5">
-                    {(['formal', 'classic'] as const).map((style) => (
-                      <button
-                        key={style}
-                        type="button"
-                        onClick={() => onPromptStyleChange(style)}
-                        className={`flex-1 rounded-lg px-2 py-1 text-[11px] font-medium capitalize transition-colors ${
-                          promptStyle === style
-                            ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                            : 'text-slate-600 dark:text-slate-300'
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Question Input Form (hidden when viewing a finalized thread) */}
               {hasActiveThread && isThreadFinalized ? (
-                <div className="rounded-2xl border border-slate-200/85 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/60 px-3.5 py-3 flex items-center justify-between gap-3">
+                <div className="rounded-2xl border border-slate-200/85 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/60 px-4 py-3.5 flex items-center justify-between gap-3">
                   <p
                     className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed"
                     style={{ fontFamily: 'var(--pa-font-body)' }}
@@ -2101,7 +2130,7 @@ export function WorkbenchPage({
                   <button
                     type="button"
                     onClick={onClearConversation}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] px-3 py-1.5 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] px-3.5 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>New Thread</span>
@@ -2110,40 +2139,46 @@ export function WorkbenchPage({
               ) : (
                 <form
                   onSubmit={handleSubmit}
-                  className={`rounded-2xl border px-3 py-2.5 flex items-end gap-2 transition-colors ${
+                  style={
+                    scope === 'public'
+                      ? {
+                          backgroundColor: 'var(--pa-q-bg)',
+                          borderColor: 'var(--pa-bubble-rim)',
+                        }
+                      : undefined
+                  }
+                  className={`rounded-2xl border px-4 py-3.5 flex items-end gap-3 transition-colors ${
                     scope === 'private'
                       ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200/90 dark:border-emerald-800/70'
-                      : 'bg-sky-50/75 dark:bg-slate-950/75 border-sky-200/90 dark:border-slate-700/85'
+                      : ''
                   }`}
                 >
                   <textarea
                     ref={textareaRef}
-                    rows={3}
+                    rows={5}
                     value={draft}
                     disabled={isSending}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={
                       hasActiveThread
-                        ? 'Ask a follow-up question to update this report…'
+                        ? 'Ask a follow-up question for this domain & period…'
                         : 'Type your question… (Enter to send)'
                     }
                     style={{ fontFamily: 'var(--pa-font-body)' }}
-                    className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+                    className="flex-1 min-h-[128px] resize-none bg-transparent text-sm sm:text-[15px] leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
                   />
                   <button
                     type="submit"
                     disabled={!draft.trim() || isSending}
-                    aria-label="Send question"
-                    className="h-10 px-3.5 rounded-xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                    aria-label={hasActiveThread ? 'Send follow-up' : 'Send question'}
+                    title={hasActiveThread ? 'Send follow-up' : 'Send question'}
+                    className="h-11 w-11 rounded-2xl bg-[var(--pa-accent)] hover:bg-[var(--pa-accent-hover)] disabled:opacity-45 disabled:pointer-events-none text-white inline-flex items-center justify-center transition-all shadow-md hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
                   >
                     {isSending ? (
                       <Hourglass className="w-4 h-4 animate-spin" />
                     ) : (
-                      <>
-                        <span>{hasActiveThread ? 'Follow Up' : 'Send'}</span>
-                        <ArrowUp className="w-3.5 h-3.5" />
-                      </>
+                      <ArrowUp className="w-5 h-5" />
                     )}
                   </button>
                 </form>

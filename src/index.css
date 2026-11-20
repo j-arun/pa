@@ -459,11 +459,19 @@
 }
 
 .fluent-3d-bubble-tail {
-  background: linear-gradient(155deg, rgba(244, 249, 255, 0.92), rgba(221, 239, 254, 0.86));
+  background: linear-gradient(155deg, rgba(244, 249, 255, 0.94), rgba(221, 239, 254, 0.88));
   box-shadow:
     0 8px 16px -6px var(--pa-bubble-glow),
     inset 0 1px 2px rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--pa-bubble-rim);
+}
+
+[data-pa-theme="emerald-mist"] .fluent-3d-bubble-tail {
+  background: linear-gradient(155deg, rgba(240, 253, 247, 0.94), rgba(215, 248, 232, 0.88));
+}
+
+[data-pa-theme="royal-amethyst"] .fluent-3d-bubble-tail {
+  background: linear-gradient(155deg, rgba(250, 245, 255, 0.94), rgba(236, 224, 255, 0.88));
 }
 
 .dark .fluent-3d-bubble-tail {
@@ -475,15 +483,44 @@
 }
 
 .fluent-event-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 248, 255, 0.91) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.94);
   box-shadow:
     0 18px 42px -22px rgba(15, 23, 42, 0.14),
-    0 4px 12px -4px rgba(15, 23, 42, 0.05);
+    0 6px 20px -10px var(--pa-bubble-glow),
+    0 4px 12px -4px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease;
+}
+
+[data-pa-theme="emerald-mist"] .fluent-event-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(236, 253, 245, 0.92) 100%);
+}
+
+[data-pa-theme="royal-amethyst"] .fluent-event-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 239, 255, 0.92) 100%);
 }
 
 .dark .fluent-event-card {
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.94) 0%, rgba(12, 24, 44, 0.92) 100%);
+  border: 1px solid rgba(51, 65, 85, 0.85);
   box-shadow:
     0 18px 42px -22px rgba(2, 6, 23, 0.65),
+    0 8px 22px -12px var(--pa-bubble-glow),
     0 4px 12px -4px rgba(2, 6, 23, 0.35);
+}
+
+.fluent-event-card:hover {
+  border-color: var(--pa-bubble-rim);
+  box-shadow:
+    0 22px 48px -20px var(--pa-bubble-glow),
+    0 8px 20px -8px rgba(15, 23, 42, 0.08);
+}
+
+.dark .fluent-event-card:hover {
+  border-color: var(--pa-bubble-rim);
+  box-shadow:
+    0 22px 50px -18px var(--pa-bubble-glow),
+    0 8px 24px -8px rgba(2, 6, 23, 0.65);
 }
 
 @keyframes paFlashGlimmerSweep {
@@ -500,19 +537,19 @@
   0%,
   100% {
     box-shadow:
-      0 8px 20px -6px rgba(14, 165, 233, 0.48),
+      0 8px 20px -6px var(--pa-bubble-glow),
       0 0 0 1px rgba(255, 255, 255, 0.35) inset;
   }
   50% {
     box-shadow:
-      0 10px 26px -4px rgba(99, 102, 241, 0.62),
-      0 0 14px rgba(56, 189, 248, 0.42),
+      0 10px 26px -4px var(--pa-bubble-rim),
+      0 0 14px var(--pa-bubble-glow),
       0 0 0 1px rgba(255, 255, 255, 0.55) inset;
   }
 }
 
 .pa-glimmer-btn {
-  background: linear-gradient(135deg, var(--pa-accent) 0%, #38bdf8 52%, #6366f1 100%);
+  background: linear-gradient(135deg, var(--pa-accent) 0%, var(--pa-accent-hover) 100%);
   animation: paFlashGlimmerGlow 2.4s ease-in-out infinite;
 }
 

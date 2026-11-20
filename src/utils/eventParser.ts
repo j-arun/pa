@@ -751,17 +751,35 @@ function inferDomainFromLine(line: string, fallbackDomain?: PromptDomain): strin
   return getPromptDomainShortLabel(fallbackDomain);
 }
 
+function isCautionSectionHeading(heading: string): boolean {
+  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|specific\s+.{0,32}dates\s+to\s+be\s+very\s+careful|warning\s+dates|risk\s+windows|sensitivity\s+dates|precaution)\b/i.test(
+    heading,
+  );
+}
+
 function extractFallbackCautionDates(
   cleanMarkdown: string,
   fallbackDomain?: PromptDomain,
 ): CarefulDateItem[] {
   const items: CarefulDateItem[] = [];
+  const seen = new Set<string>();
   const lines = cleanMarkdown.split(/\r?\n/);
+  let inCautionSection = false;
 
   for (const rawLine of lines) {
+    const trimmedRaw = rawLine.trim();
+    const headingMatch = trimmedRaw.match(/^#{1,6}\s+(.+)$/);
+    if (headingMatch) {
+      inCautionSection = isCautionSectionHeading(cleanLineKeepText(headingMatch[1]));
+      continue;
+    }
+
     const cleaned = cleanPlainSummary(rawLine);
-    if (!cleaned || cleaned.length < 18) continue;
+    if (!cleaned || cleaned.length < 14) continue;
+    if (/^\|[\s|:-]+\|$/.test(trimmedRaw)) continue;
+
     const hasCautionSignal =
+      inCautionSection ||
       /\b(careful|caution|avoid|watch|sensitive|tension|friction|delay|risk|stress|conflict|misunderstanding|strain)\b/i.test(
         cleaned,
       );
@@ -775,18 +793,65 @@ function extractFallbackCautionDates(
           ? 'watch'
           : 'caution';
 
+    const dateText = dateMatch[0].trim();
+    const noteText = truncateText(cleaned, 150);
+    const dedupeKey = `${dateText.toLowerCase()}|${noteText.toLowerCase()}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
     items.push({
       id: `cd-fb-${items.length + 1}`,
       domain: inferDomainFromLine(cleaned, fallbackDomain),
-      date: dateMatch[0].trim(),
-      note: truncateText(cleaned, 150),
+      date: dateText,
+      note: noteText,
       severity,
     });
 
-    if (items.length >= 12) break;
+    if (items.length >= 16) break;
   }
 
   return items;
+}
+
+export function extractCarefulDatesFromHtml(
+  html: string,
+  fallbackDomain?: PromptDomain,
+): CarefulDateItem[] {
+  if (!html || !html.trim()) return [];
+  if (typeof DOMParser === 'undefined') {
+    const textOnly = html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, '\n');
+    return extractFallbackCautionDates(textOnly, fallbackDomain);
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('style, script, noscript').forEach((el) => el.remove());
+
+  const blocks = Array.from(
+    doc.querySelectorAll('h1, h2, h3, h4, h5, h6, li, p, tr'),
+  );
+  const lines: string[] = [];
+
+  for (const el of blocks) {
+    if (/^H[1-6]$/i.test(el.tagName)) {
+      const headingText = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (headingText) lines.push(`## ${headingText}`);
+      continue;
+    }
+    if (el.tagName === 'TR') {
+      const cells = Array.from(el.querySelectorAll('th, td'))
+        .map((c) => (c.textContent || '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      if (cells.length > 0) lines.push(cells.join(' — '));
+      continue;
+    }
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text) lines.push(text);
+  }
+
+  return extractFallbackCautionDates(lines.join('\n'), fallbackDomain);
 }
 
 export function parseResponseEventsAndReport(

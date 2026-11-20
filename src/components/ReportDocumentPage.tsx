@@ -190,7 +190,7 @@ function RichMatrixTable({ table }: { table: ReportMatrixTable }) {
               onChange={(e) => setFilterQuery(e.target.value)}
               placeholder="Filter rows…"
               aria-label={`Filter ${table.title}`}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--pa-accent)]"
             />
           </div>
         )}
@@ -217,9 +217,9 @@ function RichMatrixTable({ table }: { table: ReportMatrixTable }) {
                       <span>{header || `Column ${colIdx + 1}`}</span>
                       {isSorted ? (
                         sortDir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                          <ArrowUp className="w-3 h-3" style={{ color: 'var(--pa-accent)' }} />
                         ) : (
-                          <ArrowDown className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                          <ArrowDown className="w-3 h-3" style={{ color: 'var(--pa-accent)' }} />
                         )
                       ) : (
                         <ArrowUpDown className="w-3 h-3 opacity-35" />
@@ -244,7 +244,7 @@ function RichMatrixTable({ table }: { table: ReportMatrixTable }) {
               processedRows.map((row, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className="hover:bg-sky-50/45 dark:hover:bg-slate-800/45 transition-colors align-top"
+                  className="hover:bg-slate-100/60 dark:hover:bg-slate-800/45 transition-colors align-top"
                 >
                   {row.map((cell, colIdx) => {
                     const header = table.headers[colIdx] || '';
@@ -503,9 +503,9 @@ export function ReportDocumentPage({
   ].filter(Boolean);
 
   return (
-    <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-slate-50/70 dark:bg-slate-950/60">
+    <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-transparent">
       {/* Document Toolbar */}
-      <header className="shrink-0 px-4 sm:px-6 py-3 border-b border-slate-200/85 dark:border-slate-800/85 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl flex flex-wrap items-center justify-between gap-3">
+      <header className="shrink-0 px-4 sm:px-6 py-3 border-b border-slate-200/85 dark:border-slate-800/85 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
@@ -567,15 +567,23 @@ export function ReportDocumentPage({
         ) : (
           <div className="max-w-5xl mx-auto space-y-6 pb-8">
             {/* Report Header Card: Title, Domain, Period, Rating, Updated Timestamp */}
-            <section className="rounded-3xl border border-white/90 dark:border-slate-800 bg-white/92 dark:bg-slate-900/90 backdrop-blur-xl p-5 sm:p-6 shadow-sm">
+            <section
+              style={{ borderColor: 'var(--pa-bubble-rim)' }}
+              className="fluent-event-card rounded-3xl border p-5 sm:p-6"
+            >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-2 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     {domainLabel && (
                       <span
-                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200/80 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800/70"
+                        style={{
+                          backgroundColor: 'var(--pa-q-bg)',
+                          borderColor: 'var(--pa-bubble-rim)',
+                          color: 'var(--pa-accent-text)',
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border"
                       >
-                        <Sparkles className="w-3 h-3" />
+                        <Sparkles className="w-3 h-3" style={{ color: 'var(--pa-accent)' }} />
                         <span>{domainLabel}</span>
                       </span>
                     )}
@@ -684,10 +692,19 @@ export function ReportDocumentPage({
             {exchangeViews.map((exchange, exIdx) => (
               <section key={`${exchange.label}-${exIdx}`} className="space-y-4">
                 {exchange.question && (
-                  <div className="rounded-2xl border border-sky-200/85 dark:border-sky-900/70 bg-sky-50/70 dark:bg-sky-950/25 px-4 sm:px-5 py-4">
+                  <div
+                    style={{
+                      backgroundColor: 'var(--pa-q-bg)',
+                      borderColor: 'var(--pa-bubble-rim)',
+                    }}
+                    className="rounded-2xl border px-4 sm:px-5 py-4"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">
-                        <MessageSquare className="w-3.5 h-3.5" />
+                      <div
+                        style={{ color: 'var(--pa-accent-text)' }}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
                         <span>{exchange.label}</span>
                       </div>
                       {exchange.askedAt && (

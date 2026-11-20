@@ -5,7 +5,6 @@ import {
   Info,
   Lock,
   Palette,
-  PanelBottom,
   PanelLeft,
   PanelRight,
   Settings,
@@ -60,6 +59,7 @@ import {
 import {
   EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
   buildThreadHtmlDocument,
+  extractCarefulDatesFromHtml,
   parseResponseEventsAndReport,
   type ThreadHtmlExchangeInput,
 } from './utils/eventParser';
@@ -533,18 +533,6 @@ export default function App() {
     saveScope(scope);
   }, [scope]);
 
-  const activePublicAdapterLabel =
-    settings.publicLlm.activeAdapter === 'gemini'
-      ? 'Gemini'
-      : settings.publicLlm.activeAdapter === 'claude'
-        ? 'Claude'
-        : 'Fable';
-
-  const connectedEngineText =
-    scope === 'private'
-      ? `Connected: Private · Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
-      : `Connected: Public · ${activePublicAdapterLabel} (${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model})`;
-
   const handleCycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(effectiveTheme);
     const nextTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
@@ -970,6 +958,38 @@ export default function App() {
     return null;
   }, [activeReportExchangeId, ratedThreads, turns]);
 
+  const activeThreadScope = useMemo<ConversationScope | null>(() => {
+    const sourceTurns = activeReportRecord?.turns ?? (turns.length > 0 ? turns : null);
+    if (!sourceTurns || sourceTurns.length === 0) return null;
+    const latestReply = [...sourceTurns]
+      .reverse()
+      .find((t) => t.role === 'assistant');
+    const rootQ = sourceTurns.find((t) => t.role === 'user');
+    return latestReply?.scope ?? rootQ?.scope ?? null;
+  }, [activeReportRecord, turns]);
+
+  const canSwitchScope =
+    !isSettingsOpen &&
+    !isPromptBuilderOpen &&
+    !isReferenceContextOpen &&
+    !activeReportRecord &&
+    turns.length === 0 &&
+    !isSending;
+
+  const displayedScope: ConversationScope = activeThreadScope ?? scope;
+
+  const activePublicAdapterLabel =
+    settings.publicLlm.activeAdapter === 'gemini'
+      ? 'Gemini'
+      : settings.publicLlm.activeAdapter === 'claude'
+        ? 'Claude'
+        : 'Fable';
+
+  const connectedEngineText =
+    displayedScope === 'private'
+      ? `Connected: Private · Ollama (${settings.privateLlm.selectedModel || 'No model selected'})`
+      : `Connected: Public · ${activePublicAdapterLabel} (${settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model})`;
+
   const displayedTelemetry = useMemo<LlmContextTelemetry>(() => {
     if (
       telemetry.isThinking ||
@@ -1027,14 +1047,28 @@ export default function App() {
   const activeCarefulDates = useMemo<CarefulDateItem[]>(() => {
     const items: CarefulDateItem[] = [];
     const seen = new Set<string>();
-    const rootQ = turns.find((t) => t.role === 'user');
+    const sourceTurns = activeReportRecord?.turns ?? turns;
+    const rootQ = sourceTurns.find((t) => t.role === 'user');
 
-    for (const turn of turns) {
+    for (const turn of sourceTurns) {
       if (turn.role !== 'assistant') continue;
-      const list =
-        Array.isArray(turn.carefulDates) && turn.carefulDates.length > 0
-          ? turn.carefulDates
-          : parseResponseEventsAndReport(turn.content, rootQ?.promptDomain).carefulDates;
+      let list: CarefulDateItem[] = [];
+      if (Array.isArray(turn.carefulDates) && turn.carefulDates.length > 0) {
+        list = turn.carefulDates;
+      } else {
+        if (turn.content && turn.content.trim().length > 40) {
+          list = parseResponseEventsAndReport(
+            turn.content,
+            rootQ?.promptDomain,
+          ).carefulDates;
+        }
+        if (list.length === 0 && turn.htmlReport) {
+          list = extractCarefulDatesFromHtml(
+            turn.htmlReport,
+            rootQ?.promptDomain,
+          );
+        }
+      }
       for (const cd of list) {
         const dedupeKey = `${cd.domain.toLowerCase()}|${cd.date.toLowerCase()}|${cd.note.toLowerCase()}`;
         if (seen.has(dedupeKey)) continue;
@@ -1043,10 +1077,11 @@ export default function App() {
       }
     }
     return items;
-  }, [turns]);
+  }, [activeReportRecord, turns]);
 
   const activeCarefulPeriodLabel = useMemo(() => {
-    const rootQ = turns.find((t) => t.role === 'user');
+    const sourceTurns = activeReportRecord?.turns ?? turns;
+    const rootQ = sourceTurns.find((t) => t.role === 'user');
     return (
       formatShortYearMonth(rootQ?.threadMonth, rootQ?.threadYear) ||
       formatShortYearMonth(
@@ -1054,7 +1089,12 @@ export default function App() {
         settings.contextCache.activeYear,
       )
     );
-  }, [settings.contextCache.activeMonth, settings.contextCache.activeYear, turns]);
+  }, [
+    activeReportRecord,
+    settings.contextCache.activeMonth,
+    settings.contextCache.activeYear,
+    turns,
+  ]);
 
   const executeExchangeRequest = async ({
     userTurn,
@@ -1067,7 +1107,7 @@ export default function App() {
     baseThreadTurns: ConversationTurn[];
     effectiveDomain: PromptDomain;
   }) => {
-    const targetScope = scope;
+    const targetScope = userTurn.scope ?? scope;
     const targetAdapterId: AnyAdapterId =
       targetScope === 'private'
         ? settings.privateLlm.activeAdapter
@@ -1430,19 +1470,21 @@ export default function App() {
     promptDomain,
     isFollowUp,
   }: SendThreadMessagePayload) => {
-    const selectedAdapterId: AnyAdapterId =
-      scope === 'private'
-        ? settings.privateLlm.activeAdapter
-        : settings.publicLlm.activeAdapter;
-    const selectedModelName =
-      scope === 'private'
-        ? settings.privateLlm.selectedModel || 'unselected'
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
-
     const rootUserTurn = turns.find((t) => t.role === 'user');
     if (isFollowUp && rootUserTurn?.isFinalized) {
       return;
     }
+    const effectiveScope: ConversationScope =
+      (isFollowUp ? rootUserTurn?.scope : undefined) ?? scope;
+    const selectedAdapterId: AnyAdapterId =
+      effectiveScope === 'private'
+        ? settings.privateLlm.activeAdapter
+        : settings.publicLlm.activeAdapter;
+    const selectedModelName =
+      effectiveScope === 'private'
+        ? settings.privateLlm.selectedModel || 'unselected'
+        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+
     const inheritedMonth =
       (isFollowUp ? rootUserTurn?.threadMonth : undefined) ||
       getMonthNameFromNumber(settings.contextCache.activeMonth);
@@ -1489,12 +1531,12 @@ export default function App() {
 
     const userTurn: ConversationTurn = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      responseScopes: [scope],
+      responseScopes: [effectiveScope],
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
       inputMode,
-      scope,
+      scope: effectiveScope,
       adapterId: selectedAdapterId,
       model: selectedModelName,
       promptDomain: effectiveDomain,
@@ -1526,19 +1568,20 @@ export default function App() {
     if (targetIndex < 0) return;
 
     const existingUserTurn = turns[targetIndex];
+    const retryScope: ConversationScope = existingUserTurn.scope ?? scope;
     const selectedAdapterId: AnyAdapterId =
-      scope === 'private'
+      retryScope === 'private'
         ? settings.privateLlm.activeAdapter
         : settings.publicLlm.activeAdapter;
     const selectedModelName =
-      scope === 'private'
+      retryScope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
 
     const refreshedUserTurn: ConversationTurn = {
       ...existingUserTurn,
-      scope,
-      responseScopes: [scope],
+      scope: retryScope,
+      responseScopes: [retryScope],
       adapterId: selectedAdapterId,
       model: selectedModelName,
     };
@@ -1766,15 +1809,28 @@ export default function App() {
           <div
             role="group"
             aria-label="Conversation target"
-            className="inline-flex items-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0"
+            title={
+              canSwitchScope
+                ? 'Choose Private or Public for your new thread'
+                : 'Private / Public switching is only available when starting a new thread'
+            }
+            className={`inline-flex items-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
+              canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
+            }`}
           >
             <button
               type="button"
-              onClick={() => setScope('private')}
+              disabled={!canSwitchScope}
+              aria-pressed={displayedScope === 'private'}
+              onClick={() => {
+                if (canSwitchScope) setScope('private');
+              }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                scope === 'private'
+                !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+              } ${
+                displayedScope === 'private'
                   ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
               }`}
             >
               <Lock className="w-3.5 h-3.5" />
@@ -1782,13 +1838,19 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setScope('public')}
+              disabled={!canSwitchScope}
+              aria-pressed={displayedScope === 'public'}
+              onClick={() => {
+                if (canSwitchScope) setScope('public');
+              }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                scope === 'public'
+                !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+              } ${
+                displayedScope === 'public'
                   ? 'bg-white dark:bg-slate-900 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
               }`}
-              style={scope === 'public' ? { color: 'var(--pa-accent-text)' } : undefined}
+              style={displayedScope === 'public' ? { color: 'var(--pa-accent-text)' } : undefined}
             >
               <Cloud className="w-3.5 h-3.5" />
               <span>Public</span>
@@ -1830,55 +1892,6 @@ export default function App() {
               style={aboutDateLabel ? { color: 'var(--pa-accent)' } : undefined}
             >
               <Info className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  isSettingsOpen ||
-                  isPromptBuilderOpen ||
-                  isReferenceContextOpen ||
-                  activeReportExchangeId
-                ) {
-                  setIsSettingsOpen(false);
-                  setIsPromptBuilderOpen(false);
-                  setIsReferenceContextOpen(false);
-                  setActiveReportExchangeId(null);
-                  setIsChatBarOpen(true);
-                } else {
-                  setIsChatBarOpen((prev) => !prev);
-                }
-              }}
-              aria-label={isChatBarOpen ? 'Minimize Chat Panel' : 'Show Chat Panel'}
-              title={isChatBarOpen ? 'Minimize Chat Panel' : 'Show Chat Panel'}
-              aria-pressed={
-                !isSettingsOpen &&
-                !isPromptBuilderOpen &&
-                !isReferenceContextOpen &&
-                !activeReportExchangeId &&
-                isChatBarOpen
-              }
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
-                !isSettingsOpen &&
-                !isPromptBuilderOpen &&
-                !isReferenceContextOpen &&
-                !activeReportExchangeId &&
-                isChatBarOpen
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              style={
-                !isSettingsOpen &&
-                !isPromptBuilderOpen &&
-                !isReferenceContextOpen &&
-                !activeReportExchangeId &&
-                isChatBarOpen
-                  ? { color: 'var(--pa-accent-text)' }
-                  : undefined
-              }
-            >
-              <PanelBottom className="w-4 h-4" />
             </button>
 
             <button
@@ -2037,7 +2050,7 @@ export default function App() {
             />
           ) : (
             <WorkbenchPage
-              scope={scope}
+              scope={displayedScope}
               settings={settings}
               turns={turns}
               isArchivedThread={Boolean(
@@ -2109,7 +2122,6 @@ export default function App() {
             {!isSettingsOpen &&
               !isPromptBuilderOpen &&
               !isReferenceContextOpen &&
-              !activeReportRecord &&
               isContextRailVisible && (
                 <ContextMonitorRail
                   carefulDates={activeCarefulDates}
@@ -2152,7 +2164,7 @@ export default function App() {
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{
                   backgroundColor:
-                    scope === 'private' ? '#10B981' : 'var(--pa-accent)',
+                    displayedScope === 'private' ? '#10B981' : 'var(--pa-accent)',
                 }}
                 aria-hidden="true"
               />
