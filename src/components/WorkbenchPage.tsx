@@ -20,6 +20,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EventCategoryEmblem } from './DomainEmblem';
+import { ScopeBackdrop3D } from './ScopeBackdrop3D';
 import { WhatsAppSymbol } from './WhatsAppSymbol';
 import type {
   AnyAdapterId,
@@ -286,459 +287,6 @@ function WhisperIcon({ className = 'w-4 h-4' }: { className?: string }) {
     </svg>
   );
 }
-
-function buildPeriodicSinePath(
-  baselineY: number,
-  amplitude: number,
-  cyclesPerTile: number,
-  phaseOffset = 0,
-): string {
-  const tileWidth = 1440;
-  const totalWidth = 2880;
-  const step = 40;
-  const points: string[] = [];
-
-  for (let x = 0; x <= totalWidth; x += step) {
-    const theta = ((x / tileWidth) * cyclesPerTile * Math.PI * 2) + phaseOffset;
-    const y = baselineY + Math.sin(theta) * amplitude;
-    points.push(`${x === 0 ? 'M' : 'L'} ${x} ${y.toFixed(1)}`);
-  }
-
-  return points.join(' ');
-}
-
-const RIBBON_PATH_A = buildPeriodicSinePath(96, 26, 2, 0.2);
-const RIBBON_PATH_B = buildPeriodicSinePath(118, 20, 3, 1.4);
-const RIBBON_PATH_C = buildPeriodicSinePath(106, 15, 2, 2.5);
-
-function ScopeWatermarkBackdrop({ scope }: { scope: ConversationScope }) {
-  const isPrivate = scope === 'private';
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      {/* Animated Ambient Aurora Clouds Driven by Active Theme */}
-      <div
-        className="pa-mist-a absolute -top-28 -left-24 w-[560px] h-[420px] rounded-full blur-3xl opacity-85"
-        style={{
-          background:
-            'radial-gradient(circle, var(--pa-aurora-1) 0%, var(--pa-aurora-3) 45%, transparent 74%)',
-        }}
-      />
-      <div
-        className="pa-mist-b absolute -bottom-28 -right-24 w-[540px] h-[420px] rounded-full blur-3xl opacity-80"
-        style={{
-          background:
-            'radial-gradient(circle, var(--pa-aurora-2) 0%, var(--pa-aurora-3) 46%, transparent 74%)',
-        }}
-      />
-      <div
-        className="pa-mist-c absolute top-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[340px] rounded-full blur-3xl opacity-65"
-        style={{
-          background:
-            'radial-gradient(circle, var(--pa-aurora-3) 0%, transparent 72%)',
-        }}
-      />
-
-      {/* Seamless Animated Wave Ribbons (Continuous Horizontal Sine Motion) */}
-      <div
-        className={`absolute inset-x-0 bottom-4 sm:bottom-8 h-44 sm:h-52 overflow-hidden transition-opacity duration-500 ${
-          isPrivate ? 'opacity-65' : 'opacity-90'
-        }`}
-      >
-        <svg
-          viewBox="0 0 2880 200"
-          preserveAspectRatio="none"
-          className="pa-ribbon-flow-a h-full w-[200%] max-w-none"
-        >
-          <path
-            d={RIBBON_PATH_A}
-            fill="none"
-            stroke="var(--pa-wave-stroke)"
-            strokeWidth={isPrivate ? 1.8 : 2.5}
-            strokeLinecap="round"
-            strokeDasharray={isPrivate ? '6 10' : undefined}
-          />
-          <path
-            d={RIBBON_PATH_C}
-            fill="none"
-            stroke="var(--pa-wave-stroke-soft)"
-            strokeWidth={isPrivate ? 1.3 : 1.9}
-            strokeLinecap="round"
-          />
-        </svg>
-        <svg
-          viewBox="0 0 2880 200"
-          preserveAspectRatio="none"
-          className="pa-ribbon-flow-b absolute inset-0 h-full w-[200%] max-w-none"
-        >
-          <path
-            d={RIBBON_PATH_B}
-            fill="none"
-            stroke="var(--pa-wave-stroke-soft)"
-            strokeWidth={isPrivate ? 1.4 : 2.1}
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-
-      {/* Gentle Floating Bokeh Shimmer Particles */}
-      <span
-        className="pa-particle-1 absolute bottom-[18%] left-[12%] h-2.5 w-2.5 rounded-full blur-[0.5px]"
-        style={{ backgroundColor: 'var(--pa-particle-color)' }}
-      />
-      <span
-        className="pa-particle-2 absolute bottom-[26%] left-[34%] h-2 w-2 rounded-full blur-[0.5px]"
-        style={{ backgroundColor: 'var(--pa-particle-color)' }}
-      />
-      <span
-        className="pa-particle-3 absolute bottom-[22%] right-[28%] h-3 w-3 rounded-full blur-[1px]"
-        style={{ backgroundColor: 'var(--pa-particle-color)' }}
-      />
-      <span
-        className="pa-particle-4 absolute bottom-[34%] right-[14%] h-2 w-2 rounded-full blur-[0.5px]"
-        style={{ backgroundColor: 'var(--pa-particle-color)' }}
-      />
-
-      {/* Embedded Large Transparent Background AI Character Illustration (Theme-Matched Palette, Breathing + Pulsing Waves) */}
-      <div className="absolute inset-0 flex items-center justify-center sm:justify-end sm:pr-8 md:pr-16">
-        <AnimatePresence mode="wait">
-          {isPrivate ? (
-            <motion.div
-              key="backdrop-ai-murmur"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.17] dark:opacity-[0.23]"
-              style={{
-                maskImage:
-                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
-                WebkitMaskImage:
-                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
-              }}
-            >
-              <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
-                <defs>
-                  <linearGradient id="bgAiAuraPriv" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
-                  </linearGradient>
-                  <linearGradient id="bgAiChassisPriv" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-skin)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
-                  </linearGradient>
-                  <linearGradient id="bgAiBodyPriv" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
-                  </linearGradient>
-                  <linearGradient id="bgAiVisorPriv" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-stroke)" stopOpacity="0.92" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" stopOpacity="0.96" />
-                  </linearGradient>
-                </defs>
-
-                <circle cx="56" cy="54" r="46" fill="url(#bgAiAuraPriv)" />
-
-                {/* AI Robot Shoulders / Torso */}
-                <path
-                  d="M18 98 C20 76, 33 68, 48 68 C61 68, 70 75, 74 98 Z"
-                  fill="url(#bgAiBodyPriv)"
-                />
-                <rect
-                  x="37"
-                  y="76"
-                  width="22"
-                  height="3.5"
-                  rx="1.75"
-                  fill="var(--pa-fig-skin)"
-                  opacity="0.6"
-                />
-
-                {/* Neck joint */}
-                <rect x="42" y="57" width="12" height="12" rx="5" fill="var(--pa-fig-body-deep)" opacity="0.65" />
-
-                {/* Antenna */}
-                <line
-                  x1="45"
-                  y1="21"
-                  x2="42"
-                  y2="12"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                />
-                <circle cx="42" cy="11" r="3" fill="var(--pa-fig-body)" stroke="var(--pa-fig-stroke)" strokeWidth="1.2" />
-
-                {/* AI Robot Head Shell (three-quarter profile facing right) */}
-                <rect
-                  x="27"
-                  y="21"
-                  width="42"
-                  height="37"
-                  rx="16"
-                  fill="url(#bgAiChassisPriv)"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.35"
-                  strokeWidth="1.5"
-                />
-
-                {/* Side Ear Pod */}
-                <rect
-                  x="22"
-                  y="32"
-                  width="6.5"
-                  height="15"
-                  rx="3.2"
-                  fill="url(#bgAiBodyPriv)"
-                />
-
-                {/* Dark Visor Screen angled toward right */}
-                <rect x="38" y="27" width="29" height="22" rx="9" fill="url(#bgAiVisorPriv)" />
-
-                {/* Expressive AI Optic Eye & Quiet LED Mouth */}
-                <path
-                  d="M49 36 C51.5 33, 55.5 33, 58 36"
-                  stroke="var(--pa-fig-skin)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <circle cx="62" cy="43.5" r="2.2" fill="var(--pa-fig-skin)" opacity="0.88" />
-
-                {/* Cupped AI Hand beside mouth (quiet murmuring gesture) */}
-                <path
-                  d="M55 77 C59 65, 64 53, 68 45 C71 43, 74.5 45.5, 73.5 50 C72 57, 68 66, 65 77 Z"
-                  fill="url(#bgAiChassisPriv)"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.45"
-                  strokeWidth="1.4"
-                />
-                <rect
-                  x="66.5"
-                  y="44"
-                  width="5"
-                  height="7"
-                  rx="2.5"
-                  fill="url(#bgAiBodyPriv)"
-                />
-
-                {/* Pulsing quiet murmur ripples */}
-                <path
-                  className="pa-ripple-1"
-                  d="M80 44 C84 46.5, 84 52.5, 80 55"
-                  stroke="var(--pa-fig-body-deep)"
-                  strokeWidth="2.3"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  className="pa-ripple-2"
-                  d="M86.5 39.5 C92.5 44.5, 92.5 54.5, 86.5 59.5"
-                  stroke="var(--pa-fig-body)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="3 3"
-                  fill="none"
-                />
-                <path
-                  className="pa-ripple-3"
-                  d="M93.5 35 C101 42.5, 101 56.5, 93.5 64"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.65"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeDasharray="2 4"
-                  fill="none"
-                />
-              </svg>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="backdrop-ai-speaker"
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="w-[340px] sm:w-[440px] md:w-[520px] max-w-[85vw] select-none opacity-[0.17] dark:opacity-[0.23]"
-              style={{
-                maskImage:
-                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
-                WebkitMaskImage:
-                  'radial-gradient(ellipse 82% 82% at 50% 50%, rgba(0,0,0,1) 52%, transparent 100%)',
-              }}
-            >
-              <svg viewBox="0 0 120 108" className="pa-figure-breathe w-full h-auto">
-                <defs>
-                  <linearGradient id="bgAiAuraPub" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-aura)" stopOpacity="0.9" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body)" stopOpacity="0.12" />
-                  </linearGradient>
-                  <linearGradient id="bgAiChassisPub" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-skin)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-skin-mid)" />
-                  </linearGradient>
-                  <linearGradient id="bgAiBodyPub" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
-                  </linearGradient>
-                  <linearGradient id="bgAiVisorPub" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-stroke)" stopOpacity="0.92" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" stopOpacity="0.96" />
-                  </linearGradient>
-                  <linearGradient id="bgAiSpeaker" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--pa-fig-body)" />
-                    <stop offset="100%" stopColor="var(--pa-fig-body-deep)" />
-                  </linearGradient>
-                </defs>
-
-                <circle cx="54" cy="54" r="46" fill="url(#bgAiAuraPub)" />
-
-                {/* AI Robot Torso */}
-                <path
-                  d="M12 98 C15 76, 28 68, 42 68 C55 68, 63 76, 66 98 Z"
-                  fill="url(#bgAiBodyPub)"
-                />
-                <rect
-                  x="30"
-                  y="76"
-                  width="22"
-                  height="3.5"
-                  rx="1.75"
-                  fill="var(--pa-fig-skin)"
-                  opacity="0.6"
-                />
-
-                {/* Neck joint */}
-                <rect x="35" y="57" width="12" height="12" rx="5" fill="var(--pa-fig-body-deep)" opacity="0.65" />
-
-                {/* Antenna */}
-                <line
-                  x1="39"
-                  y1="21"
-                  x2="37"
-                  y2="12"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                />
-                <circle cx="37" cy="11" r="3" fill="var(--pa-fig-body)" stroke="var(--pa-fig-stroke)" strokeWidth="1.2" />
-
-                {/* AI Robot Head Shell */}
-                <rect
-                  x="21"
-                  y="21"
-                  width="41"
-                  height="37"
-                  rx="16"
-                  fill="url(#bgAiChassisPub)"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.35"
-                  strokeWidth="1.5"
-                />
-
-                {/* Side Ear Pod */}
-                <rect
-                  x="16.5"
-                  y="32"
-                  width="6.5"
-                  height="15"
-                  rx="3.2"
-                  fill="url(#bgAiBodyPub)"
-                />
-
-                {/* Dark Visor Screen */}
-                <rect x="32" y="27" width="28" height="22" rx="9" fill="url(#bgAiVisorPub)" />
-
-                {/* Bright AI Optic Eye & Open Speaking Wave Mouth */}
-                <path
-                  d="M42.5 35.5 C45 32.5, 49 32.5, 51.5 35.5"
-                  stroke="var(--pa-fig-skin)"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  d="M46 43.5 Q51 46.5 55.5 43.5"
-                  stroke="var(--pa-fig-skin)"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-
-                {/* Robot Hand holding speaker handle */}
-                <rect
-                  x="65"
-                  y="57"
-                  width="7"
-                  height="16"
-                  rx="3"
-                  transform="rotate(-10 68 64)"
-                  fill="var(--pa-fig-body-deep)"
-                />
-                <circle
-                  cx="67"
-                  cy="66"
-                  r="5"
-                  fill="url(#bgAiChassisPub)"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.4"
-                  strokeWidth="1.2"
-                />
-
-                {/* Speaker / Megaphone */}
-                <path
-                  d="M60 47 L86 34 L89 66 L60 55 Z"
-                  fill="url(#bgAiSpeaker)"
-                  stroke="var(--pa-fig-skin)"
-                  strokeWidth="1.4"
-                  strokeLinejoin="round"
-                />
-                <ellipse
-                  cx="87.5"
-                  cy="50"
-                  rx="4.5"
-                  ry="16"
-                  fill="var(--pa-fig-skin-mid)"
-                  stroke="var(--pa-fig-skin)"
-                  strokeWidth="1.2"
-                />
-                <ellipse cx="88" cy="50" rx="2" ry="9" fill="var(--pa-fig-stroke)" opacity="0.35" />
-
-                {/* Pulsing broadcast sound arcs */}
-                <path
-                  className="pa-ripple-1"
-                  d="M95 41 C100 45, 100 55, 95 59"
-                  stroke="var(--pa-fig-body-deep)"
-                  strokeWidth="2.6"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  className="pa-ripple-2"
-                  d="M101 35 C108 42, 108 58, 101 65"
-                  stroke="var(--pa-fig-body)"
-                  strokeWidth="2.3"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-                <path
-                  className="pa-ripple-3"
-                  d="M107.5 30 C115 39, 115 61, 107.5 70"
-                  stroke="var(--pa-fig-stroke)"
-                  strokeOpacity="0.65"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </svg>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
 
 function getDomainIconFromPromptDomain(domain?: PromptDomain): EventCardIconType {
   switch (domain) {
@@ -1040,8 +588,8 @@ export function WorkbenchPage({
 
   return (
     <div className="relative flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Very Light Transparent Scope Watermark Backdrop */}
-      <ScopeWatermarkBackdrop scope={scope} />
+      {/* 3D Projected Canvas Backdrop (Private: Vault / Sanctuary · Public: Open Constellation) */}
+      <ScopeBackdrop3D scope={scope} isSending={isSending} />
 
       {/* Top-Right Enlarged & Animated New Thread Icon (shown in main pane only after response arrives) */}
       {!isWaitingForReply && activeExchange && (activeAssistantReply || activeErrorReply) && (
@@ -1158,16 +706,16 @@ export function WorkbenchPage({
                       >
                         <defs>
                           <linearGradient id="paThemeRainbowBand1" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="var(--pa-fig-skin)" stopOpacity="0.15" />
-                            <stop offset="28%" stopColor="var(--pa-accent)" stopOpacity="0.88" />
-                            <stop offset="50%" stopColor="var(--pa-fig-skin-mid)" stopOpacity="0.95" />
-                            <stop offset="72%" stopColor="var(--pa-accent)" stopOpacity="0.88" />
-                            <stop offset="100%" stopColor="var(--pa-fig-skin)" stopOpacity="0.15" />
+                            <stop offset="0%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.22" />
+                            <stop offset="28%" stopColor="var(--pa-accent)" stopOpacity="0.86" />
+                            <stop offset="50%" stopColor="var(--pa-rainbow-peak)" stopOpacity="0.95" />
+                            <stop offset="72%" stopColor="var(--pa-accent)" stopOpacity="0.86" />
+                            <stop offset="100%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.22" />
                           </linearGradient>
                           <linearGradient id="paThemeRainbowBand2" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="var(--pa-accent)" stopOpacity="0.12" />
-                            <stop offset="50%" stopColor="var(--pa-accent)" stopOpacity="0.58" />
-                            <stop offset="100%" stopColor="var(--pa-accent)" stopOpacity="0.12" />
+                            <stop offset="0%" stopColor="var(--pa-accent)" stopOpacity="0.14" />
+                            <stop offset="50%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.62" />
+                            <stop offset="100%" stopColor="var(--pa-accent)" stopOpacity="0.14" />
                           </linearGradient>
                         </defs>
                         {/* Outer Soft Theme Aura Band */}
@@ -1180,7 +728,7 @@ export function WorkbenchPage({
                           opacity="0.34"
                           style={{ filter: 'blur(9px)' }}
                         />
-                        {/* Rainbow Ribbons in Active Theme Tones */}
+                        {/* Rainbow Ribbons in Active Scope Tones */}
                         <path
                           d="M 42 74 C 245 4, 655 4, 858 74"
                           fill="none"
@@ -1200,7 +748,7 @@ export function WorkbenchPage({
                         <path
                           d="M 62 85 C 255 21, 645 21, 838 85"
                           fill="none"
-                          stroke="var(--pa-wave-stroke)"
+                          stroke="var(--pa-rainbow-hairline)"
                           strokeWidth="1.4"
                           strokeLinecap="round"
                           opacity="0.7"

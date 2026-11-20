@@ -3,7 +3,6 @@ import {
   Cloud,
   Home,
   Lock,
-  Palette,
   PanelLeft,
   PanelRight,
   Settings,
@@ -37,7 +36,6 @@ import type {
   LlmContextTelemetry,
   PromptDomain,
   RatedThreadRecord,
-  ThemeMode,
   WorkbenchSettings,
 } from './types/workbench';
 import {
@@ -68,13 +66,6 @@ import {
   showDesktopNotification,
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
-
-const THEME_CYCLE: ThemeMode[] = [
-  'arctic-sky',
-  'emerald-mist',
-  'royal-amethyst',
-  'midnight-slate',
-];
 
 function extractMajorTemplate(template: string): string {
   return template
@@ -269,32 +260,6 @@ export default function App() {
 
   const speech = useSpeechIO(settings.voice);
 
-  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
-    typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false,
-  );
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
-    media.addEventListener?.('change', onChange);
-    return () => media.removeEventListener?.('change', onChange);
-  }, []);
-
-  const effectiveTheme: Exclude<ThemeMode, 'system' | 'light' | 'dark'> =
-    settings.theme === 'system'
-      ? systemPrefersDark
-        ? 'midnight-slate'
-        : 'arctic-sky'
-      : settings.theme === 'light'
-        ? 'arctic-sky'
-        : settings.theme === 'dark'
-          ? 'midnight-slate'
-          : settings.theme;
-
-  const isDarkActive = effectiveTheme === 'midnight-slate';
-
   const reloadReportsFromDisk = useCallback(async (dirOverride?: string) => {
     try {
       const query = dirOverride ? `?dir=${encodeURIComponent(dirOverride)}` : '';
@@ -484,18 +449,6 @@ export default function App() {
   }, [reloadConfigFromFile]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.setAttribute('data-pa-theme', effectiveTheme);
-    root.setAttribute('data-pa-scope', scope);
-    root.setAttribute('data-pa-font', settings.fontFamily || 'segoe');
-    if (isDarkActive) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  }, [effectiveTheme, isDarkActive, scope, settings.fontFamily]);
-
-  useEffect(() => {
     saveSettings(settings);
     if (!configHydratedRef.current) return;
     if (skipNextAutoPersistRef.current) {
@@ -530,12 +483,6 @@ export default function App() {
   useEffect(() => {
     saveScope(scope);
   }, [scope]);
-
-  const handleCycleTheme = () => {
-    const idx = THEME_CYCLE.indexOf(effectiveTheme);
-    const nextTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-    setSettings((prev) => ({ ...prev, theme: nextTheme }));
-  };
 
   const handleApplyFetchedContext = useCallback(
     async ({
@@ -975,6 +922,18 @@ export default function App() {
     !isSending;
 
   const displayedScope: ConversationScope = activeThreadScope ?? scope;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.removeAttribute('data-pa-theme');
+    root.setAttribute('data-pa-scope', displayedScope);
+    root.setAttribute('data-pa-font', settings.fontFamily || 'segoe');
+    if (displayedScope === 'public') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [displayedScope, settings.fontFamily]);
 
   const activePublicAdapterLabel =
     settings.publicLlm.activeAdapter === 'gemini'
@@ -1855,18 +1814,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Theme, Chat Bar & Agent Session Sidebar Controls */}
+          {/* Zone 3: Care Must Be Taken Sidebar Control */}
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleCycleTheme}
-              aria-label="Switch color theme"
-              title={`Theme: ${effectiveTheme} (click to switch)`}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0"
-            >
-              <Palette className="w-4 h-4" />
-            </button>
-
             <button
               type="button"
               onClick={() => {

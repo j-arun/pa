@@ -7,7 +7,6 @@ import {
   Globe,
   HardDrive,
   Lock,
-  Palette,
   Play,
   RefreshCw,
   Server,
@@ -23,11 +22,10 @@ import type {
   FontOption,
   OllamaModelInfo,
   PublicAdapterId,
-  ThemeMode,
   WorkbenchSettings,
 } from '../types/workbench';
 import type { UseSpeechIOResult } from '../hooks/useSpeechIO';
-import { normalizeFontOption, normalizeThemeMode } from '../utils/storage';
+import { normalizeFontOption } from '../utils/storage';
 import {
   playReplyChime,
   requestDesktopNotificationPermission,
@@ -89,50 +87,6 @@ interface SettingsPageProps {
   onResetSettings: () => void;
   onContextLog?: (level: 'info' | 'success' | 'error', message: string) => void;
 }
-
-const THEME_OPTIONS: Array<{
-  id: ThemeMode;
-  label: string;
-  code: string;
-  swatchBg: string;
-  swatchAccent: string;
-}> = [
-  {
-    id: 'system',
-    label: 'System',
-    code: 'OS Auto',
-    swatchBg: '#e2e8f0',
-    swatchAccent: '#0284c7',
-  },
-  {
-    id: 'arctic-sky',
-    label: 'Arctic Sky',
-    code: 'Light Sky',
-    swatchBg: '#f0f8ff',
-    swatchAccent: '#0284c7',
-  },
-  {
-    id: 'emerald-mist',
-    label: 'Emerald Mist',
-    code: 'Light Mint',
-    swatchBg: '#ecfdf5',
-    swatchAccent: '#059669',
-  },
-  {
-    id: 'royal-amethyst',
-    label: 'Royal Amethyst',
-    code: 'Light Lavender',
-    swatchBg: '#faf5ff',
-    swatchAccent: '#9333ea',
-  },
-  {
-    id: 'midnight-slate',
-    label: 'Midnight Slate',
-    code: 'Dark Slate',
-    swatchBg: '#0f172a',
-    swatchAccent: '#38bdf8',
-  },
-];
 
 export function SettingsPage({
   settings,
@@ -464,8 +418,6 @@ export function SettingsPage({
     onClose();
   };
 
-  const normalizedDraftTheme = normalizeThemeMode(draft.theme);
-
   return (
     <section
       className="w-full flex-1 h-full min-h-0 flex flex-col p-4 sm:p-6"
@@ -481,7 +433,7 @@ export function SettingsPage({
               What&apos;s up Settings
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Themes, Font, Windows account profile, Ollama, Public adapters &amp; local storage
+              Font, Windows account profile, Ollama, Public adapters &amp; local storage
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -505,7 +457,7 @@ export function SettingsPage({
         </header>
 
         <div className="flex-1 overflow-y-auto fluent-scroll p-5 space-y-4">
-          {/* Section 1: Color Themes & Account Profile */}
+          {/* Section 1: Font & Account Profile */}
           <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
             <button
               type="button"
@@ -515,11 +467,11 @@ export function SettingsPage({
             >
               <div className="min-w-0">
                 <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Palette className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                  <span>Color Themes &amp; Account Profile</span>
+                  <User className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                  <span>Font &amp; Account Profile</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                  Animated theme palette, conversation font, and Windows account display name
+                  Conversation font and Windows account display name
                 </p>
               </div>
               {expandedSections.appearance ? (
@@ -532,60 +484,6 @@ export function SettingsPage({
             {expandedSections.appearance && (
               <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Select Theme
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {THEME_OPTIONS.map((option) => {
-                    const isSelected = normalizedDraftTheme === option.id;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() =>
-                          updateDraft((prev) => ({
-                            ...prev,
-                            theme: option.id,
-                          }))
-                        }
-                        className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'bg-white dark:bg-slate-900 shadow-xs ring-1'
-                            : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
-                        style={
-                          isSelected
-                            ? {
-                                borderColor: option.swatchAccent,
-                                boxShadow: `0 0 0 1px ${option.swatchAccent}`,
-                              }
-                            : undefined
-                        }
-                      >
-                        <span
-                          className="w-6 h-6 rounded-lg border border-slate-300/60 dark:border-slate-600/60 flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: option.swatchBg }}
-                        >
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: option.swatchAccent }}
-                          />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-                            {option.label}
-                          </span>
-                          <span className="block text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                            {option.code}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800">
                 <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
                   Conversation Font
                 </label>
