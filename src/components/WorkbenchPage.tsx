@@ -11,7 +11,6 @@ import {
   MessageSquarePlus,
   Plus,
   RotateCcw,
-  Settings as SettingsIcon,
   Sparkles,
   Square,
   Trash2,
@@ -1679,7 +1678,7 @@ export function WorkbenchPage({
               </div>
               )}
 
-              {/* Error State if Provider Failed — Friendly message with exact reason, Retry & Settings */}
+              {/* Error State if Provider Failed — Friendly message with exact reason */}
               {activeErrorReply && !activeAssistantReply && (() => {
                 const detail = formatProviderErrorDetail(activeErrorReply.content);
                 const sourceLabel = [activeErrorReply.adapterId, activeErrorReply.model]
@@ -1700,41 +1699,20 @@ export function WorkbenchPage({
                       {detail}
                     </p>
                   )}
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {!isThreadFinalized && (
-                      <button
-                        type="button"
-                        onClick={() => onRetryExchange(activeExchange.id)}
-                        disabled={isSending}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Retry Question</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={onOpenSettings}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 text-xs font-medium text-red-700 dark:text-red-200 hover:bg-red-100/60 transition-colors"
-                    >
-                      <SettingsIcon className="w-3.5 h-3.5" />
-                      <span>Switch Provider in Settings</span>
-                    </button>
-                  </div>
                 </div>
                 );
               })()}
 
               {/* Sliding Event Cards Carousel — Specific Events ONLY (Date Range + Likelihood) */}
               {activeAssistantReply && eventCards.length > 0 && (
-                <div className="space-y-4">
+                <div className="space-y-3 max-w-4xl">
                   <div className="flex items-center justify-between gap-4">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums">
                       Showing {clampedStart + 1}–{Math.min(clampedStart + visibleCount, eventCards.length)} of{' '}
                       {eventCards.length} specific events
                     </span>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {eventCards.length > visibleCount && (
                         <>
                           <button
@@ -1742,9 +1720,9 @@ export function WorkbenchPage({
                             onClick={() => setCarouselIndex((prev) => Math.max(0, prev - 1))}
                             disabled={clampedStart === 0}
                             aria-label="Previous event cards"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-35 disabled:pointer-events-none transition-colors shadow-xs"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-35 disabled:pointer-events-none transition-colors shadow-xs"
                           >
-                            <ChevronLeft className="w-4 h-4" />
+                            <ChevronLeft className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
@@ -1753,9 +1731,9 @@ export function WorkbenchPage({
                             }
                             disabled={clampedStart >= maxStartIndex}
                             aria-label="Next event cards"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-35 disabled:pointer-events-none transition-colors shadow-xs"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/85 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 disabled:opacity-35 disabled:pointer-events-none transition-colors shadow-xs"
                           >
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </>
                       )}
@@ -1769,7 +1747,7 @@ export function WorkbenchPage({
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -32 }}
                       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
+                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4"
                     >
                       {visibleEvents.map((evt, idx) => {
                         const displayDate = evt.when || evt.dateRange || evt.timeframe;
@@ -1800,34 +1778,34 @@ export function WorkbenchPage({
                         return (
                           <motion.article
                             key={evt.id}
-                            initial={{ opacity: 0, x: 28, y: 8 }}
+                            initial={{ opacity: 0, x: 24, y: 6 }}
                             animate={{ opacity: 1, x: 0, y: 0 }}
-                            whileHover={{ y: -3 }}
+                            whileHover={{ y: -2 }}
                             transition={{
-                              duration: 0.28,
-                              delay: idx * 0.06,
+                              duration: 0.26,
+                              delay: idx * 0.05,
                               ease: [0.16, 1, 0.3, 1],
                             }}
-                            className="group fluent-event-card rounded-3xl p-5 sm:p-6 flex flex-col justify-between min-h-[210px]"
+                            className="group fluent-event-card rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between min-h-[154px]"
                           >
-                            <div className="space-y-3.5">
+                            <div className="space-y-2.5">
                               {/* Top Row: Left = Domain Icon Only | Right = Probability (Line 1) + Rating (Line 2) */}
-                              <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start justify-between gap-2.5">
                                 <span
                                   title={topDomainLabel}
                                   aria-label={topDomainLabel}
-                                  className="inline-flex shrink-0"
+                                  className="inline-flex shrink-0 scale-85 origin-top-left"
                                 >
                                   <EventCategoryEmblem icon={resolvedIcon} />
                                 </span>
 
                                 <div className="text-right tabular-nums min-w-0">
-                                  <div className="inline-flex items-center justify-end gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                  <div className="inline-flex items-center justify-end gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                                    <Sparkles className="w-3 h-3 shrink-0" />
                                     <span className="truncate">{probabilityLine}</span>
                                   </div>
                                   {ratingLine && (
-                                    <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                    <div className="mt-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                                       {ratingLine}
                                     </div>
                                   )}
@@ -1835,7 +1813,7 @@ export function WorkbenchPage({
                               </div>
 
                               {/* Event Name */}
-                              <h2 className="font-display text-base font-semibold leading-snug text-slate-900 dark:text-white">
+                              <h2 className="font-display text-[13px] font-semibold leading-snug text-slate-900 dark:text-white">
                                 {evt.title}
                               </h2>
 
@@ -1845,10 +1823,10 @@ export function WorkbenchPage({
                                   backgroundColor: 'var(--pa-q-bg)',
                                   borderColor: 'var(--pa-bubble-rim)',
                                 }}
-                                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 tabular-nums"
+                                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium text-slate-900 dark:text-slate-100 tabular-nums"
                               >
                                 <CalendarRange
-                                  className="w-3.5 h-3.5 shrink-0"
+                                  className="w-3 h-3 shrink-0"
                                   style={{ color: 'var(--pa-accent)' }}
                                 />
                                 <span>{displayDate || 'Timing detailed in report'}</span>
@@ -1856,15 +1834,15 @@ export function WorkbenchPage({
                             </div>
 
                             {/* Glimmering Flash Button (Icon-only) */}
-                            <div className="pt-4 flex items-center justify-end">
+                            <div className="pt-2.5 flex items-center justify-end">
                               <button
                                 type="button"
                                 onClick={() => openEventFlash(evt)}
                                 aria-label={`Open flash for ${evt.title}`}
                                 title="Flash"
-                                className="pa-glimmer-btn relative inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white overflow-hidden transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--pa-accent)]"
+                                className="pa-glimmer-btn relative inline-flex h-8 w-8 items-center justify-center rounded-xl text-white overflow-hidden transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--pa-accent)]"
                               >
-                                <Zap className="relative z-10 w-4 h-4 fill-current" />
+                                <Zap className="relative z-10 w-3.5 h-3.5 fill-current" />
                               </button>
                             </div>
                           </motion.article>
