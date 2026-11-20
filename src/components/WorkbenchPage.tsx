@@ -552,8 +552,6 @@ export function WorkbenchPage({
     settings.contextCache.activeMonth ?? new Date().getMonth() + 1;
   const activeYearNum =
     settings.contextCache.activeYear ?? new Date().getFullYear();
-  const activeMonthName = getMonthNameFromNumber(activeMonthNum) ?? 'November';
-  const activePeriodFullLabel = `${activeMonthName} ${activeYearNum}`;
   const activeRefPeriod = formatShortYearMonth(activeMonthNum, activeYearNum);
   const lockedFollowUpDomain =
     rootExchange?.questionTurn?.promptDomain ?? activePromptDomain;
@@ -1027,7 +1025,7 @@ export function WorkbenchPage({
                     <div
                       className="relative z-10 grid grid-cols-3 sm:grid-cols-6 gap-3 sm:gap-4 items-center justify-items-center"
                       role="group"
-                      aria-label="Prediction months (drop targets)"
+                      aria-label="Prediction month buckets"
                     >
                       {stageQuickMonths.map((item, idx) => {
                         const isDropHovered = hoveredMonthKey === item.key;
@@ -1039,6 +1037,9 @@ export function WorkbenchPage({
                             item.year === activeYearNum);
                         const isLoadingThis = switchingMonthKey === item.key;
                         const isAnySwitching = Boolean(switchingMonthKey);
+                        const bucketGradId = `paBucketBody-${idx}`;
+                        const rimGradId = `paBucketRim-${idx}`;
+                        const fillWaveId = `paBucketFill-${idx}`;
                         return (
                           <div
                             key={item.key}
@@ -1067,104 +1068,187 @@ export function WorkbenchPage({
                                   );
                                 }
                               }}
-                              title={`Select ${item.fullLabel} or drop a topic orb here`}
-                              aria-label={`Select ${item.fullLabel}`}
+                              title={`Drop a topic ball into ${item.fullLabel}`}
+                              aria-label={`${item.fullLabel} bucket`}
                               aria-pressed={isActive}
                               animate={{
                                 scale: isDropHovered
-                                  ? 1.16
+                                  ? 1.15
                                   : isDockedMonth
-                                    ? 1.08
+                                    ? 1.07
                                     : isDraggingOrb
-                                      ? 1.03
+                                      ? 1.04
                                       : 1,
-                                y: isDropHovered ? -10 : [0, -5, 0],
-                                boxShadow: isDropHovered
-                                  ? '0 0 0 3px var(--pa-accent), 0 0 34px var(--pa-bubble-rim)'
-                                  : isActive
-                                    ? [
-                                        '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
-                                        '0 0 0 2.5px var(--pa-accent), 0 0 28px var(--pa-bubble-rim)',
-                                        '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
-                                      ]
-                                    : [
-                                        '0 6px 18px -2px var(--pa-bubble-glow)',
-                                        '0 8px 24px 1px var(--pa-bubble-rim)',
-                                        '0 6px 18px -2px var(--pa-bubble-glow)',
-                                      ],
+                                y: isDropHovered ? -8 : [0, -4.5, 0],
+                                rotate: isDropHovered ? [0, -2, 2, 0] : 0,
                               }}
                               transition={{
-                                scale: { type: 'spring', stiffness: 360, damping: 22 },
+                                scale: { type: 'spring', stiffness: 360, damping: 20 },
                                 y: isDropHovered
-                                  ? { type: 'spring', stiffness: 360, damping: 22 }
+                                  ? { type: 'spring', stiffness: 360, damping: 20 }
                                   : {
-                                      duration: 2.6,
+                                      duration: 2.7,
                                       repeat: Infinity,
                                       ease: 'easeInOut',
                                       delay: idx * 0.24,
                                     },
-                                boxShadow: {
-                                  duration: 2.4,
-                                  repeat: Infinity,
-                                  ease: 'easeInOut',
-                                  delay: idx * 0.24,
-                                },
+                                rotate: { duration: 0.35, ease: 'easeInOut' },
                               }}
-                              whileHover={{ scale: 1.09, y: -7 }}
+                              whileHover={{ scale: 1.09, y: -6 }}
                               whileTap={{ scale: 0.96 }}
-                              className={`pa-rainbow-node-glitter relative w-full max-w-[114px] min-h-[68px] sm:min-h-[76px] inline-flex flex-col items-center justify-center gap-0.5 rounded-[22px] px-3.5 py-3 backdrop-blur-xl transition-colors cursor-pointer disabled:opacity-65 ${
-                                isDropHovered || isActive
-                                  ? 'bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-white'
-                                  : 'bg-white/85 dark:bg-slate-900/80 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800/95'
-                              }`}
+                              className="group relative w-[94px] sm:w-[108px] h-[84px] sm:h-[94px] inline-flex flex-col items-center justify-end pb-2.5 text-slate-800 dark:text-slate-100 select-none cursor-pointer disabled:opacity-65 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pa-accent)] rounded-2xl"
                               style={{
-                                border:
-                                  isDropHovered || isActive
-                                    ? '2px solid var(--pa-accent)'
-                                    : isDraggingOrb
-                                      ? '1.5px dashed var(--pa-accent)'
-                                      : '1.5px solid var(--pa-bubble-rim)',
+                                filter: isDropHovered
+                                  ? 'drop-shadow(0 0 18px var(--pa-bubble-rim))'
+                                  : isActive
+                                    ? 'drop-shadow(0 0 12px var(--pa-bubble-glow))'
+                                    : 'drop-shadow(0 8px 14px var(--pa-bubble-glow))',
                               }}
                             >
-                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                {isLoadingThis ? (
-                                  <Loader2
-                                    className="w-3.5 h-3.5 animate-spin shrink-0"
-                                    style={{ color: 'var(--pa-accent)' }}
-                                  />
-                                ) : (
-                                  <motion.span
-                                    aria-hidden="true"
-                                    animate={{
-                                      opacity: isDropHovered ? 1 : [0.65, 1, 0.65],
-                                      scale: isDropHovered ? 1.35 : [0.9, 1.2, 0.9],
-                                    }}
-                                    transition={{
-                                      duration: 1.8,
-                                      repeat: Infinity,
-                                      ease: 'easeInOut',
-                                      delay: idx * 0.22,
-                                    }}
-                                    className="w-2 h-2 rounded-full shrink-0"
-                                    style={{
-                                      backgroundColor: 'var(--pa-accent)',
-                                      boxShadow: '0 0 8px var(--pa-bubble-rim)',
-                                    }}
-                                  />
-                                )}
-                                <span
-                                  className="text-sm sm:text-base font-bold tracking-tight"
-                                  style={
-                                    isDropHovered || isActive
-                                      ? { color: 'var(--pa-accent-text)' }
-                                      : undefined
+                              {/* Dynamic Open-Top Glowing Bucket SVG Vessel */}
+                              <svg
+                                viewBox="0 0 120 102"
+                                aria-hidden="true"
+                                className="pointer-events-none absolute inset-0 w-full h-full overflow-visible"
+                              >
+                                <defs>
+                                  <linearGradient id={bucketGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop
+                                      offset="0%"
+                                      stopColor={isDropHovered || isActive ? 'var(--pa-accent)' : 'var(--pa-rainbow-edge)'}
+                                      stopOpacity={isDropHovered ? '0.32' : isActive ? '0.24' : '0.14'}
+                                    />
+                                    <stop
+                                      offset="52%"
+                                      stopColor="var(--pa-rainbow-peak)"
+                                      stopOpacity={isDropHovered ? '0.20' : '0.09'}
+                                    />
+                                    <stop
+                                      offset="100%"
+                                      stopColor="var(--pa-accent)"
+                                      stopOpacity={isDropHovered ? '0.34' : '0.18'}
+                                    />
+                                  </linearGradient>
+                                  <linearGradient id={rimGradId} x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.8" />
+                                    <stop offset="50%" stopColor="var(--pa-rainbow-peak)" stopOpacity="1" />
+                                    <stop offset="100%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.8" />
+                                  </linearGradient>
+                                  <linearGradient id={fillWaveId} x1="0%" y1="100%" x2="0%" y2="0%">
+                                    <stop offset="0%" stopColor="var(--pa-accent)" stopOpacity={isDropHovered ? '0.46' : isDockedMonth ? '0.36' : '0.18'} />
+                                    <stop offset="100%" stopColor="var(--pa-rainbow-edge)" stopOpacity="0.04" />
+                                  </linearGradient>
+                                </defs>
+
+                                {/* Bucket Tapered Body */}
+                                <path
+                                  d="M 14 21 L 26 84 Q 60 97 94 84 L 106 21 Z"
+                                  fill={`url(#${bucketGradId})`}
+                                  className="transition-all duration-200"
+                                />
+
+                                {/* Dynamic Rising Liquid/Glow Level inside Bucket when Dragging, Hovered, or Docked */}
+                                <motion.path
+                                  d={
+                                    isDropHovered || isDockedMonth
+                                      ? 'M 19 42 Q 60 49 101 42 L 94 84 Q 60 97 26 84 Z'
+                                      : 'M 23 60 Q 60 66 97 60 L 94 84 Q 60 97 26 84 Z'
                                   }
+                                  fill={`url(#${fillWaveId})`}
+                                  animate={{
+                                    opacity: isDropHovered ? [0.75, 1, 0.75] : isDraggingOrb ? [0.45, 0.75, 0.45] : 0.65,
+                                  }}
+                                  transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                                />
+
+                                {/* Outer Bucket Glass Wall Outline */}
+                                <path
+                                  d="M 14 21 L 26 84 Q 60 97 94 84 L 106 21"
+                                  fill="none"
+                                  stroke={isDropHovered || isActive ? 'var(--pa-accent)' : 'var(--pa-rainbow-edge)'}
+                                  strokeOpacity={isDropHovered ? 0.95 : isActive ? 0.85 : isDraggingOrb ? 0.72 : 0.55}
+                                  strokeWidth={isDropHovered ? 2.4 : 1.7}
+                                  strokeDasharray={isDraggingOrb && !isDropHovered ? '5 3' : undefined}
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+
+                                {/* Subtle Specular Glass Rib */}
+                                <path
+                                  d="M 26 30 L 34 79"
+                                  fill="none"
+                                  stroke="white"
+                                  strokeOpacity="0.35"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                />
+
+                                {/* Open Bucket Mouth (Elliptical Cavity + Glowing Rim Lip) */}
+                                <motion.ellipse
+                                  cx="60"
+                                  cy="21"
+                                  rx={isDropHovered ? 49 : isDraggingOrb ? 47.5 : 46}
+                                  ry={isDropHovered ? 13 : isDraggingOrb ? 11.5 : 9.5}
+                                  fill="var(--pa-q-bg)"
+                                  stroke={`url(#${rimGradId})`}
+                                  strokeWidth={isDropHovered ? 2.6 : isActive ? 2.1 : 1.6}
+                                  animate={{
+                                    ry: isDropHovered ? 13 : isDraggingOrb ? [10.5, 12.2, 10.5] : 9.5,
+                                  }}
+                                  transition={{
+                                    duration: 1.4,
+                                    repeat: isDraggingOrb && !isDropHovered ? Infinity : 0,
+                                    ease: 'easeInOut',
+                                  }}
+                                />
+
+                                {/* Inner Rim Highlight */}
+                                <ellipse
+                                  cx="60"
+                                  cy="21"
+                                  rx={isDropHovered ? 41 : 38}
+                                  ry={isDropHovered ? 8.2 : 6}
+                                  fill="none"
+                                  stroke="white"
+                                  strokeOpacity={isDropHovered ? 0.52 : 0.25}
+                                  strokeWidth="1"
+                                />
+                              </svg>
+
+                              {/* Subtle Dropped Emblem Peek inside Mouth while Question Bubble is Open */}
+                              {isDockedMonth && dockedTarget && (
+                                <motion.span
+                                  initial={{ scale: 0.4, y: -10, opacity: 0 }}
+                                  animate={{ scale: 0.62, y: -2, opacity: 1 }}
+                                  className="relative z-10 -mb-1 pointer-events-none"
                                 >
-                                  {item.shortMonth}
+                                  <EventCategoryEmblem icon={dockedTarget.card.icon} />
+                                </motion.span>
+                              )}
+
+                              {/* Month & Year Label inside Bucket Body */}
+                              <span className="relative z-10 inline-flex flex-col items-center leading-tight">
+                                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                  {isLoadingThis && (
+                                    <Loader2
+                                      className="w-3 h-3 animate-spin shrink-0"
+                                      style={{ color: 'var(--pa-accent)' }}
+                                    />
+                                  )}
+                                  <span
+                                    className="text-sm sm:text-[15px] font-bold tracking-tight"
+                                    style={
+                                      isDropHovered || isActive
+                                        ? { color: 'var(--pa-accent-text)' }
+                                        : undefined
+                                    }
+                                  >
+                                    {item.shortMonth}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="text-[11px] font-semibold opacity-65 tabular-nums">
-                                {item.year}
+                                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 opacity-80 tabular-nums">
+                                  {item.year}
+                                </span>
                               </span>
                             </motion.button>
                           </div>
@@ -1369,7 +1453,7 @@ export function WorkbenchPage({
                     className="space-y-6"
                   >
                     <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-3.5 flex-wrap">
+                      <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white inline-flex items-center">
                         <motion.span
                           role="img"
                           aria-label="What's up"
@@ -1387,12 +1471,6 @@ export function WorkbenchPage({
                         >
                           🤙
                         </motion.span>
-                        <span
-                          className="tabular-nums"
-                          style={{ color: 'var(--pa-accent-text)' }}
-                        >
-                          {activePeriodFullLabel} ..
-                        </span>
                       </h1>
 
                       <AnimatePresence>
@@ -1407,9 +1485,9 @@ export function WorkbenchPage({
                           >
                             {isDraggingOrb
                               ? hoveredMonthKey
-                                ? 'Release to ask about this period'
-                                : 'Drop onto a month above'
-                              : 'Move and drop a topic orb onto any month above'}
+                                ? 'Release to drop into this bucket'
+                                : 'Drop into any month bucket above'
+                              : 'Drag and drop a ball into any month bucket above'}
                           </motion.span>
                         )}
                       </AnimatePresence>
@@ -1428,8 +1506,8 @@ export function WorkbenchPage({
                               type="button"
                               disabled={isSending}
                               onPointerDown={(e) => handleOrbPointerDown(e, card)}
-                              aria-label={`${card.label} — drag onto a month above`}
-                              title={`Move ${card.label} onto a month`}
+                              aria-label={`${card.label} — drag into a month bucket above`}
+                              title={`Drop ${card.label} into a month bucket`}
                               data-active-bubble={isActiveDomainBubble ? 'true' : undefined}
                               initial={{ opacity: 0, scale: 0.84, y: 24 }}
                               animate={{
@@ -1460,13 +1538,13 @@ export function WorkbenchPage({
                               }}
                               whileHover={isBeingCarried ? undefined : { scale: 1.09 }}
                               whileTap={isBeingCarried ? undefined : { scale: 0.96 }}
-                              className="group fluent-3d-bubble relative w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
+                              className="group fluent-3d-bubble relative w-[68px] h-[68px] sm:w-[76px] sm:h-[76px] rounded-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
                             >
                               <div
                                 aria-hidden="true"
-                                className="pointer-events-none absolute top-2.5 left-6 right-6 h-2.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                                className="pointer-events-none absolute top-2 left-4 right-4 h-2 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
                               />
-                              <span className="scale-110 sm:scale-[1.28] transition-transform duration-200 group-hover:scale-[1.36]">
+                              <span className="scale-95 sm:scale-105 transition-transform duration-200 group-hover:scale-115">
                                 <EventCategoryEmblem icon={card.icon} />
                               </span>
                             </motion.button>
@@ -1484,7 +1562,7 @@ export function WorkbenchPage({
                                 ease: 'easeInOut',
                                 delay: idx * 0.35,
                               }}
-                              className="mt-2.5 h-2 w-16 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
+                              className="mt-2.5 h-2 w-12 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
                             />
                             <span className="mt-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 select-none">
                               {card.label}
@@ -2234,15 +2312,15 @@ export function WorkbenchPage({
           }}
           initial={{ scale: 1 }}
           animate={{
-            scale: hoveredMonthKey ? 0.94 : 1.14,
+            scale: hoveredMonthKey ? 0.76 : 1.08,
             boxShadow: hoveredMonthKey
-              ? '0 0 0 3px var(--pa-accent), 0 0 32px var(--pa-bubble-rim)'
+              ? '0 0 0 3px var(--pa-accent), 0 0 28px var(--pa-bubble-rim)'
               : '0 22px 46px -10px rgba(15, 23, 42, 0.26), 0 0 24px 2px var(--pa-bubble-glow)',
           }}
           transition={{ type: 'spring', stiffness: 420, damping: 28 }}
           className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 fluent-3d-bubble rounded-full flex items-center justify-center"
         >
-          <span className="scale-[1.3]">
+          <span className="scale-105">
             <EventCategoryEmblem icon={activeDrag.card.icon} />
           </span>
         </motion.div>
@@ -2258,7 +2336,7 @@ export function WorkbenchPage({
           initial={{
             left: returningOrb.fromX,
             top: returningOrb.fromY,
-            scale: 1.12,
+            scale: 1.08,
             opacity: 0.98,
           }}
           animate={{
@@ -2271,7 +2349,7 @@ export function WorkbenchPage({
           onAnimationComplete={() => setReturningOrb(null)}
           className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 fluent-3d-bubble rounded-full flex items-center justify-center"
         >
-          <span className="scale-110 sm:scale-[1.28]">
+          <span className="scale-95 sm:scale-105">
             <EventCategoryEmblem icon={returningOrb.card.icon} />
           </span>
         </motion.div>
