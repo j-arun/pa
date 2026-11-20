@@ -17,8 +17,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useMotionValue } from 'motion/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EventCategoryEmblem } from './DomainEmblem';
 import { ScopeBackdrop3D } from './ScopeBackdrop3D';
 import { WhatsAppSymbol } from './WhatsAppSymbol';
@@ -29,7 +29,6 @@ import type {
   EventCardIconType,
   EventCardItem,
   PromptDomain,
-  PromptStyle,
   ThreadRating,
   WorkbenchSettings,
 } from '../types/workbench';
@@ -181,39 +180,35 @@ const DOMAIN_HOME_CARDS: Array<{
   domain: PromptDomain;
   label: string;
   description: string;
-  buildPrompt: (periodLabel: string) => string;
+  backdropEmoji: string;
   icon: EventCardIconType;
 }> = [
   {
     domain: 'astrology',
     label: 'Career',
     description: 'Career trajectory, profession, and timing events.',
-    buildPrompt: (periodLabel) =>
-      `Detail the key career events, milestones, date windows, and likelihoods for ${periodLabel}.`,
+    backdropEmoji: '💼',
     icon: 'briefcase',
   },
   {
     domain: 'finance',
     label: 'Family',
     description: 'Family, domestic life, and financial planning events.',
-    buildPrompt: (periodLabel) =>
-      `Detail the key family, domestic, and financial planning events, date windows, and likelihoods for ${periodLabel}.`,
+    backdropEmoji: '🏡',
     icon: 'layers',
   },
   {
     domain: 'general',
     label: 'Love',
     description: 'Love, relationships, and emotional connection events.',
-    buildPrompt: (periodLabel) =>
-      `Detail the key love and relationship events, date windows, and likelihoods for ${periodLabel}.`,
+    backdropEmoji: '💖',
     icon: 'heart',
   },
   {
     domain: 'health',
     label: 'Health',
     description: 'Health, vitality, and wellness guidance events.',
-    buildPrompt: (periodLabel) =>
-      `Detail the key health, energy, and wellness events, date windows, and likelihoods for ${periodLabel}.`,
+    backdropEmoji: '🌿',
     icon: 'shield',
   },
 ];
@@ -224,6 +219,8 @@ export interface SendThreadMessagePayload {
   threadName: string;
   promptDomain: PromptDomain;
   isFollowUp: boolean;
+  targetMonth?: number;
+  targetYear?: number;
 }
 
 export interface ThreadMetadataPatch {
@@ -240,18 +237,25 @@ interface ConversationExchange {
   replyTurns: ConversationTurn[];
 }
 
+interface DockedOrbQuestionTarget {
+  card: (typeof DOMAIN_HOME_CARDS)[number];
+  month: number;
+  year: number;
+  monthKey: string;
+  shortMonth: string;
+  fullLabel: string;
+}
+
 interface WorkbenchPageProps {
   scope: ConversationScope;
   settings: WorkbenchSettings;
   turns: ConversationTurn[];
   isArchivedThread?: boolean;
   activePromptDomain: PromptDomain;
-  promptStyle: PromptStyle;
   isChatBarOpen: boolean;
   onToggleChatBar: () => void;
   onOpenChatBar: () => void;
   onPromptDomainChange: (domain: PromptDomain) => void;
-  onPromptStyleChange: (style: PromptStyle) => void;
   isSending: boolean;
   speech: UseSpeechIOResult;
   onSendMessage: (payload: SendThreadMessagePayload) => void;
@@ -367,12 +371,10 @@ export function WorkbenchPage({
   turns,
   isArchivedThread = false,
   activePromptDomain,
-  promptStyle,
   isChatBarOpen,
   onToggleChatBar,
   onOpenChatBar,
   onPromptDomainChange,
-  onPromptStyleChange,
   isSending,
   onSendMessage,
   onCancelRequest,
@@ -397,7 +399,35 @@ export function WorkbenchPage({
     openedAt: number;
   } | null>(null);
 
+  // Stage 1 Interactive Orb-to-Month Drag & Round Question Bubble State
+  const [activeDrag, setActiveDrag] = useState<{
+    card: (typeof DOMAIN_HOME_CARDS)[number];
+    originX: number;
+    originY: number;
+    size: number;
+  } | null>(null);
+  const [returningOrb, setReturningOrb] = useState<{
+    card: (typeof DOMAIN_HOME_CARDS)[number];
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    size: number;
+  } | null>(null);
+  const [hoveredMonthKey, setHoveredMonthKey] = useState<string | null>(null);
+  const [dockedTarget, setDockedTarget] = useState<DockedOrbQuestionTarget | null>(null);
+  const [bubbleQuestion, setBubbleQuestion] = useState('');
+  const [bubbleValidationError, setBubbleValidationError] = useState<string | null>(null);
+  const [bubbleShakeTick, setBubbleShakeTick] = useState(0);
+  const [dropHintVisible, setDropHintVisible] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bubbleInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const monthButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
 
   const privateNeedsModel =
     scope === 'private' && !settings.privateLlm.selectedModel.trim();
@@ -538,6 +568,250 @@ export function WorkbenchPage({
         )
       : undefined) || activeRefPeriod;
 
+  const stageQuickMonths = useMemo(() => {
+    const archOffsets = [
+      'sm:translate-y-5',
+      'sm:translate-y-1.5',
+      'sm:-translate-y-1.5',
+      'sm:-translate-y-1.5',
+      'sm:translate-y-1.5',
+      'sm:translate-y-5',
+    ];
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, idx) => {
+      const dt = new Date(now.getFullYear(), now.getMonth() + idx, 1);
+      const month = dt.getMonth() + 1;
+      const year = dt.getFullYear();
+      const monthName = getMonthNameFromNumber(month) ?? '';
+      return {
+        key: `${year}-${String(month).padStart(2, '0')}`,
+        month,
+        year,
+        shortMonth: monthName.slice(0, 3),
+        fullLabel: `${monthName} ${year}`,
+        arcClass: archOffsets[idx],
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (exchanges.length > 0) {
+      dragCleanupRef.current?.();
+      setActiveDrag(null);
+      setReturningOrb(null);
+      setHoveredMonthKey(null);
+      setDockedTarget(null);
+      setBubbleQuestion('');
+      setBubbleValidationError(null);
+    }
+  }, [exchanges.length]);
+
+  useEffect(() => {
+    if (!dockedTarget) return;
+    const focusTimer = window.setTimeout(() => {
+      bubbleInputRef.current?.focus();
+    }, 120);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDockedTarget(null);
+        setBubbleValidationError(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [dockedTarget]);
+
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+      if (hintTimerRef.current) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+    };
+  }, []);
+
+  const hitTestMonthOrb = useCallback(
+    (clientX: number, clientY: number): string | null => {
+      const magneticPadding = 22;
+      let bestKey: string | null = null;
+      let bestDistance = Infinity;
+
+      for (const item of stageQuickMonths) {
+        const el = monthButtonRefs.current[item.key];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (
+          clientX >= rect.left - magneticPadding &&
+          clientX <= rect.right + magneticPadding &&
+          clientY >= rect.top - magneticPadding &&
+          clientY <= rect.bottom + magneticPadding
+        ) {
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const dist = Math.hypot(clientX - cx, clientY - cy);
+          if (dist < bestDistance) {
+            bestDistance = dist;
+            bestKey = item.key;
+          }
+        }
+      }
+      return bestKey;
+    },
+    [stageQuickMonths],
+  );
+
+  const handleOrbPointerDown = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    card: (typeof DOMAIN_HOME_CARDS)[number],
+  ) => {
+    if (isSending || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault();
+
+    const buttonRect = e.currentTarget.getBoundingClientRect();
+    const originX = buttonRect.left + buttonRect.width / 2;
+    const originY = buttonRect.top + buttonRect.height / 2;
+    const offsetX = e.clientX - originX;
+    const offsetY = e.clientY - originY;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const orbSize = buttonRect.width;
+    dragX.set(originX);
+    dragY.set(originY);
+
+    let hasStartedDrag = false;
+    let currentHoverKey: string | null = null;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+
+    const finishDrag = (moveEvent: PointerEvent, cancelled: boolean) => {
+      cleanupListeners();
+      document.body.style.userSelect = prevUserSelect;
+
+      if (!hasStartedDrag) {
+        if (!cancelled) {
+          setDropHintVisible(true);
+          if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+          hintTimerRef.current = window.setTimeout(() => setDropHintVisible(false), 2600);
+        }
+        return;
+      }
+
+      const dropCenterX = moveEvent.clientX - offsetX;
+      const dropCenterY = moveEvent.clientY - offsetY;
+      const finalHoverKey =
+        !cancelled &&
+        (hitTestMonthOrb(dropCenterX, dropCenterY) ??
+          hitTestMonthOrb(moveEvent.clientX, moveEvent.clientY));
+      const targetMonth = finalHoverKey
+        ? stageQuickMonths.find((m) => m.key === finalHoverKey)
+        : undefined;
+
+      setActiveDrag(null);
+      setHoveredMonthKey(null);
+
+      if (targetMonth && !cancelled) {
+        setReturningOrb(null);
+        setDropHintVisible(false);
+        setBubbleQuestion('');
+        setBubbleValidationError(null);
+        onPromptDomainChange(card.domain);
+        onSelectQuickMonth?.(targetMonth.month, targetMonth.year);
+        setDockedTarget({
+          card,
+          month: targetMonth.month,
+          year: targetMonth.year,
+          monthKey: targetMonth.key,
+          shortMonth: targetMonth.shortMonth,
+          fullLabel: targetMonth.fullLabel,
+        });
+      } else {
+        setReturningOrb({
+          card,
+          fromX: dropCenterX,
+          fromY: dropCenterY,
+          toX: originX,
+          toY: originY,
+          size: orbSize,
+        });
+      }
+    };
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const dist = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+      if (!hasStartedDrag) {
+        if (dist < 6) return;
+        hasStartedDrag = true;
+        setReturningOrb(null);
+        setDropHintVisible(false);
+        setActiveDrag({
+          card,
+          originX,
+          originY,
+          size: orbSize,
+        });
+      }
+
+      const nextCenterX = moveEvent.clientX - offsetX;
+      const nextCenterY = moveEvent.clientY - offsetY;
+      dragX.set(nextCenterX);
+      dragY.set(nextCenterY);
+
+      const nextHover =
+        hitTestMonthOrb(nextCenterX, nextCenterY) ??
+        hitTestMonthOrb(moveEvent.clientX, moveEvent.clientY);
+      if (nextHover !== currentHoverKey) {
+        currentHoverKey = nextHover;
+        setHoveredMonthKey(nextHover);
+      }
+    };
+
+    const onPointerUp = (upEvent: PointerEvent) => finishDrag(upEvent, false);
+    const onPointerCancel = (cancelEvent: PointerEvent) => finishDrag(cancelEvent, true);
+
+    const cleanupListeners = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      dragCleanupRef.current = null;
+    };
+
+    dragCleanupRef.current?.();
+    dragCleanupRef.current = cleanupListeners;
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+  };
+
+  const handleBubbleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!dockedTarget || isSending) return;
+    const trimmed = bubbleQuestion.trim();
+    if (!trimmed) {
+      setBubbleValidationError('Please enter a question');
+      setBubbleShakeTick((prev) => prev + 1);
+      bubbleInputRef.current?.focus();
+      return;
+    }
+
+    const target = dockedTarget;
+    setBubbleValidationError(null);
+    setBubbleQuestion('');
+    setDockedTarget(null);
+    onSendMessage({
+      text: trimmed,
+      inputMode: 'text',
+      threadName: target.card.label,
+      promptDomain: target.card.domain,
+      isFollowUp: false,
+      targetMonth: target.month,
+      targetYear: target.year,
+    });
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const questionText = draft.trim();
@@ -556,18 +830,6 @@ export function WorkbenchPage({
       threadName: submittedThreadName,
       promptDomain: effectiveComposerDomain,
       isFollowUp,
-    });
-  };
-
-  const handleDomainCardClick = (card: (typeof DOMAIN_HOME_CARDS)[number]) => {
-    if (isSending) return;
-    onPromptDomainChange(card.domain);
-    onSendMessage({
-      text: card.buildPrompt(activePeriodFullLabel),
-      inputMode: 'text',
-      threadName: card.label,
-      promptDomain: card.domain,
-      isFollowUp: false,
     });
   };
 
@@ -647,16 +909,8 @@ export function WorkbenchPage({
       {/* Main Stage Viewport */}
       <div className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll px-5 sm:px-10 py-4 sm:py-6 flex flex-col">
         <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
-          {/* STAGE 1: Theme-Matched Moving & Glittering Rainbow 6-Month Selector + Shaka Hand + 4 Domain Bubbles */}
+          {/* STAGE 1: Enlarged Rainbow 6-Month Drop Targets + Movable Topic Orbs + Round Question Bubble */}
           {!activeExchange && (() => {
-            const ARCH_OFFSETS = [
-              'sm:translate-y-5',
-              'sm:translate-y-1.5',
-              'sm:-translate-y-1.5',
-              'sm:-translate-y-1.5',
-              'sm:translate-y-1.5',
-              'sm:translate-y-5',
-            ];
             const SPARKLE_SPOTS = [
               { left: '10%', top: '52%', delay: 0 },
               { left: '27%', top: '22%', delay: 0.55 },
@@ -664,24 +918,10 @@ export function WorkbenchPage({
               { left: '68%', top: '16%', delay: 0.35 },
               { left: '86%', top: '44%', delay: 0.85 },
             ];
-            const now = new Date();
-            const quickMonths = Array.from({ length: 6 }, (_, idx) => {
-              const dt = new Date(now.getFullYear(), now.getMonth() + idx, 1);
-              const month = dt.getMonth() + 1;
-              const year = dt.getFullYear();
-              const monthName = getMonthNameFromNumber(month) ?? '';
-              return {
-                key: `${year}-${String(month).padStart(2, '0')}`,
-                month,
-                year,
-                shortMonth: monthName.slice(0, 3),
-                fullLabel: `${monthName} ${year}`,
-                arcClass: ARCH_OFFSETS[idx],
-              };
-            });
+            const isDraggingOrb = Boolean(activeDrag);
 
             return (
-            <div className="my-auto py-3 space-y-7">
+            <div className="my-auto py-3 space-y-8">
               <AnimatePresence>
                 {showQuickMonthRainbow && (
                   <motion.div
@@ -690,14 +930,14 @@ export function WorkbenchPage({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -16, scale: 0.95 }}
                     transition={{ duration: 0.32, ease: 'easeOut' }}
-                    className="relative w-full max-w-3xl mx-auto pt-3 pb-6"
+                    className="relative w-full max-w-4xl mx-auto pt-3 pb-7"
                   >
                     {/* Gently Breathing & Moving Theme-Matched Layered Rainbow Arc */}
                     <motion.div
                       aria-hidden="true"
                       animate={{ y: [0, -3.5, 0] }}
                       transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
-                      className="pointer-events-none hidden sm:block absolute inset-x-3 top-1 h-[84px] overflow-visible"
+                      className="pointer-events-none hidden sm:block absolute inset-x-3 top-1 h-[94px] overflow-visible"
                     >
                       <svg
                         viewBox="0 0 900 96"
@@ -785,13 +1025,18 @@ export function WorkbenchPage({
                     </motion.div>
 
                     <div
-                      className="relative z-10 grid grid-cols-3 sm:grid-cols-6 gap-2.5 sm:gap-3 items-center justify-items-center"
+                      className="relative z-10 grid grid-cols-3 sm:grid-cols-6 gap-3 sm:gap-4 items-center justify-items-center"
                       role="group"
-                      aria-label="Select prediction month"
+                      aria-label="Prediction months (drop targets)"
                     >
-                      {quickMonths.map((item, idx) => {
+                      {stageQuickMonths.map((item, idx) => {
+                        const isDropHovered = hoveredMonthKey === item.key;
+                        const isDockedMonth = dockedTarget?.monthKey === item.key;
                         const isActive =
-                          item.month === activeMonthNum && item.year === activeYearNum;
+                          isDockedMonth ||
+                          (!dockedTarget &&
+                            item.month === activeMonthNum &&
+                            item.year === activeYearNum);
                         const isLoadingThis = switchingMonthKey === item.key;
                         const isAnySwitching = Boolean(switchingMonthKey);
                         return (
@@ -800,33 +1045,64 @@ export function WorkbenchPage({
                             className={`w-full flex justify-center ${item.arcClass}`}
                           >
                             <motion.button
+                              ref={(el) => {
+                                monthButtonRefs.current[item.key] = el;
+                              }}
                               type="button"
                               disabled={isSending || isAnySwitching}
-                              onClick={() => onSelectQuickMonth?.(item.month, item.year)}
-                              title={`Switch to ${item.fullLabel} & apply Reference Context`}
-                              aria-label={`Switch to ${item.fullLabel}`}
+                              onClick={() => {
+                                onSelectQuickMonth?.(item.month, item.year);
+                                if (dockedTarget) {
+                                  setDockedTarget((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          month: item.month,
+                                          year: item.year,
+                                          monthKey: item.key,
+                                          shortMonth: item.shortMonth,
+                                          fullLabel: item.fullLabel,
+                                        }
+                                      : null,
+                                  );
+                                }
+                              }}
+                              title={`Select ${item.fullLabel} or drop a topic orb here`}
+                              aria-label={`Select ${item.fullLabel}`}
                               aria-pressed={isActive}
                               animate={{
-                                y: [0, -5, 0],
-                                boxShadow: isActive
-                                  ? [
-                                      '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
-                                      '0 0 0 2.5px var(--pa-accent), 0 0 28px var(--pa-bubble-rim)',
-                                      '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
-                                    ]
-                                  : [
-                                      '0 4px 14px -2px var(--pa-bubble-glow)',
-                                      '0 6px 22px 1px var(--pa-bubble-rim)',
-                                      '0 4px 14px -2px var(--pa-bubble-glow)',
-                                    ],
+                                scale: isDropHovered
+                                  ? 1.16
+                                  : isDockedMonth
+                                    ? 1.08
+                                    : isDraggingOrb
+                                      ? 1.03
+                                      : 1,
+                                y: isDropHovered ? -10 : [0, -5, 0],
+                                boxShadow: isDropHovered
+                                  ? '0 0 0 3px var(--pa-accent), 0 0 34px var(--pa-bubble-rim)'
+                                  : isActive
+                                    ? [
+                                        '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
+                                        '0 0 0 2.5px var(--pa-accent), 0 0 28px var(--pa-bubble-rim)',
+                                        '0 0 0 2px var(--pa-accent), 0 0 18px var(--pa-bubble-rim)',
+                                      ]
+                                    : [
+                                        '0 6px 18px -2px var(--pa-bubble-glow)',
+                                        '0 8px 24px 1px var(--pa-bubble-rim)',
+                                        '0 6px 18px -2px var(--pa-bubble-glow)',
+                                      ],
                               }}
                               transition={{
-                                y: {
-                                  duration: 2.6,
-                                  repeat: Infinity,
-                                  ease: 'easeInOut',
-                                  delay: idx * 0.24,
-                                },
+                                scale: { type: 'spring', stiffness: 360, damping: 22 },
+                                y: isDropHovered
+                                  ? { type: 'spring', stiffness: 360, damping: 22 }
+                                  : {
+                                      duration: 2.6,
+                                      repeat: Infinity,
+                                      ease: 'easeInOut',
+                                      delay: idx * 0.24,
+                                    },
                                 boxShadow: {
                                   duration: 2.4,
                                   repeat: Infinity,
@@ -834,52 +1110,61 @@ export function WorkbenchPage({
                                   delay: idx * 0.24,
                                 },
                               }}
-                              whileHover={{ scale: 1.09, y: -6 }}
-                              whileTap={{ scale: 0.95 }}
-                              className={`pa-rainbow-node-glitter relative inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-semibold backdrop-blur-xl transition-colors cursor-pointer disabled:opacity-65 ${
-                                isActive
+                              whileHover={{ scale: 1.09, y: -7 }}
+                              whileTap={{ scale: 0.96 }}
+                              className={`pa-rainbow-node-glitter relative w-full max-w-[114px] min-h-[68px] sm:min-h-[76px] inline-flex flex-col items-center justify-center gap-0.5 rounded-[22px] px-3.5 py-3 backdrop-blur-xl transition-colors cursor-pointer disabled:opacity-65 ${
+                                isDropHovered || isActive
                                   ? 'bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-white'
-                                  : 'bg-white/80 dark:bg-slate-900/75 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800/95'
+                                  : 'bg-white/85 dark:bg-slate-900/80 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800/95'
                               }`}
                               style={{
-                                border: isActive
-                                  ? '1.5px solid var(--pa-accent)'
-                                  : '1.5px solid var(--pa-bubble-rim)',
+                                border:
+                                  isDropHovered || isActive
+                                    ? '2px solid var(--pa-accent)'
+                                    : isDraggingOrb
+                                      ? '1.5px dashed var(--pa-accent)'
+                                      : '1.5px solid var(--pa-bubble-rim)',
                               }}
                             >
-                              {isLoadingThis ? (
-                                <Loader2
-                                  className="w-3.5 h-3.5 animate-spin shrink-0"
-                                  style={{ color: 'var(--pa-accent)' }}
-                                />
-                              ) : (
-                                <motion.span
-                                  aria-hidden="true"
-                                  animate={{
-                                    opacity: [0.65, 1, 0.65],
-                                    scale: [0.9, 1.2, 0.9],
-                                  }}
-                                  transition={{
-                                    duration: 1.8,
-                                    repeat: Infinity,
-                                    ease: 'easeInOut',
-                                    delay: idx * 0.22,
-                                  }}
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{
-                                    backgroundColor: 'var(--pa-accent)',
-                                    boxShadow: '0 0 8px var(--pa-bubble-rim)',
-                                  }}
-                                />
-                              )}
-                              <span
-                                className="tracking-tight whitespace-nowrap"
-                                style={isActive ? { color: 'var(--pa-accent-text)' } : undefined}
-                              >
-                                {item.shortMonth}{' '}
-                                <span className="opacity-70 font-medium tabular-nums">
-                                  {String(item.year).slice(-2)}
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                {isLoadingThis ? (
+                                  <Loader2
+                                    className="w-3.5 h-3.5 animate-spin shrink-0"
+                                    style={{ color: 'var(--pa-accent)' }}
+                                  />
+                                ) : (
+                                  <motion.span
+                                    aria-hidden="true"
+                                    animate={{
+                                      opacity: isDropHovered ? 1 : [0.65, 1, 0.65],
+                                      scale: isDropHovered ? 1.35 : [0.9, 1.2, 0.9],
+                                    }}
+                                    transition={{
+                                      duration: 1.8,
+                                      repeat: Infinity,
+                                      ease: 'easeInOut',
+                                      delay: idx * 0.22,
+                                    }}
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{
+                                      backgroundColor: 'var(--pa-accent)',
+                                      boxShadow: '0 0 8px var(--pa-bubble-rim)',
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  className="text-sm sm:text-base font-bold tracking-tight"
+                                  style={
+                                    isDropHovered || isActive
+                                      ? { color: 'var(--pa-accent-text)' }
+                                      : undefined
+                                  }
+                                >
+                                  {item.shortMonth}
                                 </span>
+                              </span>
+                              <span className="text-[11px] font-semibold opacity-65 tabular-nums">
+                                {item.year}
                               </span>
                             </motion.button>
                           </div>
@@ -913,107 +1198,304 @@ export function WorkbenchPage({
                 </div>
               )}
 
-              <div className="flex items-center">
-                <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-3.5 flex-wrap">
-                  <motion.span
-                    role="img"
-                    aria-label="What's up"
-                    animate={{
-                      rotate: [-10, 14, -8, 12, -10],
-                      y: [0, -3, 0, -2, 0],
-                      scale: [1, 1.08, 1, 1.05, 1],
-                    }}
-                    transition={{
-                      duration: 2.2,
-                      repeat: Infinity,
-                      ease: 'easeInOut',
-                    }}
-                    className="inline-block text-4xl sm:text-5xl leading-none select-none origin-bottom-right"
+              <AnimatePresence mode="wait">
+                {dockedTarget ? (
+                  <motion.div
+                    key={`docked-question-bubble-${dockedTarget.card.domain}-${dockedTarget.monthKey}`}
+                    initial={{ opacity: 0, scale: 0.76, y: -18 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.84, y: 14 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+                    className="py-2 flex flex-col items-center justify-center text-center"
                   >
-                    🤙
-                  </motion.span>
-                  <span
-                    className="tabular-nums"
-                    style={{ color: 'var(--pa-accent-text)' }}
-                  >
-                    {activePeriodFullLabel} ..
-                  </span>
-                </h1>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 place-items-center pt-4 pb-6">
-                {DOMAIN_HOME_CARDS.map((card, idx) => {
-                  const isActiveDomainBubble = card.domain === activePromptDomain;
-                  return (
-                    <div
-                      key={card.domain}
-                      className={`flex flex-col items-center ${idx % 2 === 1 ? 'sm:mt-6' : ''}`}
+                    <motion.div
+                      animate={{
+                        y: [0, -10, 0, -5, 0],
+                        x: bubbleShakeTick > 0 ? [0, -7, 7, -5, 5, 0] : 0,
+                      }}
+                      transition={{
+                        y: {
+                          duration: 3.4,
+                          repeat: Infinity,
+                          ease: 'easeInOut',
+                        },
+                        x: { duration: 0.34, ease: 'easeInOut' },
+                      }}
+                      key={`bubble-shake-${bubbleShakeTick}`}
+                      className="relative flex flex-col items-center"
                     >
-                      <motion.button
-                        type="button"
-                        disabled={isSending}
-                        onClick={() => handleDomainCardClick(card)}
-                        aria-label={card.label}
-                        title={card.label}
-                        data-active-bubble={isActiveDomainBubble ? 'true' : undefined}
-                        initial={{ opacity: 0, scale: 0.84, y: 24 }}
-                        animate={{
-                          opacity: 1,
-                          scale: 1,
-                          y: [0, -18, 0, -9, 0],
-                          rotateZ:
-                            idx % 2 === 0
-                              ? [-0.8, 0.8, -0.4, 0.5, -0.8]
-                              : [0.8, -0.8, 0.4, -0.5, 0.8],
-                        }}
-                        transition={{
-                          opacity: { duration: 0.26, delay: idx * 0.06 },
-                          scale: { type: 'spring', stiffness: 260, damping: 18, delay: idx * 0.06 },
-                          y: {
-                            duration: 2.3 + idx * 0.22,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                            delay: idx * 0.35,
-                          },
-                          rotateZ: {
-                            duration: 3.1 + idx * 0.25,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                            delay: idx * 0.35,
-                          },
-                        }}
-                        whileHover={{ scale: 1.07 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="group fluent-3d-bubble relative w-36 h-36 sm:w-40 sm:h-40 rounded-full flex items-center justify-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
+                      <form
+                        onSubmit={handleBubbleSubmit}
+                        data-active-bubble="true"
+                        className="fluent-3d-bubble relative w-[332px] sm:w-[392px] aspect-square rounded-full px-8 sm:px-10 py-6 sm:py-7 flex flex-col items-center justify-between text-center overflow-hidden"
                       >
                         <div
                           aria-hidden="true"
-                          className="pointer-events-none absolute top-3 left-10 right-10 h-3 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                          className="pointer-events-none absolute top-4 left-16 right-16 h-4 rounded-full bg-white/85 dark:bg-sky-300/15 blur-[3px]"
                         />
-                        <span className="scale-150 sm:scale-[1.7] transition-transform duration-200 group-hover:scale-[1.82]">
-                          <EventCategoryEmblem icon={card.icon} />
-                        </span>
-                      </motion.button>
 
-                      {/* Reactive Shadow beneath Jumping Bubble */}
-                      <motion.div
+                        {/* Relevant Emoji Backdrop (user types directly over on top of it) */}
+                        <motion.span
+                          aria-hidden="true"
+                          animate={{ scale: [1, 1.05, 1] }}
+                          transition={{
+                            duration: 4.5,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="pointer-events-none select-none absolute inset-0 z-0 flex items-center justify-center text-[138px] sm:text-[164px] leading-none opacity-[0.14] dark:opacity-[0.17]"
+                        >
+                          {dockedTarget.card.backdropEmoji}
+                        </motion.span>
+
+                        {/* Top Bar: Quiet Period · Domain + Cancel back to Orbs */}
+                        <div className="relative z-10 w-full flex items-center justify-center pt-1">
+                          <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            <span className="scale-75 origin-center">
+                              <EventCategoryEmblem icon={dockedTarget.card.icon} />
+                            </span>
+                            <span>{dockedTarget.card.label}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="tabular-nums" style={{ color: 'var(--pa-accent-text)' }}>
+                              {dockedTarget.fullLabel}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDockedTarget(null);
+                              setBubbleValidationError(null);
+                            }}
+                            aria-label="Choose another topic or month"
+                            title="Back to topic orbs"
+                            className="absolute right-0 top-0 inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Middle Typing Layer Directly Over Backdrop Emoji */}
+                        <div className="relative z-10 w-full flex-1 flex flex-col items-center justify-center px-2">
+                          <label
+                            htmlFor="stage-bubble-question"
+                            className="font-display text-base sm:text-lg font-semibold text-slate-900 dark:text-white tracking-tight mb-2"
+                          >
+                            What&apos;s on your mind?
+                          </label>
+                          <textarea
+                            id="stage-bubble-question"
+                            ref={bubbleInputRef}
+                            rows={3}
+                            value={bubbleQuestion}
+                            disabled={isSending}
+                            onChange={(e) => {
+                              setBubbleQuestion(e.target.value);
+                              if (bubbleValidationError && e.target.value.trim()) {
+                                setBubbleValidationError(null);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleBubbleSubmit();
+                              }
+                            }}
+                            placeholder="Type your question…"
+                            style={{ fontFamily: 'var(--pa-font-body)' }}
+                            className="w-full max-w-[250px] sm:max-w-[292px] resize-none bg-transparent text-center text-sm sm:text-[15px] font-medium leading-relaxed text-slate-900 dark:text-slate-50 placeholder:text-slate-500/75 dark:placeholder:text-slate-400/80 focus:outline-none disabled:opacity-60"
+                          />
+                          {bubbleValidationError && (
+                            <p
+                              role="alert"
+                              className="mt-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400"
+                            >
+                              {bubbleValidationError}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Bottom Round Submit Button (No Arrow Icon) */}
+                        <div className="relative z-10 pb-0.5">
+                          <button
+                            type="submit"
+                            disabled={isSending}
+                            aria-label="Ask question"
+                            title="Ask"
+                            className={`relative h-12 w-12 rounded-full inline-flex items-center justify-center text-xs font-bold tracking-wide text-white overflow-hidden transition-transform duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--pa-accent)] ${
+                              bubbleQuestion.trim()
+                                ? 'pa-glimmer-btn shadow-lg hover:scale-108 active:scale-95'
+                                : 'bg-slate-400/70 dark:bg-slate-600/70 hover:bg-slate-500/80 dark:hover:bg-slate-500/80'
+                            }`}
+                          >
+                            <span className="relative z-10">
+                              {isSending ? '…' : 'Ask'}
+                            </span>
+                          </button>
+                        </div>
+                      </form>
+
+                      {/* Round Speech Bubble Tail Beads */}
+                      <div
+                        className="flex flex-col items-start self-start ml-16 -mt-2 space-y-1.5"
                         aria-hidden="true"
-                        animate={{
-                          scaleX: [1, 0.72, 1, 0.84, 1],
-                          opacity: [0.26, 0.12, 0.26, 0.18, 0.26],
-                        }}
-                        transition={{
-                          duration: 2.3 + idx * 0.22,
-                          repeat: Infinity,
-                          ease: 'easeInOut',
-                          delay: idx * 0.35,
-                        }}
-                        className="mt-3 h-2.5 w-24 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
-                      />
+                      >
+                        <span className="fluent-3d-bubble-tail w-4 h-4 rounded-full block" />
+                        <span className="fluent-3d-bubble-tail w-2.5 h-2.5 rounded-full -ml-1.5 block" />
+                      </div>
+                    </motion.div>
+
+                    {/* Reactive Floor Shadow beneath Round Bubble */}
+                    <motion.div
+                      aria-hidden="true"
+                      animate={{
+                        scaleX: [1, 0.78, 1, 0.88, 1],
+                        opacity: [0.28, 0.16, 0.28, 0.21, 0.28],
+                      }}
+                      transition={{
+                        duration: 3.4,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      }}
+                      className="mt-1 h-3 w-44 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-md"
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="stage1-orbs-grid"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.22 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <h1 className="font-display text-lg sm:text-xl md:text-2xl font-semibold tracking-tight leading-snug text-slate-900 dark:text-white text-balance inline-flex items-center gap-3.5 flex-wrap">
+                        <motion.span
+                          role="img"
+                          aria-label="What's up"
+                          animate={{
+                            rotate: [-10, 14, -8, 12, -10],
+                            y: [0, -3, 0, -2, 0],
+                            scale: [1, 1.08, 1, 1.05, 1],
+                          }}
+                          transition={{
+                            duration: 2.2,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="inline-block text-4xl sm:text-5xl leading-none select-none origin-bottom-right"
+                        >
+                          🤙
+                        </motion.span>
+                        <span
+                          className="tabular-nums"
+                          style={{ color: 'var(--pa-accent-text)' }}
+                        >
+                          {activePeriodFullLabel} ..
+                        </span>
+                      </h1>
+
+                      <AnimatePresence>
+                        {(dropHintVisible || isDraggingOrb) && (
+                          <motion.span
+                            key="orb-drop-hint"
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            transition={{ duration: 0.18 }}
+                            className="text-xs font-medium text-slate-500 dark:text-slate-300"
+                          >
+                            {isDraggingOrb
+                              ? hoveredMonthKey
+                                ? 'Release to ask about this period'
+                                : 'Drop onto a month above'
+                              : 'Move and drop a topic orb onto any month above'}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 sm:gap-7 place-items-center pt-3 pb-5">
+                      {DOMAIN_HOME_CARDS.map((card, idx) => {
+                        const isActiveDomainBubble = card.domain === activePromptDomain;
+                        const isBeingCarried = activeDrag?.card.domain === card.domain;
+                        return (
+                          <div
+                            key={card.domain}
+                            className={`flex flex-col items-center ${idx % 2 === 1 ? 'sm:mt-5' : ''}`}
+                          >
+                            <motion.button
+                              type="button"
+                              disabled={isSending}
+                              onPointerDown={(e) => handleOrbPointerDown(e, card)}
+                              aria-label={`${card.label} — drag onto a month above`}
+                              title={`Move ${card.label} onto a month`}
+                              data-active-bubble={isActiveDomainBubble ? 'true' : undefined}
+                              initial={{ opacity: 0, scale: 0.84, y: 24 }}
+                              animate={{
+                                opacity: isBeingCarried ? 0.25 : 1,
+                                scale: isBeingCarried ? 0.88 : 1,
+                                y: isBeingCarried ? 0 : [0, -14, 0, -7, 0],
+                                rotateZ: isBeingCarried
+                                  ? 0
+                                  : idx % 2 === 0
+                                    ? [-0.8, 0.8, -0.4, 0.5, -0.8]
+                                    : [0.8, -0.8, 0.4, -0.5, 0.8],
+                              }}
+                              transition={{
+                                opacity: { duration: 0.18 },
+                                scale: { type: 'spring', stiffness: 280, damping: 20 },
+                                y: {
+                                  duration: 2.3 + idx * 0.22,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                  delay: idx * 0.35,
+                                },
+                                rotateZ: {
+                                  duration: 3.1 + idx * 0.25,
+                                  repeat: Infinity,
+                                  ease: 'easeInOut',
+                                  delay: idx * 0.35,
+                                },
+                              }}
+                              whileHover={isBeingCarried ? undefined : { scale: 1.09 }}
+                              whileTap={isBeingCarried ? undefined : { scale: 0.96 }}
+                              className="group fluent-3d-bubble relative w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-sky-400/70 disabled:opacity-50"
+                            >
+                              <div
+                                aria-hidden="true"
+                                className="pointer-events-none absolute top-2.5 left-6 right-6 h-2.5 rounded-full bg-white/80 dark:bg-sky-300/15 blur-[2px]"
+                              />
+                              <span className="scale-110 sm:scale-[1.28] transition-transform duration-200 group-hover:scale-[1.36]">
+                                <EventCategoryEmblem icon={card.icon} />
+                              </span>
+                            </motion.button>
+
+                            {/* Reactive Shadow beneath Smaller Jumping Orb */}
+                            <motion.div
+                              aria-hidden="true"
+                              animate={{
+                                scaleX: isBeingCarried ? 0.5 : [1, 0.72, 1, 0.84, 1],
+                                opacity: isBeingCarried ? 0.08 : [0.24, 0.12, 0.24, 0.16, 0.24],
+                              }}
+                              transition={{
+                                duration: 2.3 + idx * 0.22,
+                                repeat: Infinity,
+                                ease: 'easeInOut',
+                                delay: idx * 0.35,
+                              }}
+                              className="mt-2.5 h-2 w-16 rounded-full bg-slate-900/20 dark:bg-sky-400/20 blur-sm"
+                            />
+                            <span className="mt-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 select-none">
+                              {card.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             );
           })()}
@@ -1520,7 +2002,7 @@ export function WorkbenchPage({
                         }`
                       : composerPeriodLabel
                         ? `Period: ${composerPeriodLabel}`
-                        : 'Select Formal or Classic style below'}
+                        : 'Select domain and ask below'}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -1607,42 +2089,6 @@ export function WorkbenchPage({
                   />
                 </>
               )}
-
-              {/* Prompt Style Selector (Formal / Classic — allowed change on follow-ups) */}
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 shrink-0">
-                  Style
-                </span>
-                <div
-                  role="group"
-                  aria-label="Prompt Style"
-                  className="flex-1 inline-flex rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5 gap-1"
-                >
-                  {(['formal', 'classic'] as const).map((style) => {
-                    const selected = promptStyle === style;
-                    return (
-                      <button
-                        key={style}
-                        type="button"
-                        onClick={() => onPromptStyleChange(style)}
-                        aria-pressed={selected}
-                        style={
-                          selected
-                            ? { backgroundColor: 'var(--pa-accent)', color: '#ffffff' }
-                            : undefined
-                        }
-                        className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition-colors cursor-pointer ${
-                          selected
-                            ? 'shadow-2xs'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-white/75 dark:hover:bg-slate-800/75'
-                        }`}
-                      >
-                        {style}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* Question Input Form (hidden when viewing a finalized thread) */}
               {hasActiveThread && isThreadFinalized ? (
@@ -1776,6 +2222,60 @@ export function WorkbenchPage({
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Smooth 60fps Carried Topic Orb Overlay & Spring Return */}
+      {activeDrag && (
+        <motion.div
+          aria-hidden="true"
+          style={{
+            left: dragX,
+            top: dragY,
+            width: activeDrag.size,
+            height: activeDrag.size,
+          }}
+          initial={{ scale: 1 }}
+          animate={{
+            scale: hoveredMonthKey ? 0.94 : 1.14,
+            boxShadow: hoveredMonthKey
+              ? '0 0 0 3px var(--pa-accent), 0 0 32px var(--pa-bubble-rim)'
+              : '0 22px 46px -10px rgba(15, 23, 42, 0.26), 0 0 24px 2px var(--pa-bubble-glow)',
+          }}
+          transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 fluent-3d-bubble rounded-full flex items-center justify-center"
+        >
+          <span className="scale-[1.3]">
+            <EventCategoryEmblem icon={activeDrag.card.icon} />
+          </span>
+        </motion.div>
+      )}
+
+      {returningOrb && (
+        <motion.div
+          aria-hidden="true"
+          style={{
+            width: returningOrb.size,
+            height: returningOrb.size,
+          }}
+          initial={{
+            left: returningOrb.fromX,
+            top: returningOrb.fromY,
+            scale: 1.12,
+            opacity: 0.98,
+          }}
+          animate={{
+            left: returningOrb.toX,
+            top: returningOrb.toY,
+            scale: 1,
+            opacity: 1,
+          }}
+          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+          onAnimationComplete={() => setReturningOrb(null)}
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 fluent-3d-bubble rounded-full flex items-center justify-center"
+        >
+          <span className="scale-110 sm:scale-[1.28]">
+            <EventCategoryEmblem icon={returningOrb.card.icon} />
+          </span>
+        </motion.div>
+      )}
     </div>
   );
 }

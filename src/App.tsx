@@ -5,12 +5,10 @@ import {
   PanelLeft,
   PanelRight,
   Settings,
-  Sparkles,
   X,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PromptBuilderPage } from './components/PromptBuilderPage';
 import { ContextMonitorRail } from './components/ContextMonitorRail';
 import { ReportDocumentPage } from './components/ReportDocumentPage';
 import {
@@ -68,13 +66,6 @@ import {
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
 
-function extractMajorTemplate(template: string): string {
-  return template
-    .replace(/(?:\r?\n)*[A-Za-z ]*request:\s*\{\{prompt\}\}/gi, '')
-    .replace(/\{\{prompt\}\}/g, '')
-    .trim();
-}
-
 function appendCachedContext(
   instruction: string,
   cachedContext: string,
@@ -118,7 +109,6 @@ function buildExchangesFromTurns(threadTurns: ConversationTurn[]): ThreadHtmlExc
 
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isPromptBuilderOpen, setIsPromptBuilderOpen] = useState(false);
   const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
   const [scope, setScope] = useState<ConversationScope>(() => loadScope());
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
@@ -127,8 +117,6 @@ export default function App() {
     loadRatedThreads().map((rec) => ({ ...rec, isFinalized: true })),
   );
   const activePromptDomain = settings.promptBuilder.activeDomain;
-  const promptStyle = settings.promptBuilder.activeStyle;
-  const promptTemplates = settings.promptBuilder.templates;
   const [isSending, setIsSending] = useState(false);
   const [configFileInfo, setConfigFileInfo] = useState<{
     filePath: string;
@@ -164,7 +152,6 @@ export default function App() {
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
   const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
   const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
-  const [hasChosenMonthThisThread, setHasChosenMonthThisThread] = useState(false);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -530,7 +517,6 @@ export default function App() {
       };
       settingsRef.current = nextSettings;
       setSettings(nextSettings);
-      setHasChosenMonthThisThread(true);
       void persistSettingsToFile(nextSettings);
       pushContextLog(
         'info',
@@ -572,7 +558,6 @@ export default function App() {
 
   const handleStartNewThread = useCallback(() => {
     setMonthSwitchError(null);
-    setHasChosenMonthThisThread(false);
     if (activeRequestAbortRef.current) {
       activeRequestAbortRef.current.controller.abort();
       activeRequestAbortRef.current = null;
@@ -623,7 +608,6 @@ export default function App() {
     }
 
     setIsSettingsOpen(false);
-    setIsPromptBuilderOpen(false);
     setActiveReportExchangeId(null);
     setTurns([]);
     setIsChatBarOpen(false);
@@ -888,7 +872,6 @@ export default function App() {
 
   const canSwitchScope =
     !isSettingsOpen &&
-    !isPromptBuilderOpen &&
     !activeReportRecord &&
     turns.length === 0 &&
     !isSending;
@@ -1077,46 +1060,60 @@ export default function App() {
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
     const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
-    const targetHistory = precedingTurns
+    const targetCachedContext = (
+      overrideCachedContext !== undefined
+        ? overrideCachedContext
+        : targetScope === 'private'
+          ? settings.contextCache.privateText
+          : settings.contextCache.publicText
+    ).trim();
+
+    const filteredPreceding = precedingTurns
       .filter((turn) => {
         if (turn.role === 'user') {
           return (turn.responseScopes ?? [turn.scope]).includes(targetScope);
         }
         return turn.role === 'assistant' && turn.scope === targetScope;
       })
-      .slice(-maxHistory)
-      .map((turn) => ({
+      .slice(-maxHistory);
+
+    const isInitialTurn = filteredPreceding.length === 0;
+    const questionText = userTurn.content.trim();
+    const outgoingMessage =
+      isInitialTurn && targetCachedContext
+        ? `${targetCachedContext}\n\nQuestion:\n${questionText}`
+        : questionText;
+
+    const targetHistory = filteredPreceding.map((turn, idx) => {
+      if (turn.role === 'user' && idx === 0) {
+        const rootCtx = (turn.cachedContext ?? targetCachedContext).trim();
+        if (rootCtx && !turn.content.includes(rootCtx)) {
+          return {
+            role: 'user' as const,
+            content: `${rootCtx}\n\nQuestion:\n${turn.content.trim()}`,
+          };
+        }
+      }
+      return {
         role: turn.role as 'user' | 'assistant',
         content: turn.content,
-      }));
+      };
+    });
 
-    const targetCachedContext =
-      overrideCachedContext !== undefined
-        ? overrideCachedContext.trim()
-        : (targetScope === 'private'
-            ? settings.contextCache.privateText.trim()
-            : settings.contextCache.publicText.trim());
-    const majorTemplate = extractMajorTemplate(
-      promptTemplates[effectiveDomain]?.[promptStyle] ?? '',
-    );
-    const dedupeSources = [
-      userTurn.content,
-      ...targetHistory.map((turn) => turn.content),
-    ];
-    const baseWithContext = appendCachedContext(
+    const adapterSystemInstruction =
       targetScope === 'private'
         ? settings.privateLlm.systemInstruction
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction,
-      targetCachedContext,
-      dedupeSources,
-    );
-    const baseWithTemplate = appendCachedContext(
-      baseWithContext,
-      majorTemplate,
-      dedupeSources,
-    );
+        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction;
+    const baseSystemInstruction =
+      isInitialTurn || targetHistory.length > 0
+        ? adapterSystemInstruction.trim()
+        : appendCachedContext(
+            adapterSystemInstruction,
+            targetCachedContext,
+            targetHistory.map((turn) => turn.content),
+          );
     const targetSystemInstruction = [
-      baseWithTemplate,
+      baseSystemInstruction,
       EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
     ]
       .filter(Boolean)
@@ -1127,7 +1124,7 @@ export default function App() {
     const fullPromptChars =
       targetSystemInstruction.length +
       targetHistory.reduce((sum, item) => sum + item.content.length, 0) +
-      userTurn.content.trim().length;
+      outgoingMessage.length;
     const estimatedInputTokens = Math.max(1, Math.round(fullPromptChars / 4));
     setNowMs(requestStartedAt);
     setTelemetry((prev) => ({
@@ -1213,7 +1210,7 @@ export default function App() {
         body: JSON.stringify({
           scope: targetScope,
           adapterId: targetAdapterId,
-          message: userTurn.content,
+          message: outgoingMessage,
           history: targetHistory,
           options,
         }),
@@ -1446,6 +1443,8 @@ export default function App() {
     threadName,
     promptDomain,
     isFollowUp,
+    targetMonth,
+    targetYear,
   }: SendThreadMessagePayload) => {
     const rootUserTurn = turns.find((t) => t.role === 'user');
     if (isFollowUp && rootUserTurn?.isFinalized) {
@@ -1462,12 +1461,16 @@ export default function App() {
         ? settings.privateLlm.selectedModel || 'unselected'
         : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
 
+    const currentActiveMonth =
+      targetMonth ?? settingsRef.current.contextCache.activeMonth;
+    const currentActiveYear =
+      targetYear ?? settingsRef.current.contextCache.activeYear;
     const inheritedMonth =
       (isFollowUp ? rootUserTurn?.threadMonth : undefined) ||
-      getMonthNameFromNumber(settings.contextCache.activeMonth);
+      getMonthNameFromNumber(currentActiveMonth);
     const inheritedYear =
       (isFollowUp ? rootUserTurn?.threadYear : undefined) ??
-      settings.contextCache.activeYear;
+      currentActiveYear;
     const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
     const domainQuery = getDomainQueryValue(effectiveDomain);
     let effectiveThreadName =
@@ -1519,7 +1522,6 @@ export default function App() {
       adapterId: selectedAdapterId,
       model: selectedModelName,
       promptDomain: effectiveDomain,
-      promptStyle,
       threadName: effectiveThreadName,
       threadMonth: inheritedMonth,
       threadYear: inheritedYear,
@@ -1711,7 +1713,6 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setIsSettingsOpen(false);
-                  setIsPromptBuilderOpen(false);
                   setActiveReportExchangeId(null);
                 }}
                 title="Home"
@@ -1729,7 +1730,6 @@ export default function App() {
                 activePeriodYear={settings.contextCache.activeYear}
                 onSelectReport={(recordId) => {
                   setIsSettingsOpen(false);
-                  setIsPromptBuilderOpen(false);
                   setActiveReportExchangeId(recordId);
                 }}
                 onRenameReport={(recordId, newName) =>
@@ -1797,7 +1797,6 @@ export default function App() {
               type="button"
               onClick={() => {
                 setIsSettingsOpen(false);
-                setIsPromptBuilderOpen(false);
                 setActiveReportExchangeId(null);
               }}
               title="Home"
@@ -1807,13 +1806,9 @@ export default function App() {
             >
               <Home className="w-4 h-4" />
             </button>
-            {(isSettingsOpen || isPromptBuilderOpen || activeReportRecord) && (
+            {(isSettingsOpen || activeReportRecord) && (
               <span className="font-display text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
-                {isSettingsOpen
-                  ? 'Settings'
-                  : isPromptBuilderOpen
-                    ? 'Prompt Builder'
-                    : 'Reference Report'}
+                {isSettingsOpen ? 'Settings' : 'Reference Report'}
               </span>
             )}
 
@@ -1827,7 +1822,6 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setIsSettingsOpen((prev) => !prev);
-                  setIsPromptBuilderOpen(false);
                   setActiveReportExchangeId(null);
                 }}
                 aria-label="Settings"
@@ -1841,25 +1835,6 @@ export default function App() {
                 style={isSettingsOpen ? { color: 'var(--pa-accent)' } : undefined}
               >
                 <Settings className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSettingsOpen(false);
-                  setIsPromptBuilderOpen((prev) => !prev);
-                  setActiveReportExchangeId(null);
-                }}
-                aria-label="Prompt Builder"
-                title="Prompt Builder"
-                aria-current={isPromptBuilderOpen ? 'page' : undefined}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                  isPromptBuilderOpen
-                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
-                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
-                }`}
-                style={isPromptBuilderOpen ? { color: 'var(--pa-accent)' } : undefined}
-              >
-                <Sparkles className="w-4 h-4" />
               </button>
             </nav>
           </div>
@@ -1957,56 +1932,6 @@ export default function App() {
               onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
               onContextLog={pushContextLog}
             />
-          ) : isPromptBuilderOpen ? (
-            <PromptBuilderPage
-              activeDomain={activePromptDomain}
-              templates={promptTemplates}
-              settingsFilePath={configFileInfo.filePath}
-              domainPromptFilePath={configFileInfo.promptFiles?.[activePromptDomain]}
-              promptFiles={configFileInfo.promptFiles}
-              saveError={configFileInfo.syncError}
-              onApplySettings={(overrideTemplates) => {
-                const nextSettings: WorkbenchSettings = {
-                  ...settingsRef.current,
-                  promptBuilder: {
-                    ...settingsRef.current.promptBuilder,
-                    templates: overrideTemplates ?? settingsRef.current.promptBuilder.templates,
-                  },
-                };
-                settingsRef.current = nextSettings;
-                setSettings(nextSettings);
-                saveSettings(nextSettings);
-                return persistSettingsToFile(nextSettings);
-              }}
-              onSelectDomain={(activeDomain) => {
-                userEditedPromptsRef.current = true;
-                setSettings((previous) => {
-                  const next = {
-                    ...previous,
-                    promptBuilder: {
-                      ...previous.promptBuilder,
-                      activeDomain,
-                    },
-                  };
-                  settingsRef.current = next;
-                  return next;
-                });
-              }}
-              onChangeTemplates={(templates) => {
-                userEditedPromptsRef.current = true;
-                setSettings((previous) => {
-                  const next = {
-                    ...previous,
-                    promptBuilder: {
-                      ...previous.promptBuilder,
-                      templates,
-                    },
-                  };
-                  settingsRef.current = next;
-                  return next;
-                });
-              }}
-            />
           ) : activeReportRecord ? (
             <ReportDocumentPage
               exchangeId={activeReportRecord.id}
@@ -2073,7 +1998,6 @@ export default function App() {
                   })(),
               )}
               activePromptDomain={activePromptDomain}
-              promptStyle={promptStyle}
               isChatBarOpen={isChatBarOpen}
               onToggleChatBar={() => setIsChatBarOpen((prev) => !prev)}
               onOpenChatBar={() => setIsChatBarOpen(true)}
@@ -2083,15 +2007,6 @@ export default function App() {
                   promptBuilder: {
                     ...previous.promptBuilder,
                     activeDomain,
-                  },
-                }))
-              }
-              onPromptStyleChange={(activeStyle) =>
-                setSettings((previous) => ({
-                  ...previous,
-                  promptBuilder: {
-                    ...previous.promptBuilder,
-                    activeStyle,
                   },
                 }))
               }
@@ -2116,11 +2031,10 @@ export default function App() {
                 pushContextLog('info', 'Conversation thread deleted from session and local folder');
               }}
               onOpenSettings={() => {
-                setIsPromptBuilderOpen(false);
                 setActiveReportExchangeId(null);
                 setIsSettingsOpen(true);
               }}
-              showQuickMonthRainbow={!hasChosenMonthThisThread}
+              showQuickMonthRainbow={true}
               switchingMonthKey={switchingMonthKey}
               monthSwitchError={monthSwitchError}
               onSelectQuickMonth={(month, year) => void handleQuickSelectMonth(month, year)}
@@ -2131,7 +2045,6 @@ export default function App() {
           {/* Floating Right-Hand Careful Dates by Domain Drawer */}
           <AnimatePresence>
             {!isSettingsOpen &&
-              !isPromptBuilderOpen &&
               isContextRailVisible && (
                 <ContextMonitorRail
                   carefulDates={activeCarefulDates}
