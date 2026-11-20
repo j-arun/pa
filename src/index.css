@@ -7,19 +7,19 @@
     --font-sans: "DM Sans", "Segoe UI Variable Text", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
     --pa-font-body: var(--font-sans);
-    --pa-accent: #059669;
-    --pa-accent-hover: #047857;
-    --pa-accent-soft: rgba(5, 150, 105, 0.11);
-    --pa-accent-text: #065f46;
-    --pa-q-bg: rgba(5, 150, 105, 0.08);
-    --pa-q-accent: #059669;
-    --pa-a-bg: rgba(217, 119, 6, 0.08);
-    --pa-a-accent: #b45309;
-    --pa-bubble-rim: rgba(16, 185, 129, 0.36);
-    --pa-bubble-glow: rgba(16, 185, 129, 0.17);
-    --pa-rainbow-edge: #f59e0b;
-    --pa-rainbow-peak: #10b981;
-    --pa-rainbow-hairline: rgba(245, 158, 11, 0.38);
+    --pa-accent: #0284c7;
+    --pa-accent-hover: #0369a1;
+    --pa-accent-soft: rgba(2, 132, 199, 0.10);
+    --pa-accent-text: #0369a1;
+    --pa-q-bg: rgba(2, 132, 199, 0.08);
+    --pa-q-accent: #0284c7;
+    --pa-a-bg: rgba(14, 165, 233, 0.08);
+    --pa-a-accent: #0369a1;
+    --pa-bubble-rim: rgba(56, 189, 248, 0.48);
+    --pa-bubble-glow: rgba(14, 165, 233, 0.20);
+    --pa-rainbow-edge: #38bdf8;
+    --pa-rainbow-peak: #0284c7;
+    --pa-rainbow-hairline: rgba(56, 189, 248, 0.45);
   }
 
   [data-pa-font="segoe"] {
@@ -39,19 +39,19 @@
   }
 
   [data-pa-scope="private"] {
-    --pa-accent: #059669;
-    --pa-accent-hover: #047857;
-    --pa-accent-soft: rgba(5, 150, 105, 0.11);
-    --pa-accent-text: #065f46;
-    --pa-q-bg: rgba(5, 150, 105, 0.08);
-    --pa-q-accent: #059669;
-    --pa-a-bg: rgba(217, 119, 6, 0.08);
-    --pa-a-accent: #b45309;
-    --pa-bubble-rim: rgba(16, 185, 129, 0.36);
-    --pa-bubble-glow: rgba(16, 185, 129, 0.17);
-    --pa-rainbow-edge: #f59e0b;
-    --pa-rainbow-peak: #10b981;
-    --pa-rainbow-hairline: rgba(245, 158, 11, 0.38);
+    --pa-accent: #0284c7;
+    --pa-accent-hover: #0369a1;
+    --pa-accent-soft: rgba(2, 132, 199, 0.10);
+    --pa-accent-text: #0369a1;
+    --pa-q-bg: rgba(2, 132, 199, 0.08);
+    --pa-q-accent: #0284c7;
+    --pa-a-bg: rgba(14, 165, 233, 0.08);
+    --pa-a-accent: #0369a1;
+    --pa-bubble-rim: rgba(56, 189, 248, 0.48);
+    --pa-bubble-glow: rgba(14, 165, 233, 0.20);
+    --pa-rainbow-edge: #38bdf8;
+    --pa-rainbow-peak: #0284c7;
+    --pa-rainbow-hairline: rgba(56, 189, 248, 0.45);
   }
 
   [data-pa-scope="public"] {
@@ -96,13 +96,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Private (Mild Sanctuary) & Public (Bold Open Constellation) Global Canvases */
+/* Private (Crisp White) & Public (Bold Dark Constellation) Global Canvases */
 .mica-canvas {
-  background-color: #eef9f4;
-  background-image:
-    radial-gradient(980px 540px at 66% 48%, rgba(245, 158, 11, 0.08), transparent 58%),
-    radial-gradient(1100px 620px at 14% -6%, rgba(16, 185, 129, 0.16), transparent 62%),
-    linear-gradient(180deg, rgba(248, 253, 250, 0.96) 0%, rgba(232, 247, 240, 0.94) 100%);
+  background-color: #ffffff;
+  background-image: none;
   transition: background-color 360ms ease;
 }
 
@@ -116,9 +113,9 @@
 }
 
 .cloud-surface {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(26px) saturate(1.18);
-  -webkit-backdrop-filter: blur(26px) saturate(1.18);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(26px) saturate(1.12);
+  -webkit-backdrop-filter: blur(26px) saturate(1.12);
 }
 
 .dark .cloud-surface {
@@ -146,19 +143,19 @@
   background: rgba(100, 116, 139, 0.45);
 }
 
-/* Creative 3D Fluent Round Speech Bubble (Private: Mild Emerald Sanctuary · Public: Bold Cyan Constellation) */
+/* Creative 3D Fluent Round Speech Bubble (Private: Crisp White Glass · Public: Bold Cyan Constellation) */
 .fluent-3d-bubble {
   border-radius: 9999px;
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.98) 0%, rgba(242, 253, 247, 0.92) 50%, rgba(220, 247, 234, 0.86) 100%);
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.94) 55%, rgba(241, 245, 249, 0.90) 100%);
   box-shadow:
-    0 20px 44px -16px rgba(6, 78, 59, 0.14),
+    0 20px 44px -16px rgba(15, 23, 42, 0.12),
     0 8px 22px -8px var(--pa-bubble-glow),
-    inset 0 4px 10px rgba(255, 255, 255, 0.96),
-    inset 0 -10px 20px rgba(110, 231, 183, 0.16);
-  border: 1.5px solid rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(18px) saturate(1.14);
-  -webkit-backdrop-filter: blur(18px) saturate(1.14);
+    inset 0 4px 10px rgba(255, 255, 255, 0.98),
+    inset 0 -10px 20px rgba(148, 163, 184, 0.12);
+  border: 1.5px solid rgba(226, 232, 240, 0.92);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
   transform-style: preserve-3d;
   transition: box-shadow 220ms ease, border-color 220ms ease;
 }
@@ -179,10 +176,9 @@
 .fluent-3d-bubble[data-active-bubble="true"] {
   border-color: var(--pa-bubble-rim);
   box-shadow:
-    0 22px 48px -14px rgba(6, 78, 59, 0.16),
+    0 22px 48px -14px rgba(15, 23, 42, 0.14),
     0 0 22px 2px var(--pa-bubble-glow),
-    inset 0 0 18px rgba(245, 158, 11, 0.12),
-    inset 0 4px 10px rgba(255, 255, 255, 0.98);
+    inset 0 4px 10px rgba(255, 255, 255, 1);
 }
 
 .dark .fluent-3d-bubble:hover,
@@ -196,10 +192,10 @@
 }
 
 .fluent-3d-bubble-tail {
-  background: linear-gradient(155deg, rgba(242, 253, 247, 0.95), rgba(220, 247, 234, 0.88));
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
   box-shadow:
     0 8px 16px -6px var(--pa-bubble-glow),
-    inset 0 1px 2px rgba(255, 255, 255, 0.95);
+    inset 0 1px 2px rgba(255, 255, 255, 0.98);
   border: 1px solid var(--pa-bubble-rim);
 }
 
@@ -212,16 +208,16 @@
 }
 
 .fluent-event-card {
-  background: linear-gradient(168deg, rgba(255, 255, 255, 0.98) 0%, rgba(242, 253, 248, 0.93) 60%, rgba(226, 249, 238, 0.90) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.94);
+  background: linear-gradient(168deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.96) 60%, rgba(241, 245, 249, 0.93) 100%);
+  border: 1px solid rgba(226, 232, 240, 0.92);
   box-shadow:
-    0 12px 26px -14px rgba(6, 78, 59, 0.14),
+    0 12px 26px -14px rgba(15, 23, 42, 0.11),
     0 4px 12px -6px var(--pa-bubble-glow),
-    0 1.5px 3px -1px rgba(6, 78, 59, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -2px 5px rgba(110, 231, 183, 0.14);
-  backdrop-filter: blur(16px) saturate(1.12);
-  -webkit-backdrop-filter: blur(16px) saturate(1.12);
+    0 1.5px 3px -1px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -2px 5px rgba(148, 163, 184, 0.10);
+  backdrop-filter: blur(16px) saturate(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
   transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease;
 }
 
@@ -240,9 +236,9 @@
   border-color: var(--pa-bubble-rim);
   box-shadow:
     0 16px 32px -14px var(--pa-bubble-glow),
-    0 6px 14px -6px rgba(6, 78, 59, 0.10),
+    0 6px 14px -6px rgba(15, 23, 42, 0.09),
     inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -2px 5px rgba(110, 231, 183, 0.18);
+    inset 0 -2px 5px rgba(148, 163, 184, 0.14);
 }
 
 .dark .fluent-event-card:hover {

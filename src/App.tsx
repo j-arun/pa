@@ -1639,7 +1639,7 @@ export default function App() {
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Fluent Top Menu Bar */}
-        <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between gap-4">
+        <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-4">
           {/* Zone 1: Left Rail Toggle + Title + Icon-only Top Navigation */}
           <div className="flex items-center gap-2.5 min-w-0">
             <button
@@ -1771,7 +1771,7 @@ export default function App() {
                 ? 'Choose Private or Public for your new thread'
                 : 'Private / Public switching is only available when starting a new thread'
             }
-            className={`inline-flex items-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
+            className={`inline-flex items-center justify-self-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
               canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
             }`}
           >
@@ -1815,7 +1815,7 @@ export default function App() {
           </div>
 
           {/* Zone 3: Care Must Be Taken Sidebar Control */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center justify-end justify-self-end gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => {

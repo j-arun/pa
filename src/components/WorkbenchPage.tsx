@@ -1665,19 +1665,11 @@ export function WorkbenchPage({
               ) : (
                 <form
                   onSubmit={handleSubmit}
-                  style={
-                    scope === 'public'
-                      ? {
-                          backgroundColor: 'var(--pa-q-bg)',
-                          borderColor: 'var(--pa-bubble-rim)',
-                        }
-                      : undefined
-                  }
-                  className={`rounded-2xl border px-4 py-3.5 flex items-end gap-3 transition-colors ${
-                    scope === 'private'
-                      ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200/90 dark:border-emerald-800/70'
-                      : ''
-                  }`}
+                  style={{
+                    backgroundColor: 'var(--pa-q-bg)',
+                    borderColor: 'var(--pa-bubble-rim)',
+                  }}
+                  className="rounded-2xl border px-4 py-3.5 flex items-end gap-3 transition-colors"
                 >
                   <textarea
                     ref={textareaRef}
