@@ -622,6 +622,7 @@ export function ProductionCards3D({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isReasoningOpen, setIsReasoningOpen] = useState(false);
   const [showReadOut, setShowReadOut] = useState(true);
+  const [isAnswerShrunk, setIsAnswerShrunk] = useState(false);
   const [scrollTick, setScrollTick] = useState(0);
 
   const selectedCard = selectedIndex !== null ? cards[selectedIndex] ?? null : null;
@@ -630,6 +631,7 @@ export function ProductionCards3D({
     setSelectedIndex(null);
     setIsReasoningOpen(false);
     setShowReadOut(true);
+    setIsAnswerShrunk(false);
   }, [cards]);
 
   useEffect(() => {
@@ -656,6 +658,10 @@ export function ProductionCards3D({
     },
     onToggleReasoning: () => {
       setIsReasoningOpen((prev) => !prev);
+    },
+    onCloseDetail: () => {
+      setIsReasoningOpen(false);
+      setSelectedIndex(null);
     },
   });
   interactionRef.current.selectedIndex = selectedIndex;
@@ -977,7 +983,7 @@ export function ProductionCards3D({
 
       raycaster.setFromCamera(pointerNdc, camera);
       if (interactionRef.current.selectedIndex !== null) {
-        const hits = raycaster.intersectObject(detailFaceMesh, false);
+        const hits = raycaster.intersectObjects(detailCardGroup.children, false);
         renderer.domElement.style.cursor = hits.length > 0 ? 'pointer' : 'default';
         return;
       }
@@ -1000,9 +1006,11 @@ export function ProductionCards3D({
       raycaster.setFromCamera(pointerNdc, camera);
 
       if (interactionRef.current.selectedIndex !== null) {
-        const hits = raycaster.intersectObject(detailFaceMesh, false);
+        const hits = raycaster.intersectObjects(detailCardGroup.children, false);
         if (hits.length > 0) {
           interactionRef.current.onToggleReasoning();
+        } else {
+          interactionRef.current.onCloseDetail();
         }
         return;
       }
@@ -1296,19 +1304,47 @@ export function ProductionCards3D({
           {/* Floating Light-Theme Answer Bubble right over the top of the 3D cards */}
           {hasAnswer && showReadOut && (
             <div className="pointer-events-none absolute top-3 inset-x-0 z-10 px-4 sm:px-8">
-              <div className="max-w-2xl mx-auto">
-                <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
-                      <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                      <span>Answer</span>
-                    </span>
-                  </div>
-                  <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-36 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain whitespace-pre-line select-text">
-                    {answerText}
+              {isAnswerShrunk ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setIsAnswerShrunk(false)}
+                    aria-label="Expand answer pane"
+                    title="Click to expand answer"
+                    className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-[#f8fbff]/96 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 shadow-[0_12px_28px_-10px_rgba(15,23,42,0.22)] hover:bg-white transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <span>Answer</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="max-w-2xl mx-auto">
+                  <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Answer</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsAnswerShrunk(true);
+                        }}
+                        aria-label="Shrink answer pane"
+                        title="Shrink answer"
+                        className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full hover:bg-sky-100/80 transition-colors cursor-pointer shrink-0"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                      </button>
+                    </div>
+                    <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-36 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain whitespace-pre-line select-text">
+                      {answerText}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
