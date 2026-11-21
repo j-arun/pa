@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Briefcase,
   Calendar,
+  DollarSign,
   Heart,
   Layers,
   ShieldAlert,
@@ -42,7 +43,10 @@ function DomainNodeGlyph({ domain }: { domain: string }) {
   if (/(career|work|business|retail|profession|job)/.test(lower)) {
     return <Briefcase className="w-4 h-4 text-sky-300" />;
   }
-  if (/(family|home|finance|money|domestic|household)/.test(lower)) {
+  if (/(finance|money|wealth|invest|budget|income)/.test(lower)) {
+    return <DollarSign className="w-4 h-4 text-amber-300" />;
+  }
+  if (/(family|home|domestic|household)/.test(lower)) {
     return <Layers className="w-4 h-4 text-emerald-300" />;
   }
   if (/(love|relationship|romance|marriage|partner)/.test(lower)) {

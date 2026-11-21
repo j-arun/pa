@@ -1,8 +1,23 @@
-import { Briefcase, Heart, Home, Loader2, Send, Shield, X } from 'lucide-react';
+import {
+  Briefcase,
+  DollarSign,
+  Eye,
+  Heart,
+  Home,
+  Loader2,
+  Send,
+  Shield,
+  ShieldAlert,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import type { EventCardIconType, PromptDomain } from '../../types/workbench';
+import type {
+  EventCardIconType,
+  PromptDomain,
+  RatedThreadRecord,
+} from '../../types/workbench';
 import { getMonthNameFromNumber } from '../../utils/promptTemplates';
 
 export interface ProductionTopicDef {
@@ -21,6 +36,13 @@ export interface ProductionMonthItem {
   fullLabel: string;
 }
 
+export interface BucketReportEntry {
+  record: RatedThreadRecord;
+  domain: PromptDomain;
+  provider: 'gemini' | 'fable';
+  accentHex: string;
+}
+
 const TOPICS: ProductionTopicDef[] = [
   {
     domain: 'astrology',
@@ -30,11 +52,18 @@ const TOPICS: ProductionTopicDef[] = [
     glowHex: '#0284c7',
   },
   {
-    domain: 'finance',
+    domain: 'family',
     label: 'Family',
     icon: 'layers',
     accentHex: '#34d399',
     glowHex: '#059669',
+  },
+  {
+    domain: 'finance',
+    label: 'Finance',
+    icon: 'coins',
+    accentHex: '#fbbf24',
+    glowHex: '#d97706',
   },
   {
     domain: 'general',
@@ -52,16 +81,27 @@ const TOPICS: ProductionTopicDef[] = [
   },
 ];
 
+const TOPIC_ACCENT_BY_DOMAIN: Record<PromptDomain, string> = {
+  astrology: '#38bdf8',
+  family: '#34d399',
+  finance: '#fbbf24',
+  general: '#fb7185',
+  health: '#a78bfa',
+};
+
 interface ProductionStage1ThreeProps {
   activeMonthNum: number;
   activeYearNum: number;
   activePromptDomain: PromptDomain;
+  activeProvider: 'gemini' | 'fable';
+  ratedThreads: RatedThreadRecord[];
   isSending: boolean;
   switchingMonthKey?: string | null;
   monthSwitchError?: string | null;
   onDismissMonthSwitchError?: () => void;
   onPromptDomainChange: (domain: PromptDomain) => void;
   onSelectQuickMonth?: (month: number, year: number) => void;
+  onOpenExistingReport: (record: RatedThreadRecord) => void;
   onSubmitQuestion: (payload: {
     text: string;
     domain: PromptDomain;
@@ -71,9 +111,26 @@ interface ProductionStage1ThreeProps {
   }) => void;
 }
 
-function drawTopicIconCanvas(
+function normalizeRecordDomain(rawDomain?: string, relPath?: string): PromptDomain {
+  if (
+    rawDomain === 'astrology' ||
+    rawDomain === 'family' ||
+    rawDomain === 'finance' ||
+    rawDomain === 'general' ||
+    rawDomain === 'health'
+  ) {
+    if (rawDomain === 'finance' && relPath && /(?:^|\/)family(?:\/|$)/i.test(relPath)) {
+      return 'family';
+    }
+    return rawDomain;
+  }
+  return 'astrology';
+}
+
+function drawPureCoreIconCanvas(
   icon: EventCardIconType,
   accentHex: string,
+  glowHex: string,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
   const size = 256;
@@ -82,86 +139,134 @@ function drawTopicIconCanvas(
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
+  // Pure core icon ONLY — NO outer circle, NO radial disc, NO ring
+  ctx.clearRect(0, 0, size, size);
+
   const cx = size / 2;
   const cy = size / 2;
 
-  const grad = ctx.createRadialGradient(cx, cy - 18, 12, cx, cy, 118);
-  grad.addColorStop(0, '#ffffff');
-  grad.addColorStop(0.55, accentHex);
-  grad.addColorStop(1, '#0b162a');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 118, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.strokeStyle = '#ffffff';
-  ctx.fillStyle = '#ffffff';
-  ctx.lineWidth = 11;
+
+  const grad = ctx.createLinearGradient(0, -90, 0, 95);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.28, accentHex);
+  grad.addColorStop(1, glowHex);
+
+  ctx.shadowColor = accentHex;
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = grad;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.38)';
-  ctx.shadowBlur = 12;
 
   if (icon === 'briefcase') {
-    // Clean briefcase vector
+    // Rich blue filled briefcase with crisp clasp & handle
     ctx.beginPath();
-    ctx.roundRect(-48, -22, 96, 66, 14);
-    ctx.stroke();
+    ctx.roundRect(-78, -36, 156, 108, 22);
+    ctx.fill();
+
+    ctx.lineWidth = 14;
     ctx.beginPath();
-    ctx.moveTo(-22, -22);
-    ctx.lineTo(-22, -38);
-    ctx.arcTo(-22, -46, -14, -46, 8);
-    ctx.lineTo(14, -46);
-    ctx.arcTo(22, -46, 22, -38, 8);
-    ctx.lineTo(22, -22);
+    ctx.moveTo(-34, -36);
+    ctx.lineTo(-34, -64);
+    ctx.arcTo(-34, -76, -22, -76, 12);
+    ctx.lineTo(22, -76);
+    ctx.arcTo(34, -76, 34, -64, 12);
+    ctx.lineTo(34, -36);
     ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.fillRect(-78, 8, 156, 10);
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(-48, 8);
-    ctx.lineTo(48, 8);
-    ctx.stroke();
+    ctx.roundRect(-16, -2, 32, 26, 6);
+    ctx.fill();
   } else if (icon === 'layers') {
-    // Stacked home/family layers vector
+    // Rich emerald filled home/family silhouette with door
     ctx.beginPath();
-    ctx.moveTo(0, -48);
-    ctx.lineTo(50, -10);
-    ctx.lineTo(38, -10);
-    ctx.lineTo(38, 42);
-    ctx.lineTo(-38, 42);
-    ctx.lineTo(-38, -10);
-    ctx.lineTo(-50, -10);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.roundRect(-14, 10, 28, 32, 4);
-    ctx.stroke();
-  } else if (icon === 'heart') {
-    ctx.beginPath();
-    ctx.moveTo(0, 44);
-    ctx.bezierCurveTo(-56, 8, -56, -42, -24, -46);
-    ctx.bezierCurveTo(-6, -48, 0, -28, 0, -24);
-    ctx.bezierCurveTo(0, -28, 6, -48, 24, -46);
-    ctx.bezierCurveTo(56, -42, 56, 8, 0, 44);
+    ctx.moveTo(0, -82);
+    ctx.lineTo(84, -14);
+    ctx.lineTo(64, -14);
+    ctx.lineTo(64, 72);
+    ctx.lineTo(-64, 72);
+    ctx.lineTo(-64, -14);
+    ctx.lineTo(-84, -14);
     ctx.closePath();
     ctx.fill();
-  } else {
-    // Health shield + pulse cross
+
+    ctx.lineWidth = 14;
     ctx.beginPath();
-    ctx.moveTo(0, -50);
-    ctx.lineTo(44, -32);
-    ctx.lineTo(44, 2);
-    ctx.bezierCurveTo(44, 34, 0, 52, 0, 52);
-    ctx.bezierCurveTo(0, 52, -44, 34, -44, 2);
-    ctx.lineTo(-44, -32);
+    ctx.moveTo(-84, -14);
+    ctx.lineTo(0, -82);
+    ctx.lineTo(84, -14);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ecfdf5';
+    ctx.beginPath();
+    ctx.roundRect(-22, 18, 44, 54, 8);
+    ctx.fill();
+  } else if (icon === 'coins') {
+    // Bold amber-gold Finance dollar glyph ONLY (no enclosing coin circle)
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    ctx.moveTo(0, -82);
+    ctx.lineTo(0, 82);
+    ctx.stroke();
+
+    ctx.lineWidth = 24;
+    ctx.beginPath();
+    ctx.moveTo(46, -42);
+    ctx.bezierCurveTo(46, -68, -46, -68, -46, -32);
+    ctx.bezierCurveTo(-46, -2, 46, -2, 46, 32);
+    ctx.bezierCurveTo(46, 70, -46, 70, -46, 40);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(-4, -76);
+    ctx.lineTo(-4, 76);
+    ctx.stroke();
+  } else if (icon === 'heart') {
+    // Vibrant rose-pink heart
+    ctx.beginPath();
+    ctx.moveTo(0, 76);
+    ctx.bezierCurveTo(-98, 16, -98, -68, -42, -76);
+    ctx.bezierCurveTo(-12, -80, 0, -46, 0, -38);
+    ctx.bezierCurveTo(0, -46, 12, -80, 42, -76);
+    ctx.bezierCurveTo(98, -68, 98, 16, 0, 76);
     ctx.closePath();
-    ctx.stroke();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.beginPath();
-    ctx.moveTo(0, -18);
-    ctx.lineTo(0, 20);
-    ctx.moveTo(-19, 1);
-    ctx.lineTo(19, 1);
-    ctx.stroke();
+    ctx.ellipse(-34, -38, 18, 10, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Health: vibrant violet shield with crisp white medical cross
+    ctx.beginPath();
+    ctx.moveTo(0, -82);
+    ctx.lineTo(74, -52);
+    ctx.lineTo(74, 6);
+    ctx.bezierCurveTo(74, 58, 0, 86, 0, 86);
+    ctx.bezierCurveTo(0, 86, -74, 58, -74, 6);
+    ctx.lineTo(-74, -52);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(-11, -34, 22, 68, 6);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(-34, -11, 68, 22, 6);
+    ctx.fill();
   }
   ctx.restore();
 
@@ -184,6 +289,7 @@ function TopicBackdropIcon({
   const style = { color };
   if (icon === 'briefcase') return <Briefcase className={className} style={style} strokeWidth={1.5} />;
   if (icon === 'layers') return <Home className={className} style={style} strokeWidth={1.5} />;
+  if (icon === 'coins') return <DollarSign className={className} style={style} strokeWidth={1.7} />;
   if (icon === 'heart') return <Heart className={className} style={style} strokeWidth={1.5} />;
   return <Shield className={className} style={style} strokeWidth={1.5} />;
 }
@@ -191,46 +297,61 @@ function TopicBackdropIcon({
 function drawBucketLabelCanvas(
   shortMonth: string,
   year: number,
+  count: number,
   isActive: boolean,
   isHovered: boolean,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
-  const width = 420;
-  const height = 260;
+  const width = 440;
+  const height = 280;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
 
-  // Completely transparent canvas — no outer badge or box, text sits directly inside the bucket
   ctx.clearRect(0, 0, width, height);
-
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // Soft luminous halo behind letters so text glows cleanly inside the transparent glass bucket
-  ctx.shadowColor = isHovered
-    ? 'rgba(125, 211, 252, 0.95)'
-    : isActive
-      ? 'rgba(56, 189, 248, 0.85)'
-      : 'rgba(14, 165, 233, 0.55)';
-  ctx.shadowBlur = isHovered ? 24 : 16;
+  const isFull = count >= 10;
+  ctx.shadowColor = isFull
+    ? 'rgba(251, 191, 36, 0.9)'
+    : isHovered
+      ? 'rgba(125, 211, 252, 0.95)'
+      : isActive
+        ? 'rgba(56, 189, 248, 0.85)'
+        : 'rgba(14, 165, 233, 0.55)';
+  ctx.shadowBlur = isHovered || isFull ? 22 : 14;
 
-  // Big bold month name inside the bucket
+  // Month letters
   ctx.lineJoin = 'round';
   ctx.lineWidth = 8;
-  ctx.strokeStyle = 'rgba(4, 12, 28, 0.65)';
-  ctx.font = '800 94px "Plus Jakarta Sans", system-ui, sans-serif';
-  ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 26);
-  ctx.fillStyle = isHovered ? '#ffffff' : isActive ? '#f0f9ff' : '#e0f2fe';
-  ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 26);
+  ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
+  ctx.font = '800 88px "Plus Jakarta Sans", system-ui, sans-serif';
+  ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 42);
+  ctx.fillStyle = isFull
+    ? '#fef3c7'
+    : isHovered
+      ? '#ffffff'
+      : isActive
+        ? '#f0f9ff'
+        : '#e0f2fe';
+  ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 42);
 
-  // Clear year numeral right below inside the bucket
+  // Year
   ctx.lineWidth = 6;
-  ctx.font = '700 48px "JetBrains Mono", monospace';
-  ctx.strokeText(String(year), width / 2, height / 2 + 52);
-  ctx.fillStyle = isHovered ? '#e0f2fe' : isActive ? '#bae6fd' : '#93c5fd';
-  ctx.fillText(String(year), width / 2, height / 2 + 52);
+  ctx.font = '700 42px "JetBrains Mono", monospace';
+  ctx.strokeText(String(year), width / 2, height / 2 + 24);
+  ctx.fillStyle = isFull ? '#fde68a' : isHovered ? '#e0f2fe' : '#bae6fd';
+  ctx.fillText(String(year), width / 2, height / 2 + 24);
+
+  // Reports count badge inside bucket (e.g. 3/10 or FULL 10/10)
+  const countText = isFull ? 'FOLDED · 10/10' : `${count}/10`;
+  ctx.lineWidth = 5;
+  ctx.font = '700 28px "JetBrains Mono", monospace';
+  ctx.strokeText(countText, width / 2, height / 2 + 78);
+  ctx.fillStyle = isFull ? '#fbbf24' : count > 0 ? '#7dd3fc' : 'rgba(186, 230, 253, 0.65)';
+  ctx.fillText(countText, width / 2, height / 2 + 78);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -243,12 +364,15 @@ export function ProductionStage1Three({
   activeMonthNum,
   activeYearNum,
   activePromptDomain,
+  activeProvider,
+  ratedThreads,
   isSending,
   switchingMonthKey,
   monthSwitchError,
   onDismissMonthSwitchError,
   onPromptDomainChange,
   onSelectQuickMonth,
+  onOpenExistingReport,
   onSubmitQuestion,
 }: ProductionStage1ThreeProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -257,6 +381,13 @@ export function ProductionStage1Three({
   const [dockedTarget, setDockedTarget] = useState<{
     topic: ProductionTopicDef;
     month: ProductionMonthItem;
+  } | null>(null);
+  const [blockedDropNotice, setBlockedDropNotice] = useState<{
+    topic: ProductionTopicDef;
+    month: ProductionMonthItem;
+    provider: 'gemini' | 'fable';
+    otherProviderAvailable: boolean;
+    existingRecord: RatedThreadRecord;
   } | null>(null);
   const [questionText, setQuestionText] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -279,6 +410,97 @@ export function ProductionStage1Three({
       };
     });
   }, []);
+
+  // Build lookup map of existing Gemini/Fable reports per month bucket (max 10 per bucket: 2 per domain)
+  const bucketReportsByKey = useMemo(() => {
+    const map = new Map<string, BucketReportEntry[]>();
+    for (const m of stageQuickMonths) {
+      map.set(m.key, []);
+    }
+
+    const seenSlotsByMonth = new Map<string, Set<string>>();
+
+    for (const rec of ratedThreads) {
+      const qTurn = rec.turns.find((t) => t.role === 'user');
+      const aTurn = [...rec.turns].reverse().find((t) => t.role === 'assistant');
+      if (!qTurn) continue;
+
+      const rawProvider = aTurn?.adapterId ?? qTurn.adapterId;
+      const provider: 'gemini' | 'fable' = rawProvider === 'fable' ? 'fable' : 'gemini';
+      if (rawProvider !== 'gemini' && rawProvider !== 'fable') continue;
+
+      const monthName = (qTurn.threadMonth || '').trim().toLowerCase();
+      const matchedMonth = stageQuickMonths.find(
+        (m) =>
+          m.year === qTurn.threadYear &&
+          (getMonthNameFromNumber(m.month)?.toLowerCase() === monthName ||
+            m.shortMonth.toLowerCase() === monthName.slice(0, 3)),
+      );
+      if (!matchedMonth) continue;
+
+      const domain = normalizeRecordDomain(qTurn.promptDomain, rec.relativePath);
+      const slotKey = `${domain}|${provider}`;
+      let seen = seenSlotsByMonth.get(matchedMonth.key);
+      if (!seen) {
+        seen = new Set<string>();
+        seenSlotsByMonth.set(matchedMonth.key, seen);
+      }
+      if (seen.has(slotKey)) continue;
+      seen.add(slotKey);
+
+      map.get(matchedMonth.key)!.push({
+        record: rec,
+        domain,
+        provider,
+        accentHex: TOPIC_ACCENT_BY_DOMAIN[domain] ?? '#38bdf8',
+      });
+    }
+
+    return map;
+  }, [ratedThreads, stageQuickMonths]);
+
+  const bucketReportsRef = useRef(bucketReportsByKey);
+  bucketReportsRef.current = bucketReportsByKey;
+
+  const attemptOpenForTopicAndMonth = (
+    topic: ProductionTopicDef,
+    monthItem: ProductionMonthItem,
+  ) => {
+    const monthEntries = bucketReportsRef.current.get(monthItem.key) ?? [];
+    const existingForProvider = monthEntries.find(
+      (item) => item.domain === topic.domain && item.provider === stateRef.current.activeProvider,
+    );
+    const otherProvider: 'gemini' | 'fable' =
+      stateRef.current.activeProvider === 'gemini' ? 'fable' : 'gemini';
+    const hasOtherProvider = monthEntries.some(
+      (item) => item.domain === topic.domain && item.provider === otherProvider,
+    );
+
+    if (existingForProvider) {
+      setDockedTarget(null);
+      setBlockedDropNotice({
+        topic,
+        month: monthItem,
+        provider: stateRef.current.activeProvider,
+        otherProviderAvailable: !hasOtherProvider,
+        existingRecord: existingForProvider.record,
+      });
+      return;
+    }
+
+    setBlockedDropNotice(null);
+    callbacksRef.current.onPromptDomainChange(topic.domain);
+    callbacksRef.current.onSelectQuickMonth?.(monthItem.month, monthItem.year);
+    callbacksRef.current.setQuestionText('');
+    callbacksRef.current.setValidationError(null);
+    callbacksRef.current.setDockedTarget({
+      topic,
+      month: monthItem,
+    });
+  };
+
+  const attemptRef = useRef(attemptOpenForTopicAndMonth);
+  attemptRef.current = attemptOpenForTopicAndMonth;
 
   const callbacksRef = useRef({
     onPromptDomainChange,
@@ -303,32 +525,39 @@ export function ProductionStage1Three({
     activeMonthNum,
     activeYearNum,
     activePromptDomain,
+    activeProvider,
     isSending,
     dockedTarget,
+    blockedDropNotice,
   });
   stateRef.current = {
     activeMonthNum,
     activeYearNum,
     activePromptDomain,
+    activeProvider,
     isSending,
     dockedTarget,
+    blockedDropNotice,
   };
 
   useEffect(() => {
-    if (!dockedTarget) return;
-    const t = window.setTimeout(() => bubbleInputRef.current?.focus(), 100);
+    if (!dockedTarget && !blockedDropNotice) return;
+    const t = dockedTarget
+      ? window.setTimeout(() => bubbleInputRef.current?.focus(), 100)
+      : null;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setDockedTarget(null);
+        setBlockedDropNotice(null);
         setValidationError(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.clearTimeout(t);
+      if (t !== null) window.clearTimeout(t);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [dockedTarget]);
+  }, [dockedTarget, blockedDropNotice]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -370,105 +599,91 @@ export function ProductionStage1Three({
     disposables.push(envRT, pmremGenerator);
 
     const camera = new THREE.PerspectiveCamera(
-      42,
+      44,
       Math.max(1, mount.clientWidth) / Math.max(1, mount.clientHeight),
       0.1,
       100,
     );
-    camera.position.set(0, 0.35, 12.1);
+    camera.position.set(0, 0.05, 13.8);
 
-    // Studio & Atmospheric Lighting
-    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.45);
+    // Studio & Atmospheric Lighting (no crossing arch lines/tubes)
+    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.55);
     scene.add(ambientLight);
-    const keyLight = new THREE.DirectionalLight(0xe0f2fe, 1.8);
+    const keyLight = new THREE.DirectionalLight(0xe0f2fe, 1.9);
     keyLight.position.set(5, 8, 7);
     scene.add(keyLight);
     const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.35);
     rimLight.position.set(-6, 3, -5);
     scene.add(rimLight);
-    const bottomGlowLight = new THREE.PointLight(0x0ea5e9, 1.4, 18);
-    bottomGlowLight.position.set(0, -3.4, 2.2);
+    const bottomGlowLight = new THREE.PointLight(0x0ea5e9, 1.4, 20);
+    bottomGlowLight.position.set(0, -3.5, 2.6);
     scene.add(bottomGlowLight);
 
-    // Rainbow Arch 3D Ribbons matching symmetrical arc (Nov || Apr, Dec || Mar, Jan & Feb top)
-    const archControlPoints = [
-      new THREE.Vector3(-4.85, 0.85, -1.05),
-      new THREE.Vector3(-3.0, 2.05, -0.82),
-      new THREE.Vector3(-1.05, 2.72, -0.62),
-      new THREE.Vector3(1.05, 2.72, -0.62),
-      new THREE.Vector3(3.0, 2.05, -0.82),
-      new THREE.Vector3(4.85, 0.85, -1.05),
-    ];
-    const mainCurve = new THREE.CatmullRomCurve3(archControlPoints);
-    const tubeGeo1 = new THREE.TubeGeometry(mainCurve, 72, 0.045, 12, false);
-    const tubeMat1 = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 1.35,
-      metalness: 0.4,
-      roughness: 0.22,
-      transparent: true,
-      opacity: 0.86,
-    });
-    const rainbowTube1 = new THREE.Mesh(tubeGeo1, tubeMat1);
-    scene.add(rainbowTube1);
-    disposables.push(tubeGeo1, tubeMat1);
-
-    const innerCurvePoints = archControlPoints.map(
-      (p) => new THREE.Vector3(p.x * 0.96, p.y - 0.22, p.z - 0.14),
-    );
-    const innerCurve = new THREE.CatmullRomCurve3(innerCurvePoints);
-    const tubeGeo2 = new THREE.TubeGeometry(innerCurve, 64, 0.025, 10, false);
-    const tubeMat2 = new THREE.MeshStandardMaterial({
-      color: 0xbae6fd,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 1.0,
-      transparent: true,
-      opacity: 0.55,
-    });
-    const rainbowTube2 = new THREE.Mesh(tubeGeo2, tubeMat2);
-    scene.add(rainbowTube2);
-    disposables.push(tubeGeo2, tubeMat2);
-
-    // Subtle Starlight / Glitter Particles around the arch
-    const starCount = isSoftwareGl ? 60 : 120;
+    // Subtle Starlight Atmosphere (NO curved tubes/lines across the buckets)
+    const starCount = isSoftwareGl ? 45 : 90;
     const starPositions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i += 1) {
-      const t = Math.random();
-      const pt = mainCurve.getPoint(t);
-      starPositions[i * 3] = pt.x + (Math.random() - 0.5) * 1.8;
-      starPositions[i * 3 + 1] = pt.y + (Math.random() - 0.5) * 1.4;
-      starPositions[i * 3 + 2] = pt.z + (Math.random() - 0.5) * 1.4;
+      starPositions[i * 3] = (Math.random() - 0.5) * 14;
+      starPositions[i * 3 + 1] = (Math.random() - 0.5) * 8;
+      starPositions[i * 3 + 2] = -2.5 - Math.random() * 2.5;
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
     const starMat = new THREE.PointsMaterial({
       color: 0xbae6fd,
-      size: 0.065,
+      size: 0.055,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.45,
       sizeAttenuation: true,
     });
     const stars = new THREE.Points(starGeo, starMat);
     scene.add(stars);
     disposables.push(starGeo, starMat);
 
-    // Build 6 Larger Transparent 3D Month Buckets along symmetrical arch (name inside bucket)
+    // 6 Larger Spaced 3D Month Buckets lifted higher above the bottom 5 jumping icons
     const bucketSlots: Array<{ x: number; y: number; z: number }> = [
-      { x: -4.75, y: 0.78, z: -0.45 },
-      { x: -2.9, y: 1.88, z: -0.24 },
-      { x: -1.02, y: 2.58, z: -0.08 },
-      { x: 1.02, y: 2.58, z: -0.08 },
-      { x: 2.9, y: 1.88, z: -0.24 },
-      { x: 4.75, y: 0.78, z: -0.45 },
+      { x: -5.5, y: 1.55, z: -0.35 },
+      { x: -3.3, y: 2.22, z: -0.18 },
+      { x: -1.1, y: 2.68, z: -0.04 },
+      { x: 1.1, y: 2.68, z: -0.04 },
+      { x: 3.3, y: 2.22, z: -0.18 },
+      { x: 5.5, y: 1.55, z: -0.35 },
     ];
 
-    const bucketWallGeo = new THREE.CylinderGeometry(0.78, 0.56, 1.14, 36, 1, true);
-    const bucketFloorGeo = new THREE.CircleGeometry(0.56, 32);
-    const bucketRimGeo = new THREE.TorusGeometry(0.78, 0.04, 16, 44);
-    const bucketLiquidGeo = new THREE.CircleGeometry(0.64, 32);
-    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.12, 0.70);
-    disposables.push(bucketWallGeo, bucketFloorGeo, bucketRimGeo, bucketLiquidGeo, bucketInnerTextGeo);
+    const bucketTopRadius = 0.90;
+    const bucketBotRadius = 0.66;
+    const bucketHeight = 1.36;
+    const bucketWallGeo = new THREE.CylinderGeometry(bucketTopRadius, bucketBotRadius, bucketHeight, 40, 1, true);
+    const bucketFloorGeo = new THREE.CircleGeometry(bucketBotRadius, 36);
+    const bucketRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.042, 16, 48);
+    const bucketLiquidGeo = new THREE.CircleGeometry(0.74, 32);
+    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.36, 0.86);
+    const lidCapGeo = new THREE.CircleGeometry(bucketTopRadius, 36);
+    const lidRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.034, 12, 44);
+    const miniBallGeo = new THREE.SphereGeometry(0.115, 20, 20);
+    disposables.push(
+      bucketWallGeo,
+      bucketFloorGeo,
+      bucketRimGeo,
+      bucketLiquidGeo,
+      bucketInnerTextGeo,
+      lidCapGeo,
+      lidRimGeo,
+      miniBallGeo,
+    );
+
+    const BALL_LOCAL_OFFSETS: Array<{ x: number; y: number; z: number }> = [
+      { x: -0.38, y: -0.46, z: 0.24 },
+      { x: -0.19, y: -0.46, z: 0.31 },
+      { x: 0.0, y: -0.46, z: 0.34 },
+      { x: 0.19, y: -0.46, z: 0.31 },
+      { x: 0.38, y: -0.46, z: 0.24 },
+      { x: -0.34, y: -0.30, z: -0.02 },
+      { x: -0.17, y: -0.30, z: 0.04 },
+      { x: 0.0, y: -0.30, z: 0.06 },
+      { x: 0.17, y: -0.30, z: 0.04 },
+      { x: 0.34, y: -0.30, z: -0.02 },
+    ];
 
     interface BucketEntry {
       monthItem: ProductionMonthItem;
@@ -478,14 +693,21 @@ export function ProductionStage1Three({
       rimMat: THREE.MeshStandardMaterial;
       liquidMat: THREE.MeshBasicMaterial;
       badgeMat: THREE.MeshBasicMaterial;
-      badgeTexActive: THREE.CanvasTexture;
-      badgeTexIdle: THREE.CanvasTexture;
-      badgeTexHover: THREE.CanvasTexture;
+      lidPivot: THREE.Group;
+      lidMat: THREE.MeshPhysicalMaterial;
+      lidRimMat: THREE.MeshStandardMaterial;
+      reportBalls: Array<{
+        mesh: THREE.Mesh;
+        mat: THREE.MeshPhysicalMaterial;
+        baseOffset: { x: number; y: number; z: number };
+      }>;
+      cachedSignature: string;
+      activeTex: THREE.CanvasTexture | null;
       hitMesh: THREE.Mesh;
       hoverLerp: number;
     }
 
-    const hitSphereGeo = new THREE.SphereGeometry(0.95, 16, 16);
+    const hitSphereGeo = new THREE.SphereGeometry(1.12, 16, 16);
     const invisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
     disposables.push(hitSphereGeo, invisibleHitMat);
 
@@ -502,7 +724,7 @@ export function ProductionStage1Three({
         clearcoat: 1.0,
         clearcoatRoughness: 0.06,
         transparent: true,
-        opacity: 0.24,
+        opacity: 0.22,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -513,7 +735,7 @@ export function ProductionStage1Three({
 
       const floorMesh = new THREE.Mesh(bucketFloorGeo, wallMat);
       floorMesh.rotation.x = -Math.PI / 2 + 0.18;
-      floorMesh.position.y = -0.56;
+      floorMesh.position.y = -0.66;
       floorMesh.renderOrder = 1;
       group.add(floorMesh);
 
@@ -526,56 +748,93 @@ export function ProductionStage1Three({
       });
       const rimMesh = new THREE.Mesh(bucketRimGeo, rimMat);
       rimMesh.rotation.x = Math.PI / 2 + 0.18;
-      rimMesh.position.y = 0.56;
+      rimMesh.position.y = 0.66;
       group.add(rimMesh);
 
       const liquidMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.2,
+        opacity: 0.18,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       const liquidMesh = new THREE.Mesh(bucketLiquidGeo, liquidMat);
       liquidMesh.rotation.x = -Math.PI / 2 + 0.18;
-      liquidMesh.position.y = -0.18;
+      liquidMesh.position.y = -0.22;
       liquidMesh.renderOrder = 2;
       group.add(liquidMesh);
 
-      const badgeTexIdle = drawBucketLabelCanvas(
-        monthItem.shortMonth,
-        monthItem.year,
-        false,
-        false,
-        maxAnisotropy,
-      );
-      const badgeTexActive = drawBucketLabelCanvas(
-        monthItem.shortMonth,
-        monthItem.year,
-        true,
-        false,
-        maxAnisotropy,
-      );
-      const badgeTexHover = drawBucketLabelCanvas(
-        monthItem.shortMonth,
-        monthItem.year,
-        true,
-        true,
-        maxAnisotropy,
-      );
-      disposables.push(badgeTexIdle, badgeTexActive, badgeTexHover);
+      // 10 pre-allocated report balls sitting inside the bottom of each bucket
+      const reportBalls = BALL_LOCAL_OFFSETS.map((offset) => {
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: 0x38bdf8,
+          emissive: 0x0284c7,
+          emissiveIntensity: 0.55,
+          metalness: 0.18,
+          roughness: 0.14,
+          clearcoat: 1.0,
+        });
+        const mesh = new THREE.Mesh(miniBallGeo, mat);
+        mesh.position.set(offset.x, offset.y, offset.z);
+        mesh.visible = false;
+        mesh.renderOrder = 3;
+        group.add(mesh);
+        disposables.push(mat);
+        return { mesh, mat, baseOffset: offset };
+      });
 
-      // Month & Year written directly inside the hollow transparent bucket
+      // Hinged Folding Bucket Lid (tilted open initially, folds shut when count === 10)
+      const lidPivot = new THREE.Group();
+      lidPivot.position.set(0, 0.68, -bucketTopRadius + 0.05);
+      lidPivot.rotation.x = -Math.PI * 0.66;
+
+      const lidMat = new THREE.MeshPhysicalMaterial({
+        color: 0xfde68a,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.25,
+        metalness: 0.22,
+        roughness: 0.14,
+        clearcoat: 1.0,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+      });
+      const lidMesh = new THREE.Mesh(lidCapGeo, lidMat);
+      lidMesh.rotation.x = -Math.PI / 2;
+      lidMesh.position.set(0, 0, bucketTopRadius - 0.05);
+
+      const lidRimMat = new THREE.MeshStandardMaterial({
+        color: 0xfef3c7,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 0.7,
+        metalness: 0.85,
+        roughness: 0.18,
+      });
+      const lidRimMesh = new THREE.Mesh(lidRimGeo, lidRimMat);
+      lidRimMesh.rotation.x = Math.PI / 2;
+      lidRimMesh.position.set(0, 0, bucketTopRadius - 0.05);
+      lidPivot.add(lidMesh, lidRimMesh);
+      group.add(lidPivot);
+      disposables.push(lidMat, lidRimMat);
+
+      const initialTex = drawBucketLabelCanvas(
+        monthItem.shortMonth,
+        monthItem.year,
+        0,
+        false,
+        false,
+        maxAnisotropy,
+      );
       const badgeMat = new THREE.MeshBasicMaterial({
-        map: badgeTexIdle,
+        map: initialTex,
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       const badgeMesh = new THREE.Mesh(bucketInnerTextGeo, badgeMat);
-      badgeMesh.position.set(0, -0.02, 0.04);
+      badgeMesh.position.set(0, 0.10, 0.06);
       badgeMesh.rotation.x = 0.12;
-      badgeMesh.renderOrder = 3;
+      badgeMesh.renderOrder = 5;
       group.add(badgeMesh);
 
       const hitMesh = new THREE.Mesh(hitSphereGeo, invisibleHitMat);
@@ -593,27 +852,30 @@ export function ProductionStage1Three({
         rimMat,
         liquidMat,
         badgeMat,
-        badgeTexActive,
-        badgeTexIdle,
-        badgeTexHover,
+        lidPivot,
+        lidMat,
+        lidRimMat,
+        reportBalls,
+        cachedSignature: '',
+        activeTex: initialTex,
         hitMesh,
         hoverLerp: 0,
       };
     });
 
-    // Build 4 Jumping 3D Domain Icon Orbs (ICONS ONLY — NO TEXT NAMES BELOW!)
+    // 5 Jumping Core Domain Icons ONLY at the bottom (NO outer sphere, NO outer ring, NO background circle)
     const orbSlots = [
-      new THREE.Vector3(-2.85, -1.65, 0.25),
-      new THREE.Vector3(-0.95, -1.92, 0.36),
-      new THREE.Vector3(0.95, -1.92, 0.36),
-      new THREE.Vector3(2.85, -1.65, 0.25),
+      new THREE.Vector3(-4.2, -2.35, 0.30),
+      new THREE.Vector3(-2.1, -2.42, 0.36),
+      new THREE.Vector3(0.0, -2.45, 0.40),
+      new THREE.Vector3(2.1, -2.42, 0.36),
+      new THREE.Vector3(4.2, -2.35, 0.30),
     ];
 
-    const orbSphereGeo = new THREE.SphereGeometry(0.54, 32, 32);
-    const orbRingGeo = new THREE.TorusGeometry(0.61, 0.032, 16, 48);
-    const orbIconPlaneGeo = new THREE.CircleGeometry(0.42, 32);
-    const orbShadowGeo = new THREE.CircleGeometry(0.56, 24);
-    disposables.push(orbSphereGeo, orbRingGeo, orbIconPlaneGeo, orbShadowGeo);
+    const orbIconPlaneGeo = new THREE.PlaneGeometry(1.18, 1.18);
+    const orbShadowGeo = new THREE.CircleGeometry(0.46, 24);
+    const orbHitGeo = new THREE.SphereGeometry(0.86, 14, 14);
+    disposables.push(orbIconPlaneGeo, orbShadowGeo, orbHitGeo);
 
     interface OrbEntry {
       topic: ProductionTopicDef;
@@ -621,9 +883,6 @@ export function ProductionStage1Three({
       homePos: THREE.Vector3;
       shadowMesh: THREE.Mesh;
       shadowMat: THREE.MeshBasicMaterial;
-      shellMat: THREE.MeshPhysicalMaterial;
-      ringMesh: THREE.Mesh;
-      ringMat: THREE.MeshStandardMaterial;
       hitMesh: THREE.Mesh;
       phase: number;
       currentPos: THREE.Vector3;
@@ -636,56 +895,36 @@ export function ProductionStage1Three({
       group.position.copy(homePos);
 
       const accentColor = new THREE.Color(topic.accentHex);
-      const glowColor = new THREE.Color(topic.glowHex);
 
-      const shellMat = new THREE.MeshPhysicalMaterial({
-        color: accentColor,
-        emissive: glowColor,
-        emissiveIntensity: 0.22,
-        metalness: 0.12,
-        roughness: 0.08,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.06,
-        transparent: true,
-        opacity: 0.86,
-      });
-      const sphereMesh = new THREE.Mesh(orbSphereGeo, shellMat);
-      group.add(sphereMesh);
-
-      const ringMat = new THREE.MeshStandardMaterial({
-        color: 0xe2e8f0,
-        emissive: accentColor,
-        emissiveIntensity: 0.35,
-        metalness: 0.9,
-        roughness: 0.16,
-      });
-      const ringMesh = new THREE.Mesh(orbRingGeo, ringMat);
-      ringMesh.rotation.x = Math.PI * 0.4;
-      group.add(ringMesh);
-
-      const iconTex = drawTopicIconCanvas(topic.icon, topic.accentHex, maxAnisotropy);
+      // Pure core domain icon sprite — no enclosing sphere or ring
+      const iconTex = drawPureCoreIconCanvas(
+        topic.icon,
+        topic.accentHex,
+        topic.glowHex,
+        maxAnisotropy,
+      );
       const iconMat = new THREE.MeshBasicMaterial({
         map: iconTex,
         transparent: true,
+        alphaTest: 0.04,
+        side: THREE.DoubleSide,
       });
       const iconMesh = new THREE.Mesh(orbIconPlaneGeo, iconMat);
-      iconMesh.position.z = 0.545;
       group.add(iconMesh);
-      disposables.push(iconTex, iconMat, shellMat, ringMat);
+      disposables.push(iconTex, iconMat);
 
-      const hitMesh = new THREE.Mesh(hitSphereGeo, invisibleHitMat);
+      const hitMesh = new THREE.Mesh(orbHitGeo, invisibleHitMat);
       hitMesh.userData = { orbIndex: idx };
       group.add(hitMesh);
 
-      // Contact shadow directly below orb (no text labels!)
       const shadowMat = new THREE.MeshBasicMaterial({
         color: accentColor,
         transparent: true,
-        opacity: 0.26,
+        opacity: 0.28,
       });
       const shadowMesh = new THREE.Mesh(orbShadowGeo, shadowMat);
       shadowMesh.rotation.x = -Math.PI / 2;
-      shadowMesh.position.set(homePos.x, homePos.y - 0.76, homePos.z);
+      shadowMesh.position.set(homePos.x, homePos.y - 0.68, homePos.z);
       scene.add(shadowMesh);
       scene.add(group);
       disposables.push(shadowMat);
@@ -696,17 +935,13 @@ export function ProductionStage1Three({
         homePos,
         shadowMesh,
         shadowMat,
-        shellMat,
-        ringMesh,
-        ringMat,
         hitMesh,
-        phase: idx * 1.15,
+        phase: idx * 1.05,
         currentPos: homePos.clone(),
         scaleLerp: 1,
       };
     });
 
-    // Interaction State (pre-allocated Math objects)
     const raycaster = new THREE.Raycaster();
     const pointerNdc = new THREE.Vector2();
     const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.35);
@@ -727,7 +962,7 @@ export function ProductionStage1Three({
 
     const findNearestBucketKey = (orbWorldPos: THREE.Vector3): string | null => {
       let bestKey: string | null = null;
-      let bestDist = 1.45;
+      let bestDist = 1.65;
       for (const b of bucketEntries) {
         const d = Math.hypot(orbWorldPos.x - b.basePos.x, orbWorldPos.y - b.basePos.y);
         if (d < bestDist) {
@@ -739,7 +974,9 @@ export function ProductionStage1Three({
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (stateRef.current.isSending || stateRef.current.dockedTarget) return;
+      if (stateRef.current.isSending || stateRef.current.dockedTarget || stateRef.current.blockedDropNotice) {
+        return;
+      }
       if (e.pointerType === 'mouse' && e.button !== 0) return;
 
       updatePointerNdc(e.clientX, e.clientY);
@@ -784,9 +1021,9 @@ export function ProductionStage1Three({
         if (raycaster.ray.intersectPlane(dragPlane, _intersectPt)) {
           const entry = orbEntries[draggingOrbIdx];
           entry.currentPos.set(
-            THREE.MathUtils.clamp(_intersectPt.x, -5.6, 5.6),
-            THREE.MathUtils.clamp(_intersectPt.y, -2.8, 3.3),
-            0.75,
+            THREE.MathUtils.clamp(_intersectPt.x, -6.5, 6.5),
+            THREE.MathUtils.clamp(_intersectPt.y, -3.2, 3.6),
+            0.85,
           );
           const nextBucketKey = findNearestBucketKey(entry.currentPos);
           if (nextBucketKey !== hoveredBucketKeyLocal) {
@@ -798,7 +1035,7 @@ export function ProductionStage1Three({
         return;
       }
 
-      if (stateRef.current.dockedTarget) {
+      if (stateRef.current.dockedTarget || stateRef.current.blockedDropNotice) {
         renderer.domElement.style.cursor = 'default';
         return;
       }
@@ -838,22 +1075,11 @@ export function ProductionStage1Three({
       if (dropKey) {
         const matchedBucket = bucketEntries.find((b) => b.monthItem.key === dropKey);
         if (matchedBucket) {
-          callbacksRef.current.onPromptDomainChange(entry.topic.domain);
-          callbacksRef.current.onSelectQuickMonth?.(
-            matchedBucket.monthItem.month,
-            matchedBucket.monthItem.year,
-          );
-          callbacksRef.current.setQuestionText('');
-          callbacksRef.current.setValidationError(null);
-          callbacksRef.current.setDockedTarget({
-            topic: entry.topic,
-            month: matchedBucket.monthItem,
-          });
+          attemptRef.current(entry.topic, matchedBucket.monthItem);
           return;
         }
       }
 
-      // If user clicked (didn't drag), allow quick drop into currently active month
       if (!cancelled && movedDist < 8) {
         const activeBucket =
           bucketEntries.find(
@@ -862,13 +1088,7 @@ export function ProductionStage1Three({
               b.monthItem.year === stateRef.current.activeYearNum,
           ) ?? bucketEntries[0];
         if (activeBucket) {
-          callbacksRef.current.onPromptDomainChange(entry.topic.domain);
-          callbacksRef.current.setQuestionText('');
-          callbacksRef.current.setValidationError(null);
-          callbacksRef.current.setDockedTarget({
-            topic: entry.topic,
-            month: activeBucket.monthItem,
-          });
+          attemptRef.current(entry.topic, activeBucket.monthItem);
         }
       }
     };
@@ -885,9 +1105,9 @@ export function ProductionStage1Three({
       if (!mount) return;
       const w = Math.max(1, mount.clientWidth);
       const h = Math.max(1, mount.clientHeight);
-      camera.aspect = w / h;
-      // Fit slightly wider FOV on narrow viewports so all 6 buckets remain visible
-      camera.fov = w < 720 ? 52 : 42;
+      const aspect = w / h;
+      camera.aspect = aspect;
+      camera.fov = aspect < 1.25 ? 58 : aspect < 1.55 ? 49 : 44;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
@@ -898,7 +1118,7 @@ export function ProductionStage1Three({
 
     let elapsed = 0;
     let lastTime = performance.now();
-    let frameInterval = isSoftwareGl ? 1000 / 30 : 0;
+    const frameInterval = isSoftwareGl ? 1000 / 30 : 0;
     let lastRenderMs = 0;
     let rafId = 0;
     let isDisposed = false;
@@ -916,52 +1136,89 @@ export function ProductionStage1Three({
       lastTime = now;
       elapsed += dt;
 
-      // Subtle rainbow breathing & star shimmer
-      rainbowTube1.position.y = Math.sin(elapsed * 1.1) * 0.04;
-      rainbowTube2.position.y = Math.sin(elapsed * 1.1 + 0.5) * 0.04;
-      stars.rotation.z = Math.sin(elapsed * 0.25) * 0.025;
+      stars.rotation.z = Math.sin(elapsed * 0.18) * 0.02;
 
-      // Animate 6 Month Buckets
+      // Animate 6 Larger Spaced Month Buckets + Interior Domain Balls + Folding Lid
       for (let i = 0; i < bucketEntries.length; i += 1) {
         const b = bucketEntries[i];
+        const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
+        const reportCount = reportsInBucket.length;
+        const isFull = reportCount >= 10;
+
         const isActive =
           b.monthItem.month === stateRef.current.activeMonthNum &&
           b.monthItem.year === stateRef.current.activeYearNum;
         const isHovered = hoveredBucketKeyLocal === b.monthItem.key;
 
         b.hoverLerp = THREE.MathUtils.damp(b.hoverLerp, isHovered ? 1 : 0, 10, dt);
-        const floatY = Math.sin(elapsed * 1.65 + i * 0.55) * 0.055;
+        const floatY = Math.sin(elapsed * 1.5 + i * 0.55) * 0.045;
         b.group.position.set(
           b.basePos.x,
           b.basePos.y + floatY + b.hoverLerp * 0.16,
           b.basePos.z + b.hoverLerp * 0.28,
         );
-        const s = 1 + b.hoverLerp * 0.14;
+        const s = 1 + b.hoverLerp * 0.12;
         b.group.scale.set(s, s, s);
 
-        b.wallMat.opacity = isHovered ? 0.36 : isActive ? 0.28 : 0.2;
-        b.rimMat.emissiveIntensity = isHovered ? 1.85 : isActive ? 1.15 : 0.65;
-        b.liquidMat.opacity = isHovered ? 0.42 : isActive ? 0.28 : 0.16;
+        b.wallMat.opacity = isHovered ? 0.34 : isFull ? 0.30 : isActive ? 0.26 : 0.19;
+        b.rimMat.color.setHex(isFull ? 0xfde68a : 0xbae6fd);
+        b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
+        b.rimMat.emissiveIntensity = isHovered ? 1.8 : isFull ? 1.35 : isActive ? 1.15 : 0.65;
+        b.liquidMat.opacity = isHovered ? 0.40 : isFull ? 0.34 : isActive ? 0.26 : 0.15;
 
-        const desiredTex = isHovered
-          ? b.badgeTexHover
-          : isActive
-            ? b.badgeTexActive
-            : b.badgeTexIdle;
-        if (b.badgeMat.map !== desiredTex) {
-          b.badgeMat.map = desiredTex;
+        // Fold lid shut at 10/10 reports, open otherwise (leaning slightly forward as bucket fills)
+        const targetLidRotX = isFull
+          ? 0.18
+          : -Math.PI * 0.68 + (Math.min(9, reportCount) / 10) * 0.22;
+        b.lidPivot.rotation.x = THREE.MathUtils.damp(b.lidPivot.rotation.x, targetLidRotX, 8, dt);
+        b.lidMat.opacity = isFull ? 0.44 : 0.18;
+        b.lidRimMat.emissive.setHex(isFull ? 0xf59e0b : 0x38bdf8);
+        b.lidRimMat.emissiveIntensity = isFull ? 1.35 : 0.45;
+
+        // Update interior small domain balls
+        for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
+          const ball = b.reportBalls[bi];
+          if (bi < reportCount) {
+            const entry = reportsInBucket[bi];
+            ball.mesh.visible = true;
+            ball.mat.color.set(entry.accentHex);
+            ball.mat.emissive.set(entry.accentHex);
+            ball.mat.emissiveIntensity = entry.provider === 'fable' ? 0.85 : 0.55;
+            ball.mesh.position.y =
+              ball.baseOffset.y + Math.sin(elapsed * 2.1 + bi * 0.7) * 0.018;
+          } else {
+            ball.mesh.visible = false;
+          }
+        }
+
+        // Update inner label canvas texture when count / active / hover changes
+        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}`;
+        if (b.cachedSignature !== sig) {
+          b.cachedSignature = sig;
+          const nextTex = drawBucketLabelCanvas(
+            b.monthItem.shortMonth,
+            b.monthItem.year,
+            reportCount,
+            isActive,
+            isHovered,
+            maxAnisotropy,
+          );
+          const oldTex = b.activeTex;
+          b.activeTex = nextTex;
+          b.badgeMat.map = nextTex;
           b.badgeMat.needsUpdate = true;
+          if (oldTex) oldTex.dispose();
         }
       }
 
-      // Animate 4 Jumping Domain Icon Orbs
+      // Animate 5 Pure Core Domain Icons Jumping
       for (let i = 0; i < orbEntries.length; i += 1) {
         const o = orbEntries[i];
         const isDragged = draggingOrbIdx === i;
         const isHovered = pointerHoverOrbIdx === i;
 
         if (!isDragged) {
-          const bounce = Math.abs(Math.sin(elapsed * 2.4 + o.phase)) * 0.48;
+          const bounce = Math.abs(Math.sin(elapsed * 2.4 + o.phase)) * 0.46;
           _targetPos.set(o.homePos.x, o.homePos.y + bounce, o.homePos.z);
           o.currentPos.x = THREE.MathUtils.damp(o.currentPos.x, _targetPos.x, 10, dt);
           o.currentPos.y = THREE.MathUtils.damp(o.currentPos.y, _targetPos.y, 12, dt);
@@ -969,22 +1226,21 @@ export function ProductionStage1Three({
         }
 
         o.group.position.copy(o.currentPos);
-        o.ringMesh.rotation.z = elapsed * (0.9 + i * 0.12);
 
         const targetScale = isDragged
           ? hoveredBucketKeyLocal
             ? 0.78
             : 1.15
           : isHovered
-            ? 1.12
+            ? 1.14
             : 1.0;
         o.scaleLerp = THREE.MathUtils.damp(o.scaleLerp, targetScale, 12, dt);
         o.group.scale.setScalar(o.scaleLerp);
 
         const heightAboveFloor = Math.max(0, o.currentPos.y - (o.homePos.y - 0.5));
-        const shadowScale = THREE.MathUtils.clamp(1.12 - heightAboveFloor * 0.32, 0.48, 1.12);
-        o.shadowMesh.position.set(o.currentPos.x, o.homePos.y - 0.76, o.homePos.z);
-        o.shadowMesh.scale.setScalar(isDragged ? 0.4 : shadowScale);
+        const shadowScale = THREE.MathUtils.clamp(1.08 - heightAboveFloor * 0.34, 0.44, 1.08);
+        o.shadowMesh.position.set(o.currentPos.x, o.homePos.y - 0.68, o.currentPos.z);
+        o.shadowMesh.scale.setScalar(isDragged ? 0.36 : shadowScale);
         o.shadowMat.opacity = isDragged ? 0.1 : shadowScale * 0.28;
       }
 
@@ -1001,6 +1257,9 @@ export function ProductionStage1Three({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      for (const b of bucketEntries) {
+        if (b.activeTex) b.activeTex.dispose();
+      }
       for (const item of disposables) {
         item.dispose();
       }
@@ -1038,9 +1297,9 @@ export function ProductionStage1Three({
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Subtle Bottom Guidance Text (NO domain names shown anywhere on Stage 1 icons!) */}
-      {!dockedTarget && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 flex justify-center px-4">
+      {/* Subtle Bottom Guidance Text */}
+      {!dockedTarget && !blockedDropNotice && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3.5 z-10 flex justify-center px-4">
           <p className="text-xs font-medium tracking-wide text-sky-200/80 bg-[#081226]/90 border border-sky-400/25 rounded-xl px-3.5 py-1.5">
             {isDraggingTopic
               ? hoveredBucketLabel
@@ -1048,7 +1307,7 @@ export function ProductionStage1Three({
                 : 'Drop icon into any month bucket above'
               : switchingMonthKey
                 ? 'Updating reference period…'
-                : 'Drag any jumping icon into a month bucket above, or click an icon to begin'}
+                : `Drag any jumping icon into a month bucket above (${activeProvider === 'fable' ? 'Fable' : 'Gemini'} active)`}
           </p>
         </div>
       )}
@@ -1075,14 +1334,79 @@ export function ProductionStage1Three({
         </div>
       )}
 
-      {/* Translucent Light-White Question Panel after Dropping Icon into Month Bucket (Domain icon visible on backside) */}
+      {/* Blocked Duplicate Notice Modal (Max 1 Gemini + 1 Fable per domain per month) */}
+      {blockedDropNotice && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#040c1a]/55">
+          <div
+            role="alertdialog"
+            aria-labelledby="blocked-drop-title"
+            className="w-full max-w-md rounded-3xl border border-amber-400/40 bg-[#0d1629]/95 p-6 text-slate-100 shadow-[0_28px_70px_rgba(2,6,23,0.75)] space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-400/35 text-amber-300 shrink-0">
+                  <ShieldAlert className="w-4 h-4" />
+                </span>
+                <div>
+                  <h2 id="blocked-drop-title" className="text-sm font-bold text-white">
+                    Report Already Exists
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {blockedDropNotice.topic.label} · {blockedDropNotice.month.fullLabel}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBlockedDropNotice(null)}
+                aria-label="Dismiss notice"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs leading-relaxed text-slate-300">
+              A <span className="font-semibold text-white">{blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'}</span> report for{' '}
+              <span className="font-semibold text-white">{blockedDropNotice.topic.label}</span> in{' '}
+              <span className="font-semibold text-white">{blockedDropNotice.month.fullLabel}</span> has already been generated.{' '}
+              {blockedDropNotice.otherProviderAvailable
+                ? `Only one ${blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'} report is allowed per domain each month—you can switch to ${blockedDropNotice.provider === 'fable' ? 'Gemini' : 'Fable'} in the bottom bar to add a second report.`
+                : 'Both Gemini and Fable reports (2/2) are already completed for this domain and month.'}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setBlockedDropNotice(null)}
+                className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800/80 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = blockedDropNotice.existingRecord;
+                  setBlockedDropNotice(null);
+                  onOpenExistingReport(target);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white shadow-sm cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Open Existing Report</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Translucent Light-White Question Panel after Dropping Icon into Month Bucket */}
       {dockedTarget && (
         <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#040c1a]/38">
           <form
             onSubmit={handleSubmit}
             className="relative overflow-hidden w-full max-w-md rounded-3xl border border-white/85 bg-white/82 p-6 sm:p-7 shadow-[0_28px_70px_rgba(2,6,23,0.45),inset_0_2px_12px_rgba(255,255,255,0.9)] space-y-4 text-slate-900"
           >
-            {/* Large Domain Icon sitting cleanly on the backside of the translucent light-white panel */}
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 flex items-center justify-center"
@@ -1106,7 +1430,9 @@ export function ProductionStage1Three({
                     className="w-3.5 h-3.5"
                   />
                 </span>
-                <span className="tabular-nums">{dockedTarget.month.fullLabel}</span>
+                <span className="tabular-nums">
+                  {dockedTarget.month.fullLabel} · {activeProvider === 'fable' ? 'Fable' : 'Gemini'}
+                </span>
               </div>
               <button
                 type="button"

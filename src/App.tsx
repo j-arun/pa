@@ -2,6 +2,7 @@ import {
   Check,
   Cloud,
   Copy,
+  FolderOpen,
   Home,
   Lock,
   PanelLeft,
@@ -29,6 +30,7 @@ import {
   type ThreadMetadataPatch,
 } from './components/WorkbenchPage';
 import { ProductionCards3D } from './components/production/ProductionCards3D';
+import { ProductionReportsMenu } from './components/production/ProductionReportsMenu';
 import { ProductionStage1Three } from './components/production/ProductionStage1Three';
 import { ProductionTimelinePanel } from './components/production/ProductionTimelinePanel';
 import { useSpeechIO } from './hooks/useSpeechIO';
@@ -47,6 +49,7 @@ import type {
 } from './types/workbench';
 import {
   DEFAULT_SETTINGS,
+  PROD_RATED_THREADS_KEY,
   loadRatedThreads,
   loadScope,
   loadSettings,
@@ -137,7 +140,10 @@ export default function App() {
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [ratedThreads, setRatedThreads] = useState<RatedThreadRecord[]>(() =>
-    loadRatedThreads().map((rec) => ({ ...rec, isFinalized: true })),
+    loadRatedThreads(IS_PRODUCTION_APP ? PROD_RATED_THREADS_KEY : undefined).map((rec) => ({
+      ...rec,
+      isFinalized: true,
+    })),
   );
   const activePromptDomain = settings.promptBuilder.activeDomain;
   const [isSending, setIsSending] = useState(false);
@@ -148,6 +154,7 @@ export default function App() {
     syncError?: string;
     defaultReportsDir?: string;
     resolvedReportsDir?: string;
+    productionReportsDir?: string;
     promptFiles?: Record<PromptDomain, string>;
   }>({
     filePath: 'workbench.config.json',
@@ -179,6 +186,8 @@ export default function App() {
   } | null>(null);
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
+  const [isProdReportsMenuOpen, setIsProdReportsMenuOpen] = useState(false);
+  const [prodReportsDirDisplay, setProdReportsDirDisplay] = useState('D:/WhatsApp Reports');
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
   const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
   const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
@@ -276,74 +285,101 @@ export default function App() {
 
   const speech = useSpeechIO(settings.voice);
 
-  const reloadReportsFromDisk = useCallback(async (dirOverride?: string) => {
-    try {
-      const query = dirOverride ? `?dir=${encodeURIComponent(dirOverride)}` : '';
-      const res = await fetch(`/api/reports${query}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        reportsDir?: string;
-        reports?: RatedThreadRecord[];
-      };
-      if (Array.isArray(data.reports)) {
-        const diskReports = data.reports.map((rec) => ({ ...rec, isFinalized: true }));
-        setRatedThreads((prev) => {
-          const byId = new Map<string, RatedThreadRecord>();
-          for (const rec of diskReports) {
-            byId.set(rec.id, rec);
+  const reloadReportsFromDisk = useCallback(
+    async (dirOverride?: string) => {
+      try {
+        const query = isProductionApp
+          ? '?mode=production'
+          : dirOverride
+            ? `?dir=${encodeURIComponent(dirOverride)}`
+            : '';
+        const res = await fetch(`/api/reports${query}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          reportsDir?: string;
+          displayReportsDir?: string;
+          reports?: RatedThreadRecord[];
+        };
+        if (isProductionApp && data.displayReportsDir) {
+          setProdReportsDirDisplay(data.displayReportsDir);
+        }
+        if (Array.isArray(data.reports)) {
+          const diskReports = data.reports.map((rec) => ({ ...rec, isFinalized: true }));
+          if (isProductionApp) {
+            setRatedThreads(
+              [...diskReports].sort(
+                (a, b) => Date.parse(b.ratedAt || '') - Date.parse(a.ratedAt || ''),
+              ),
+            );
+          } else {
+            setRatedThreads((prev) => {
+              const byId = new Map<string, RatedThreadRecord>();
+              for (const rec of diskReports) {
+                byId.set(rec.id, rec);
+              }
+              for (const localRec of prev) {
+                if (!byId.has(localRec.id) && !localRec.isExternalFile) {
+                  byId.set(localRec.id, localRec);
+                  // Persist browser-only report onto disk folder too
+                  void fetch(`/api/reports/${encodeURIComponent(localRec.id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      record: localRec,
+                      reportsDir: data.reportsDir || dirOverride,
+                    }),
+                  }).catch(() => undefined);
+                }
+              }
+              return Array.from(byId.values()).sort(
+                (a, b) => Date.parse(b.ratedAt || '') - Date.parse(a.ratedAt || ''),
+              );
+            });
           }
-          for (const localRec of prev) {
-            if (!byId.has(localRec.id) && !localRec.isExternalFile) {
-              byId.set(localRec.id, localRec);
-              // Persist browser-only report onto disk folder too
-              void fetch(`/api/reports/${encodeURIComponent(localRec.id)}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  record: localRec,
-                  reportsDir: data.reportsDir || dirOverride,
-                }),
-              }).catch(() => undefined);
-            }
-          }
-          return Array.from(byId.values()).sort(
-            (a, b) => Date.parse(b.ratedAt || '') - Date.parse(a.ratedAt || ''),
-          );
-        });
+        }
+        if (!isProductionApp && data.reportsDir) {
+          setConfigFileInfo((prev) => ({
+            ...prev,
+            resolvedReportsDir: data.reportsDir,
+          }));
+        }
+      } catch {
+        // Ignore offline/network errors when loading local reports
+      } finally {
+        reportsHydratedRef.current = true;
       }
-      if (data.reportsDir) {
-        setConfigFileInfo((prev) => ({
-          ...prev,
-          resolvedReportsDir: data.reportsDir,
-        }));
-      }
-    } catch {
-      // Ignore offline/network errors when loading local reports
-    } finally {
-      reportsHydratedRef.current = true;
-    }
-  }, []);
+    },
+    [isProductionApp],
+  );
 
   const syncReportToDisk = useCallback(
     async (record: RatedThreadRecord, explicitHtml?: string, dirOverride?: string) => {
       if (record.isExternalFile) return;
       try {
-        const res = await fetch(`/api/reports/${encodeURIComponent(record.id)}`, {
+        const query = isProductionApp ? '?mode=production' : '';
+        const res = await fetch(`/api/reports/${encodeURIComponent(record.id)}${query}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             record,
             html: explicitHtml,
-            reportsDir: dirOverride ?? settings.reportsDir,
+            ...(isProductionApp
+              ? { mode: 'production' }
+              : { reportsDir: dirOverride ?? settings.reportsDir }),
           }),
         });
         if (!res.ok) return;
         const saved = (await res.json()) as {
           fileName?: string;
           filePath?: string;
+          relativePath?: string;
           reportsDir?: string;
+          displayReportsDir?: string;
         };
-        if (saved.filePath || saved.fileName) {
+        if (isProductionApp && saved.displayReportsDir) {
+          setProdReportsDirDisplay(saved.displayReportsDir);
+        }
+        if (saved.filePath || saved.fileName || saved.relativePath) {
           setRatedThreads((prev) =>
             prev.map((item) =>
               item.id === record.id
@@ -351,6 +387,7 @@ export default function App() {
                     ...item,
                     fileName: saved.fileName || item.fileName,
                     filePath: saved.filePath || item.filePath,
+                    relativePath: saved.relativePath || item.relativePath,
                   }
                 : item,
             ),
@@ -360,7 +397,7 @@ export default function App() {
         // Non-fatal if server unavailable
       }
     },
-    [settings.reportsDir],
+    [isProductionApp, settings.reportsDir],
   );
 
   const persistSettingsToFile = useCallback(async (nextSettings: WorkbenchSettings) => {
@@ -380,14 +417,19 @@ export default function App() {
         savedAt?: string;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        productionReportsDir?: string;
         promptFiles?: Record<PromptDomain, string>;
       };
+      if (data.productionReportsDir) {
+        setProdReportsDirDisplay(data.productionReportsDir);
+      }
       setConfigFileInfo((prev) => ({
         ...prev,
         filePath: data.filePath || prev.filePath,
         lastSavedAt: data.savedAt || new Date().toISOString(),
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        productionReportsDir: data.productionReportsDir || prev.productionReportsDir,
         promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
       }));
@@ -415,8 +457,12 @@ export default function App() {
         hasCustomPromptTemplates?: boolean;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        productionReportsDir?: string;
         promptFiles?: Record<PromptDomain, string>;
       };
+      if (data.productionReportsDir) {
+        setProdReportsDirDisplay(data.productionReportsDir);
+      }
       if (data.config) {
         loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
         const clientHasCustom = hasCustomPromptTemplates(settingsRef.current.promptBuilder.templates);
@@ -445,6 +491,7 @@ export default function App() {
         platform: data.platform || prev.platform,
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        productionReportsDir: data.productionReportsDir || prev.productionReportsDir,
         promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
       }));
@@ -493,8 +540,11 @@ export default function App() {
   }, [turns]);
 
   useEffect(() => {
-    saveRatedThreads(ratedThreads);
-  }, [ratedThreads]);
+    saveRatedThreads(
+      ratedThreads,
+      isProductionApp ? PROD_RATED_THREADS_KEY : undefined,
+    );
+  }, [ratedThreads, isProductionApp]);
 
   useEffect(() => {
     saveScope(scope);
@@ -638,6 +688,7 @@ export default function App() {
 
     setIsSettingsOpen(false);
     setActiveReportExchangeId(null);
+    setIsProdReportsMenuOpen(false);
     setTurns([]);
     setIsChatBarOpen(false);
     setTelemetry({
@@ -654,6 +705,28 @@ export default function App() {
         : 'Started new thread; stage cleared',
     );
   }, [turns, syncReportToDisk, pushContextLog]);
+
+  const handleOpenProductionReport = useCallback(
+    (record: RatedThreadRecord) => {
+      setMonthSwitchError(null);
+      if (activeRequestAbortRef.current) {
+        activeRequestAbortRef.current.controller.abort();
+        activeRequestAbortRef.current = null;
+        setIsSending(false);
+      }
+      const firstUserIdx = record.turns.findIndex((t) => t.role === 'user');
+      const loadedTurns = record.turns.map((t, idx) =>
+        idx === firstUserIdx ? { ...t, isFinalized: true } : t,
+      );
+      setIsSettingsOpen(false);
+      setActiveReportExchangeId(null);
+      setIsProdReportsMenuOpen(false);
+      setIsContextRailOpen(false);
+      setIsChatBarOpen(false);
+      setTurns(loadedTurns);
+    },
+    [],
+  );
 
   const handleDeleteSidebarReport = useCallback(
     (recordId: string) => {
@@ -908,6 +981,11 @@ export default function App() {
   const displayedScope: ConversationScope = isProductionApp
     ? 'public'
     : (activeThreadScope ?? scope);
+
+  const activeProductionReportId = useMemo(
+    () => turns.find((t) => t.role === 'user')?.id ?? null,
+    [turns],
+  );
 
   const hasReportForRightPane =
     (!isSettingsOpen || isProductionApp) &&
@@ -1859,9 +1937,16 @@ export default function App() {
           recAdapter === selectedAdapterId
         );
       });
+      if (isProductionApp && matchingExisting.length > 0) {
+        const providerLabel = selectedAdapterId === 'fable' ? 'Fable' : 'Gemini';
+        setMonthSwitchError(
+          `A ${providerLabel} report for this domain already exists in ${inheritedMonth} ${inheritedYear}.`,
+        );
+        return;
+      }
       const runNumber = matchingExisting.length + 1;
       const baseTitle = effectiveThreadName || 'Report';
-      const isGenericDomainTitle = /^(career|family|love|health|general)$/i.test(
+      const isGenericDomainTitle = /^(career|family|finance|love|health|general)$/i.test(
         baseTitle,
       );
       if (isGenericDomainTitle) {
@@ -2141,17 +2226,40 @@ export default function App() {
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {isProductionApp ? (
-          /* Minimal Production Header: New Thread/Home + Watch-Out Timeline Toggle ONLY */
-          <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-4">
-            <button
-              type="button"
-              onClick={handleStartNewThread}
-              title="Home / New Thread"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <WhatsAppSymbol className="w-5 h-5 shrink-0" />
-              <span>What&apos;s up</span>
-            </button>
+          /* Minimal Production Header: Home + Floating Reports Toggle on Left, Watch Out on Right */
+          <header className="relative h-14 shrink-0 px-4 sm:px-6 border-b border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleStartNewThread}
+                title="Home / New Thread"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <WhatsAppSymbol className="w-5 h-5 shrink-0" />
+                <span>What&apos;s up</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsProdReportsMenuOpen((prev) => !prev)}
+                aria-expanded={isProdReportsMenuOpen}
+                aria-label="Toggle saved production reports menu"
+                title={`View saved reports (${prodReportsDirDisplay})`}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                  isProdReportsMenuOpen
+                    ? 'border-sky-400/70 bg-sky-500/15 text-sky-200'
+                    : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <FolderOpen className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Reports</span>
+                {ratedThreads.length > 0 && (
+                  <span className="rounded-md bg-sky-400/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-sky-200">
+                    {ratedThreads.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
             <div className="flex items-center gap-2 shrink-0">
               {hasReportForRightPane && (
@@ -2176,6 +2284,16 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {isProdReportsMenuOpen && (
+              <ProductionReportsMenu
+                reports={ratedThreads}
+                reportsPathDisplay={prodReportsDirDisplay}
+                activeReportId={activeProductionReportId}
+                onSelectReport={handleOpenProductionReport}
+                onClose={() => setIsProdReportsMenuOpen(false)}
+              />
+            )}
           </header>
         ) : (
           /* Dev Mode Top Menu Bar */
@@ -2348,6 +2466,10 @@ export default function App() {
                 activeMonthNum={settings.contextCache.activeMonth ?? new Date().getMonth() + 1}
                 activeYearNum={settings.contextCache.activeYear ?? new Date().getFullYear()}
                 activePromptDomain={activePromptDomain}
+                activeProvider={
+                  settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini'
+                }
+                ratedThreads={ratedThreads}
                 isSending={isSending}
                 switchingMonthKey={switchingMonthKey}
                 monthSwitchError={monthSwitchError}
@@ -2362,6 +2484,7 @@ export default function App() {
                   }))
                 }
                 onSelectQuickMonth={(month, year) => void handleQuickSelectMonth(month, year)}
+                onOpenExistingReport={handleOpenProductionReport}
                 onSubmitQuestion={(payload) =>
                   void handleSendMessage({
                     text: payload.text,
@@ -2623,7 +2746,15 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2.5 shrink-0 min-w-0">
+              <span
+                title={`Production Reports Directory: ${prodReportsDirDisplay}`}
+                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-400 truncate max-w-[260px]"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-sky-400/80 shrink-0" />
+                <span className="truncate">Reports: {prodReportsDirDisplay}</span>
+              </span>
+              <span className="hidden sm:inline text-slate-700">|</span>
               <button
                 type="button"
                 disabled={!canCopyPrompt}

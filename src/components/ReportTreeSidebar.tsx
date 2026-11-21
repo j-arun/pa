@@ -51,7 +51,8 @@ const TREE_DOMAINS: ReadonlyArray<{
 }> = [
   { domain: 'general', label: 'Love' },
   { domain: 'astrology', label: 'Career' },
-  { domain: 'finance', label: 'Family' },
+  { domain: 'family', label: 'Family' },
+  { domain: 'finance', label: 'Finance' },
   { domain: 'health', label: 'Health' },
 ];
 
@@ -101,6 +102,7 @@ function normalizeRecordPlacement(record: RatedThreadRecord): {
 
   const domain: PromptDomain =
     qTurn?.promptDomain === 'astrology' ||
+    qTurn?.promptDomain === 'family' ||
     qTurn?.promptDomain === 'finance' ||
     qTurn?.promptDomain === 'general' ||
     qTurn?.promptDomain === 'health'

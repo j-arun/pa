@@ -192,11 +192,18 @@ const DOMAIN_HOME_CARDS: Array<{
     icon: 'briefcase',
   },
   {
-    domain: 'finance',
+    domain: 'family',
     label: 'Family',
-    description: 'Family, domestic life, and financial planning events.',
+    description: 'Family, domestic life, and home relationships.',
     backdropEmoji: '🏡',
     icon: 'layers',
+  },
+  {
+    domain: 'finance',
+    label: 'Finance',
+    description: 'Wealth, cashflow, savings, and financial planning.',
+    backdropEmoji: '💰',
+    icon: 'coins',
   },
   {
     domain: 'general',
@@ -297,8 +304,10 @@ function getDomainIconFromPromptDomain(domain?: PromptDomain): EventCardIconType
   switch (domain) {
     case 'astrology':
       return 'briefcase';
-    case 'finance':
+    case 'family':
       return 'layers';
+    case 'finance':
+      return 'coins';
     case 'health':
       return 'shield';
     case 'general':
@@ -2264,7 +2273,7 @@ export function WorkbenchPage({
                     <div
                       role="group"
                       aria-labelledby="composer-domain-label"
-                      className="flex-1 grid grid-cols-4 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
+                      className="flex-1 grid grid-cols-5 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
                     >
                       {PROMPT_DOMAINS.map((domain) => {
                         const selected = activePromptDomain === domain;

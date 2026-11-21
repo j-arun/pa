@@ -4,8 +4,10 @@ export function getDomainEmblemIcon(domain?: PromptDomain): EventCardIconType {
   switch (domain) {
     case 'astrology':
       return 'briefcase';
-    case 'finance':
+    case 'family':
       return 'layers';
+    case 'finance':
+      return 'coins';
     case 'general':
       return 'heart';
     case 'health':
@@ -23,22 +25,35 @@ export function EventCategoryEmblem({
   className?: string;
 }) {
   switch (icon) {
+    case 'coins':
+      return (
+        <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
+          <path
+            d="M18 5.5V30.5M23.5 11.2C23.5 8.8 21.1 7.4 18 7.4C14.7 7.4 12.2 9.1 12.2 11.6C12.2 14.3 14.7 15.6 18.2 16.5C21.8 17.4 24.2 18.8 24.2 21.8C24.2 24.6 21.6 26.6 18 26.6C14.4 26.6 11.8 24.8 11.5 22.1"
+            stroke="#F59E0B"
+            strokeWidth="3.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      );
     case 'layers':
       return (
         <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
           <path
             d="M6.5 17.5L18 7.5L29.5 17.5V29.5C29.5 30.6 28.6 31.5 27.5 31.5H8.5C7.4 31.5 6.5 30.6 6.5 29.5V17.5Z"
-            fill="#F59E0B"
+            fill="#10B981"
           />
           <path
             d="M4.5 18L18 6L31.5 18"
-            stroke="#D97706"
+            stroke="#059669"
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
           />
-          <rect x="14.5" y="20.5" width="7" height="11" rx="1.8" fill="#FFFBEB" />
+          <rect x="14.5" y="20.5" width="7" height="11" rx="1.8" fill="#ECFDF5" />
         </svg>
       );
     case 'calendar':
@@ -73,14 +88,14 @@ export function EventCategoryEmblem({
     case 'briefcase':
       return (
         <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
-          <rect x="5" y="11" width="26" height="19" rx="4.5" fill="#4F46E5" />
+          <rect x="5" y="11" width="26" height="19" rx="4.5" fill="#38BDF8" />
           <path
             d="M13 11V8.5C13 7.4 13.9 6.5 15 6.5H21C22.1 6.5 23 7.4 23 8.5V11"
-            stroke="#4338CA"
+            stroke="#0284C7"
             strokeWidth="2.5"
             fill="none"
           />
-          <rect x="5" y="17" width="26" height="3" fill="#818CF8" opacity="0.65" />
+          <rect x="5" y="17" width="26" height="3" fill="#BAE6FD" opacity="0.7" />
           <rect x="15.5" y="16" width="5" height="5" rx="1.2" fill="#FFFFFF" />
         </svg>
       );
@@ -97,7 +112,7 @@ export function EventCategoryEmblem({
     case 'shield':
       return (
         <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
-          <rect x="4" y="4" width="28" height="28" rx="9" fill="#10B981" />
+          <rect x="4" y="4" width="28" height="28" rx="9" fill="#8B5CF6" />
           <rect x="15.25" y="9.5" width="5.5" height="17" rx="1.8" fill="#FFFFFF" />
           <rect x="9.5" y="15.25" width="17" height="5.5" rx="1.8" fill="#FFFFFF" />
         </svg>

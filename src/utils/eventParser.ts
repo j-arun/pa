@@ -36,6 +36,7 @@ const VALID_ICONS: readonly EventCardIconType[] = [
   'briefcase',
   'heart',
   'shield',
+  'coins',
 ];
 
 const HTML_ENTITIES: Record<string, string> = {
@@ -57,8 +58,10 @@ function inferCategoryAndIcon(
   switch (fallbackDomain) {
     case 'astrology':
       return { category: 'Career', icon: 'briefcase' };
-    case 'finance':
+    case 'family':
       return { category: 'Family', icon: 'layers' };
+    case 'finance':
+      return { category: 'Finance', icon: 'coins' };
     case 'general':
       return { category: 'Love', icon: 'heart' };
     case 'health':
@@ -86,7 +89,13 @@ function inferCategoryAndIcon(
       icon: 'briefcase',
     };
   }
-  if (/(family|home|parent|child|relative|household|domestic|money|finance|income|budget)/.test(lower)) {
+  if (/(money|finance|income|budget|invest|saving|expense|wealth|salary|cash|tax)/.test(lower)) {
+    return {
+      category: 'Finance',
+      icon: 'coins',
+    };
+  }
+  if (/(family|home|parent|child|relative|household|domestic)/.test(lower)) {
     return {
       category: 'Family',
       icon: 'layers',
@@ -98,7 +107,7 @@ function inferCategoryAndIcon(
 
 function inferIconFromText(text: string, fallbackIndex: number): EventCardIconType {
   const lower = text.toLowerCase();
-  if (/(relationship|love|family|partner|marriage|romance)/.test(lower)) {
+  if (/(relationship|love|partner|marriage|romance)/.test(lower)) {
     return 'heart';
   }
   if (/(health|wellness|energy|rest|vital|fitness|medical|sleep)/.test(lower)) {
@@ -107,7 +116,10 @@ function inferIconFromText(text: string, fallbackIndex: number): EventCardIconTy
   if (/(career|work|job|project|business|team|lead|promotion|role)/.test(lower)) {
     return 'briefcase';
   }
-  if (/(money|finance|income|budget|invest|saving|expense|domestic|home)/.test(lower)) {
+  if (/(money|finance|income|budget|invest|saving|expense|wealth)/.test(lower)) {
+    return 'coins';
+  }
+  if (/(family|domestic|home|parent|child|household)/.test(lower)) {
     return 'layers';
   }
   if (/(date|month|year|schedule|plan|timeline|quarter|week|transition|period)/.test(lower)) {

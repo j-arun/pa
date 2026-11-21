@@ -3,6 +3,7 @@ import {
   Briefcase,
   ChevronLeft,
   ChevronRight,
+  DollarSign,
   Heart,
   Home,
   RotateCcw,
@@ -180,6 +181,17 @@ function drawDomainArtwork(
     ctx.lineTo(0, 30);
     ctx.moveTo(-26, 3);
     ctx.lineTo(26, 3);
+    ctx.stroke();
+  } else if (icon === 'coins') {
+    ctx.beginPath();
+    ctx.moveTo(0, -68);
+    ctx.lineTo(0, 68);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(34, -36);
+    ctx.bezierCurveTo(34, -54, -34, -54, -34, -26);
+    ctx.bezierCurveTo(-34, -4, 34, -4, 34, 24);
+    ctx.bezierCurveTo(34, 54, -34, 54, -34, 34);
     ctx.stroke();
   } else if (icon === 'layers') {
     ctx.beginPath();
@@ -549,7 +561,8 @@ const WAITING_DOMAIN_META: Record<
   { label: string; accentHex: string; glowHex: string }
 > = {
   astrology: { label: 'Career', accentHex: '#38bdf8', glowHex: '#0284c7' },
-  finance: { label: 'Family', accentHex: '#34d399', glowHex: '#059669' },
+  family: { label: 'Family', accentHex: '#34d399', glowHex: '#059669' },
+  finance: { label: 'Finance', accentHex: '#fbbf24', glowHex: '#d97706' },
   general: { label: 'Love', accentHex: '#fb7185', glowHex: '#e11d48' },
   health: { label: 'Health', accentHex: '#a78bfa', glowHex: '#7c3aed' },
 };
@@ -568,8 +581,10 @@ function Stage2DomainEmblem({ domain }: { domain: PromptDomain }) {
     >
       {domain === 'astrology' ? (
         <Briefcase className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
-      ) : domain === 'finance' ? (
+      ) : domain === 'family' ? (
         <Home className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
+      ) : domain === 'finance' ? (
+        <DollarSign className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.5} />
       ) : domain === 'general' ? (
         <Heart className="w-3.5 h-3.5 text-white fill-white/90 drop-shadow" strokeWidth={2.2} />
       ) : (

@@ -1533,7 +1533,7 @@ export function SettingsPage({
                 <span>Reference Context REST API</span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                Configure hostname, port, endpoint path, and query template (domain=career|family|love|health appended dynamically)
+                Configure hostname, port, endpoint path, and query template (domain=career|family|finance|love|health appended dynamically)
               </p>
             </div>
             {expandedSections.referenceApi ? (

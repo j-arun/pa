@@ -1,5 +1,5 @@
 export type ConversationScope = 'private' | 'public';
-export type PromptDomain = 'astrology' | 'health' | 'finance' | 'general';
+export type PromptDomain = 'astrology' | 'health' | 'family' | 'finance' | 'general';
 export type PromptStyle = 'formal' | 'classic';
 
 export type ThreadRating = 'green' | 'yellow' | 'red';
@@ -26,7 +26,8 @@ export type EventCardIconType =
   | 'sparkles'
   | 'briefcase'
   | 'heart'
-  | 'shield';
+  | 'shield'
+  | 'coins';
 
 export interface EventCardItem {
   id: string;

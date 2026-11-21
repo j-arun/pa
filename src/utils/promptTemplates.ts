@@ -9,6 +9,7 @@ import type {
 export const PROMPT_DOMAINS: PromptDomain[] = [
   'astrology',
   'health',
+  'family',
   'finance',
   'general',
 ];
@@ -16,7 +17,8 @@ export const PROMPT_DOMAINS: PromptDomain[] = [
 export const PROMPT_DOMAIN_SHORT_LABELS: Record<PromptDomain, string> = {
   astrology: 'Career',
   health: 'Health',
-  finance: 'Family',
+  family: 'Family',
+  finance: 'Finance',
   general: 'Love',
 };
 
@@ -24,8 +26,10 @@ export function getDomainQueryValue(domain: PromptDomain): string {
   switch (domain) {
     case 'astrology':
       return 'career';
-    case 'finance':
+    case 'family':
       return 'family';
+    case 'finance':
+      return 'finance';
     case 'general':
       return 'love';
     case 'health':
@@ -162,6 +166,12 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplates = {
       'Respond in clear, neutral, professional language. Provide general information, explain uncertainty, and do not diagnose or replace advice from a qualified health professional.\n\nRequest:\n{{prompt}}',
     classic:
       'Review the health-related context carefully. Organize general information into relevant points and practical next steps. Identify important unknowns, avoid making a diagnosis, and recommend a qualified health professional when appropriate.\n\nHealth request:\n{{prompt}}',
+  },
+  family: {
+    formal:
+      'Respond in clear, warm, practical language regarding family and household life. Address relationships, domestic planning, and shared responsibilities thoughtfully.\n\nRequest:\n{{prompt}}',
+    classic:
+      'Consider the family and domestic context carefully. Organize practical guidance, communication steps, and key household dates cleanly while noting assumptions.\n\nFamily request:\n{{prompt}}',
   },
   finance: {
     formal:

@@ -13,7 +13,8 @@ export const DOMAIN_PROMPT_FILES: Record<
 > = {
   astrology: { fileName: 'career.json', label: 'Career' },
   health: { fileName: 'health.json', label: 'Health' },
-  finance: { fileName: 'family.json', label: 'Family' },
+  family: { fileName: 'family.json', label: 'Family' },
+  finance: { fileName: 'finance.json', label: 'Finance' },
   general: { fileName: 'love.json', label: 'Love' },
 };
 
@@ -26,6 +27,7 @@ export function getDomainPromptFilePaths(): Record<PromptDomain, string> {
   return {
     astrology: path.join(dir, DOMAIN_PROMPT_FILES.astrology.fileName),
     health: path.join(dir, DOMAIN_PROMPT_FILES.health.fileName),
+    family: path.join(dir, DOMAIN_PROMPT_FILES.family.fileName),
     finance: path.join(dir, DOMAIN_PROMPT_FILES.finance.fileName),
     general: path.join(dir, DOMAIN_PROMPT_FILES.general.fileName),
   };

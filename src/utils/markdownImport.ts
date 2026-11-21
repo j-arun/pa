@@ -331,7 +331,10 @@ function matchDomainExplicit(rawText: string): PromptDomain | null {
   if (/\b(?:career|profession|professional|job|workplace|promotion|business|astrology)\b/.test(lower)) {
     return 'astrology';
   }
-  if (/\b(?:family|domestic|household|home|parents?|children|relatives|finance|financial)\b/.test(lower)) {
+  if (/\b(?:family|domestic|household|home|parents?|children|relatives)\b/.test(lower)) {
+    return 'family';
+  }
+  if (/\b(?:finance|financial|money|wealth|invest|investment|savings|budget|income|tax)\b/.test(lower)) {
     return 'finance';
   }
   if (/\b(?:health|wellness|vitality|medical|fitness|well-being|wellbeing|sleep)\b/.test(lower)) {
@@ -382,9 +385,15 @@ function detectDomain(
       ),
     },
     {
+      domain: 'family',
+      score: countMatches(
+        /\b(?:family|household|domestic|parent|mother|father|child|children|home|sibling|relative)\b/g,
+      ),
+    },
+    {
       domain: 'finance',
       score: countMatches(
-        /\b(?:family|household|domestic|parent|mother|father|child|children|home|sibling|relative|budget|savings)\b/g,
+        /\b(?:finance|financial|money|wealth|invest|investment|budget|savings|income|expense|debt|tax)\b/g,
       ),
     },
     {

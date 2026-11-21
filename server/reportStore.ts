@@ -28,7 +28,8 @@ const MONTHS = [
 
 const DOMAIN_FOLDER_NAMES: Record<PromptDomain, string> = {
   astrology: 'Career',
-  finance: 'Family',
+  family: 'Family',
+  finance: 'Finance',
   general: 'Love',
   health: 'Health',
 };
@@ -104,6 +105,7 @@ function normalizeYearNumber(rawYear?: number, fallbackDateIso?: string): number
 function normalizeDomain(rawDomain?: string): PromptDomain {
   if (
     rawDomain === 'astrology' ||
+    rawDomain === 'family' ||
     rawDomain === 'finance' ||
     rawDomain === 'general' ||
     rawDomain === 'health'
@@ -126,7 +128,13 @@ function normalizeAdapterId(rawAdapter?: string, scope?: ConversationScope): Any
   return scope === 'private' ? 'ollama' : 'gemini';
 }
 
-function getStructuredFolderSegments(record: RatedThreadRecord): {
+export type ReportFolderLayout = 'dev' | 'production';
+
+function getStructuredFolderSegments(
+  record: RatedThreadRecord,
+  layout: ReportFolderLayout = 'dev',
+): {
+  folderSegments: string[];
   yearMonthDir: string;
   domainDir: string;
   adapterDir: string;
@@ -140,16 +148,32 @@ function getStructuredFolderSegments(record: RatedThreadRecord): {
   const fallbackIso = qTurn?.timestamp || record.ratedAt;
   const monthName = normalizeMonthName(qTurn?.threadMonth, fallbackIso);
   const yearNum = normalizeYearNumber(qTurn?.threadYear, fallbackIso);
-  const domain = normalizeDomain(qTurn?.promptDomain);
+  let domain = normalizeDomain(qTurn?.promptDomain);
+  if (
+    domain === 'finance' &&
+    typeof record.relativePath === 'string' &&
+    /(?:^|\/)family(?:\/|$)/i.test(record.relativePath)
+  ) {
+    domain = 'family';
+  }
   const adapterId = normalizeAdapterId(
     assistantTurn?.adapterId ?? qTurn?.adapterId,
     qTurn?.scope ?? assistantTurn?.scope,
   );
 
+  const yearMonthDir = sanitizeFolderSegment(`${yearNum} ${monthName}`, `${yearNum} ${monthName}`);
+  const domainDir = DOMAIN_FOLDER_NAMES[domain];
+  const adapterDir = ADAPTER_FOLDER_NAMES[adapterId];
+  const folderSegments =
+    layout === 'production'
+      ? [String(yearNum), monthName, adapterDir]
+      : [yearMonthDir, domainDir, adapterDir];
+
   return {
-    yearMonthDir: sanitizeFolderSegment(`${yearNum} ${monthName}`, `${yearNum} ${monthName}`),
-    domainDir: DOMAIN_FOLDER_NAMES[domain],
-    adapterDir: ADAPTER_FOLDER_NAMES[adapterId],
+    folderSegments,
+    yearMonthDir,
+    domainDir,
+    adapterDir,
     monthName,
     yearNum,
     domain,
@@ -183,10 +207,26 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
       continue;
     }
 
+    if (/^\d{4}$/.test(seg.trim())) {
+      const y = Number(seg.trim());
+      if (y >= 1990 && y <= 2090) result.threadYear = y;
+      continue;
+    }
+
     const lower = seg.trim().toLowerCase();
+    const matchedMonth = MONTHS.find(
+      (m) => m.toLowerCase() === lower || m.toLowerCase().slice(0, 3) === lower,
+    );
+    if (matchedMonth) {
+      result.threadMonth = matchedMonth;
+      continue;
+    }
+
     if (lower === 'career' || lower === 'astrology') {
       result.promptDomain = 'astrology';
-    } else if (lower === 'family' || lower === 'home' || lower === 'finance') {
+    } else if (lower === 'family' || lower === 'home') {
+      result.promptDomain = 'family';
+    } else if (lower === 'finance' || lower === 'money' || lower === 'wealth') {
       result.promptDomain = 'finance';
     } else if (lower === 'love' || lower === 'general' || lower === 'relationship') {
       result.promptDomain = 'general';
@@ -195,7 +235,7 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
     } else if (lower === 'local' || lower === 'ollama') {
       result.adapterId = 'ollama';
       result.scope = 'private';
-    } else if (lower === 'fable') {
+    } else if (lower === 'fable' || lower === 'fabul') {
       result.adapterId = 'fable';
       result.scope = 'public';
     } else if (lower === 'gemini') {
@@ -208,6 +248,15 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
       result.adapterId = 'chatgpt';
       result.scope = 'public';
     }
+  }
+
+  if (!result.promptDomain) {
+    const fileLower = (parts[parts.length - 1] || '').toLowerCase();
+    if (/^(career|astrology)[-_ ]/.test(fileLower)) result.promptDomain = 'astrology';
+    else if (/^(family|home)[-_ ]/.test(fileLower)) result.promptDomain = 'family';
+    else if (/^(finance|money)[-_ ]/.test(fileLower)) result.promptDomain = 'finance';
+    else if (/^(love|general|relationship)[-_ ]/.test(fileLower)) result.promptDomain = 'general';
+    else if (/^health[-_ ]/.test(fileLower)) result.promptDomain = 'health';
   }
 
   return result;
@@ -229,10 +278,19 @@ function extractTitleFromHtml(html: string, fallbackName: string): string {
   return fallbackName.replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').trim() || 'HTML Report';
 }
 
-function getPreferredHtmlFileName(record: RatedThreadRecord): string {
+function getPreferredHtmlFileName(
+  record: RatedThreadRecord,
+  layout: ReportFolderLayout = 'dev',
+): string {
   const qTurn = record.turns.find((t) => t.role === 'user');
   const title = qTurn?.threadName?.trim() || 'reference-report';
   const shortId = sanitizeId(record.id).slice(-8);
+  if (layout === 'production') {
+    const domain = normalizeDomain(qTurn?.promptDomain);
+    const domainPrefix = sanitizeSlug(DOMAIN_FOLDER_NAMES[domain]);
+    const questionSlug = sanitizeSlug(qTurn?.content?.trim() || title).slice(0, 32);
+    return `${domainPrefix}-${questionSlug}-${shortId}.html`;
+  }
   return `${sanitizeSlug(title)}-${shortId}.html`;
 }
 
@@ -311,7 +369,10 @@ function walkHtmlFilesRecursively(dir: string, root: string, results: string[]) 
   }
 }
 
-export function listStoredReports(customReportsDir?: string): {
+export function listStoredReports(
+  customReportsDir?: string,
+  layout: ReportFolderLayout = 'dev',
+): {
   reportsDir: string;
   reports: RatedThreadRecord[];
 } {
@@ -319,7 +380,7 @@ export function listStoredReports(customReportsDir?: string): {
   const reports: RatedThreadRecord[] = [];
   const claimedHtmlPaths = new Set<string>();
 
-  // 1. Load metadata records saved by the workbench and organize into <Year Month>/<Domain>/<Adapter>/
+  // 1. Load metadata records saved by the workbench
   let metaFiles: string[] = [];
   try {
     metaFiles = fs.readdirSync(metaDir).filter((name) => name.toLowerCase().endsWith('.json'));
@@ -339,18 +400,13 @@ export function listStoredReports(customReportsDir?: string): {
         continue;
       }
 
-      const segments = getStructuredFolderSegments(parsed);
+      const segments = getStructuredFolderSegments(parsed, layout);
       const baseFileName =
         (typeof parsed.htmlFileName === 'string' && path.basename(parsed.htmlFileName)) ||
         (typeof parsed.fileName === 'string' && path.basename(parsed.fileName)) ||
-        getPreferredHtmlFileName(parsed);
+        getPreferredHtmlFileName(parsed, layout);
 
-      const structuredFolder = path.join(
-        root,
-        segments.yearMonthDir,
-        segments.domainDir,
-        segments.adapterDir,
-      );
+      const structuredFolder = path.join(root, ...segments.folderSegments);
       const structuredHtmlPath = path.join(structuredFolder, baseFileName);
       const structuredRelPath = toPosixRelative(root, structuredHtmlPath);
 
@@ -510,6 +566,7 @@ export function saveStoredReport(
   record: RatedThreadRecord,
   customReportsDir?: string,
   explicitHtml?: string,
+  layout: ReportFolderLayout = 'dev',
 ): {
   reportsDir: string;
   fileName: string;
@@ -520,13 +577,8 @@ export function saveStoredReport(
   const safeId = sanitizeId(record.id);
   const metaPath = path.join(metaDir, `${safeId}.json`);
 
-  const segments = getStructuredFolderSegments(record);
-  const targetFolder = path.join(
-    root,
-    segments.yearMonthDir,
-    segments.domainDir,
-    segments.adapterDir,
-  );
+  const segments = getStructuredFolderSegments(record, layout);
+  const targetFolder = path.join(root, ...segments.folderSegments);
   fs.mkdirSync(targetFolder, { recursive: true });
 
   // Inspect existing metadata to find any previous HTML path so we can clean/move cleanly
@@ -554,7 +606,7 @@ export function saveStoredReport(
   }
 
   if (!fileName || !/\.html?$/i.test(fileName)) {
-    fileName = getPreferredHtmlFileName(record);
+    fileName = getPreferredHtmlFileName(record, layout);
   }
 
   const htmlFilePath = path.join(targetFolder, fileName);

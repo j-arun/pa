@@ -119,6 +119,23 @@ export function resolveDefaultReportsDir(): string {
   return path.join(resolveConfigDir(), 'reports');
 }
 
+export function resolveProductionReportsDir(): string {
+  if (process.env.WORKBENCH_PROD_REPORTS_DIR?.trim()) {
+    return path.resolve(process.env.WORKBENCH_PROD_REPORTS_DIR.trim());
+  }
+  if (process.platform === 'win32') {
+    return path.win32.resolve('D:/WhatsApp Reports');
+  }
+  return path.join(resolveConfigDir(), 'WhatsApp Reports');
+}
+
+export function formatProductionReportsDirDisplay(resolvedDir: string): string {
+  if (process.platform === 'win32') {
+    return resolvedDir.replace(/\\/g, '/');
+  }
+  return resolvedDir;
+}
+
 export function resolveReportsDir(customDir?: string): string {
   const trimmed = (customDir || '').trim();
   if (!trimmed) {

@@ -18,6 +18,7 @@ import {
 const SETTINGS_KEY = 'fluent_paw_settings_v1';
 const CONVERSATION_KEY = 'fluent_paw_conversation_v1';
 const RATED_THREADS_KEY = 'fluent_paw_rated_threads_v1';
+export const PROD_RATED_THREADS_KEY = 'fluent_paw_prod_rated_threads_v1';
 const SCOPE_KEY = 'fluent_paw_scope_v1';
 function isPromptDomain(raw: unknown): raw is PromptDomain {
   return typeof raw === 'string' && PROMPT_DOMAINS.includes(raw as PromptDomain);
@@ -422,9 +423,9 @@ export function saveScope(scope: 'private' | 'public'): void {
   }
 }
 
-export function loadRatedThreads(): RatedThreadRecord[] {
+export function loadRatedThreads(storageKey = RATED_THREADS_KEY): RatedThreadRecord[] {
   try {
-    const raw = window.localStorage.getItem(RATED_THREADS_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -440,9 +441,12 @@ export function loadRatedThreads(): RatedThreadRecord[] {
   }
 }
 
-export function saveRatedThreads(records: RatedThreadRecord[]): void {
+export function saveRatedThreads(
+  records: RatedThreadRecord[],
+  storageKey = RATED_THREADS_KEY,
+): void {
   try {
-    window.localStorage.setItem(RATED_THREADS_KEY, JSON.stringify(records));
+    window.localStorage.setItem(storageKey, JSON.stringify(records));
   } catch {
     // Ignore quota errors
   }

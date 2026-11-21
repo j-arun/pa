@@ -14,7 +14,9 @@ import { adapterRegistry } from './server/adapters/registry.ts';
 import type { AdapterRuntimeOptions, ChatHistoryItem } from './server/adapters/types.ts';
 import {
   detectWindowsAccountProfile,
+  formatProductionReportsDirDisplay,
   readLocalConfigFile,
+  resolveProductionReportsDir,
   writeLocalConfigFile,
 } from './server/configStore.ts';
 import {
@@ -23,6 +25,7 @@ import {
   readStoredReportHtml,
   saveStoredReport,
   updateStoredReportMetadata,
+  type ReportFolderLayout,
   type ReportMetadataUpdatePayload,
 } from './server/reportStore.ts';
 
@@ -46,7 +49,11 @@ async function startServer() {
   app.get('/api/config', (_req, res) => {
     try {
       const result = readLocalConfigFile();
-      return res.json(result);
+      const prodDir = resolveProductionReportsDir();
+      return res.json({
+        ...result,
+        productionReportsDir: formatProductionReportsDirDisplay(prodDir),
+      });
     } catch (err) {
       return res.status(500).json({
         error: err instanceof Error ? err.message : 'Unable to read workbench.config.json.',
@@ -58,7 +65,11 @@ async function startServer() {
     try {
       const next = (req.body || {}) as Partial<WorkbenchSettings>;
       const result = writeLocalConfigFile(next);
-      return res.json(result);
+      const prodDir = resolveProductionReportsDir();
+      return res.json({
+        ...result,
+        productionReportsDir: formatProductionReportsDirDisplay(prodDir),
+      });
     } catch (err) {
       return res.status(500).json({
         error: err instanceof Error ? err.message : 'Unable to write workbench.config.json.',
@@ -68,12 +79,20 @@ async function startServer() {
 
   app.get('/api/reports', (req, res) => {
     try {
-      const queryDir =
-        typeof req.query.dir === 'string' && req.query.dir.trim()
+      const isProductionReq = req.query.mode === 'production';
+      const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const queryDir = isProductionReq
+        ? resolveProductionReportsDir()
+        : typeof req.query.dir === 'string' && req.query.dir.trim()
           ? req.query.dir.trim()
           : readLocalConfigFile().config.reportsDir;
-      const result = listStoredReports(queryDir);
-      return res.json(result);
+      const result = listStoredReports(queryDir, layout);
+      return res.json({
+        ...result,
+        displayReportsDir: isProductionReq
+          ? formatProductionReportsDirDisplay(result.reportsDir)
+          : result.reportsDir,
+      });
     } catch (err) {
       return res.status(500).json({
         error:
@@ -87,8 +106,10 @@ async function startServer() {
   app.get('/api/reports/:id/html', (req, res) => {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
-      const queryDir =
-        typeof req.query.dir === 'string' && req.query.dir.trim()
+      const isProductionReq = req.query.mode === 'production';
+      const queryDir = isProductionReq
+        ? resolveProductionReportsDir()
+        : typeof req.query.dir === 'string' && req.query.dir.trim()
           ? req.query.dir.trim()
           : readLocalConfigFile().config.reportsDir;
       const result = readStoredReportHtml(reportId, queryDir);
@@ -109,19 +130,33 @@ async function startServer() {
   app.put('/api/reports/:id', (req, res) => {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
-      const { record, html, reportsDir } = req.body as {
+      const { record, html, reportsDir, mode } = req.body as {
         record?: RatedThreadRecord;
         html?: string;
         reportsDir?: string;
+        mode?: string;
       };
       if (!record || !Array.isArray(record.turns)) {
         return res.status(400).json({ error: 'Valid report record is required.' });
       }
-      const targetDir =
-        (typeof reportsDir === 'string' && reportsDir.trim()) ||
-        readLocalConfigFile().config.reportsDir;
-      const saved = saveStoredReport({ ...record, id: reportId || record.id }, targetDir, html);
-      return res.json(saved);
+      const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const targetDir = isProductionReq
+        ? resolveProductionReportsDir()
+        : (typeof reportsDir === 'string' && reportsDir.trim()) ||
+          readLocalConfigFile().config.reportsDir;
+      const saved = saveStoredReport(
+        { ...record, id: reportId || record.id },
+        targetDir,
+        html,
+        layout,
+      );
+      return res.json({
+        ...saved,
+        displayReportsDir: isProductionReq
+          ? formatProductionReportsDirDisplay(saved.reportsDir)
+          : saved.reportsDir,
+      });
     } catch (err) {
       return res.status(500).json({
         error:
@@ -135,8 +170,10 @@ async function startServer() {
   app.delete('/api/reports/:id', (req, res) => {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
-      const queryDir =
-        typeof req.query.dir === 'string' && req.query.dir.trim()
+      const isProductionReq = req.query.mode === 'production';
+      const queryDir = isProductionReq
+        ? resolveProductionReportsDir()
+        : typeof req.query.dir === 'string' && req.query.dir.trim()
           ? req.query.dir.trim()
           : readLocalConfigFile().config.reportsDir;
       const result = deleteStoredReport(reportId, queryDir);
@@ -154,11 +191,12 @@ async function startServer() {
   app.patch('/api/reports/:id', (req, res) => {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
-      const { name, comment, moveTarget, reportsDir } = req.body as {
+      const { name, comment, moveTarget, reportsDir, mode } = req.body as {
         name?: string;
         comment?: string;
         moveTarget?: ReportMetadataUpdatePayload['moveTarget'];
         reportsDir?: string;
+        mode?: string;
       };
       const hasName = typeof name === 'string' && name.trim().length > 0;
       const hasComment = typeof comment === 'string';
@@ -174,9 +212,11 @@ async function startServer() {
           .status(400)
           .json({ error: 'Provide a report name, comment, or move target.' });
       }
-      const targetDir =
-        (typeof reportsDir === 'string' && reportsDir.trim()) ||
-        readLocalConfigFile().config.reportsDir;
+      const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const targetDir = isProductionReq
+        ? resolveProductionReportsDir()
+        : (typeof reportsDir === 'string' && reportsDir.trim()) ||
+          readLocalConfigFile().config.reportsDir;
       const result = updateStoredReportMetadata(
         reportId,
         {
