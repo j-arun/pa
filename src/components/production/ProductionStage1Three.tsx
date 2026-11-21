@@ -1,15 +1,21 @@
 import {
   Briefcase,
+  Calendar,
   DollarSign,
   Eye,
   Heart,
   Home,
   Loader2,
+  Lock,
   Send,
   Shield,
   ShieldAlert,
+  Sparkles,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -19,12 +25,20 @@ import type {
   RatedThreadRecord,
 } from '../../types/workbench';
 import {
+  extractReadOutSections,
+  normalizeEventCardItem,
+  parseResponseEventsAndReport,
+} from '../../utils/eventParser';
+import {
   getMonthNameFromNumber,
   getPromptDomainShortLabel,
 } from '../../utils/promptTemplates';
 import {
   playBucketDropCue,
+  playBucketExpandCue,
   playLaunchTransitionCue,
+  startBucketAmbientMusic,
+  stopBucketAmbientMusic,
   warmAudioContext,
 } from '../../utils/notify';
 
@@ -311,6 +325,7 @@ function drawBucketLabelCanvas(
   reportsInBucket: BucketReportEntry[],
   isActive: boolean,
   isHovered: boolean,
+  isInspected: boolean,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
   const count = reportsInBucket.length;
@@ -328,14 +343,24 @@ function drawBucketLabelCanvas(
   const isFull = count >= 10;
   ctx.shadowColor = isFull
     ? 'rgba(251, 191, 36, 0.9)'
-    : isHovered
+    : isHovered || isInspected
       ? 'rgba(125, 211, 252, 0.95)'
       : isActive
         ? 'rgba(56, 189, 248, 0.85)'
         : 'rgba(14, 165, 233, 0.55)';
-  ctx.shadowBlur = isHovered || isFull ? 22 : 14;
+  ctx.shadowBlur = isHovered || isInspected || isFull ? 22 : 14;
 
-  if (isHovered) {
+  if (isInspected) {
+    // Minimal glowing top rim title when bucket is expanded for read-only report reading
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(4, 12, 28, 0.82)';
+    const headerTitle = `${shortMonth.toUpperCase()} ${year}`;
+    ctx.font = '800 40px "Plus Jakarta Sans", system-ui, sans-serif';
+    ctx.strokeText(headerTitle, width / 2, 42);
+    ctx.fillStyle = isFull ? '#fef3c7' : '#ffffff';
+    ctx.fillText(headerTitle, width / 2, 42);
+  } else if (isHovered) {
     // Compact crisp header at top when bucket swells huge on drag hover
     ctx.lineJoin = 'round';
     ctx.lineWidth = 8;
@@ -481,6 +506,9 @@ export function ProductionStage1Three({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [hoveredBucketLabel, setHoveredBucketLabel] = useState<string | null>(null);
   const [isDraggingTopic, setIsDraggingTopic] = useState(false);
+  const [inspectedBucketKey, setInspectedBucketKey] = useState<string | null>(null);
+  const [selectedInspectReportIdx, setSelectedInspectReportIdx] = useState(0);
+  const [isMusicMuted, setIsMusicMuted] = useState(false);
 
   const stageQuickMonths = useMemo<ProductionMonthItem[]>(() => {
     const now = new Date();
@@ -606,6 +634,8 @@ export function ProductionStage1Three({
     setValidationError,
     setHoveredBucketLabel,
     setIsDraggingTopic,
+    setInspectedBucketKey,
+    setSelectedInspectReportIdx,
   });
   callbacksRef.current = {
     onPromptDomainChange,
@@ -615,6 +645,8 @@ export function ProductionStage1Three({
     setValidationError,
     setHoveredBucketLabel,
     setIsDraggingTopic,
+    setInspectedBucketKey,
+    setSelectedInspectReportIdx,
   };
 
   const stateRef = useRef({
@@ -626,6 +658,7 @@ export function ProductionStage1Three({
     isSending,
     dockedTarget,
     blockedDropNotice,
+    inspectedBucketKey,
   });
   stateRef.current = {
     activeMonthNum,
@@ -636,15 +669,34 @@ export function ProductionStage1Three({
     isSending,
     dockedTarget,
     blockedDropNotice,
+    inspectedBucketKey,
   };
 
   useEffect(() => {
-    if (!dockedTarget && !blockedDropNotice) return;
+    if (isSending || dockedTarget || blockedDropNotice) {
+      setInspectedBucketKey(null);
+    }
+  }, [blockedDropNotice, dockedTarget, isSending]);
+
+  useEffect(() => {
+    if (!inspectedBucketKey || isMusicMuted) {
+      stopBucketAmbientMusic();
+      return;
+    }
+    const stopMusic = startBucketAmbientMusic();
+    return () => {
+      stopMusic();
+    };
+  }, [inspectedBucketKey, isMusicMuted]);
+
+  useEffect(() => {
+    if (!dockedTarget && !blockedDropNotice && !inspectedBucketKey) return;
     const t = dockedTarget
       ? window.setTimeout(() => bubbleInputRef.current?.focus(), 100)
       : null;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        setInspectedBucketKey(null);
         setDockedTarget(null);
         setBlockedDropNotice(null);
         setValidationError(null);
@@ -655,7 +707,7 @@ export function ProductionStage1Three({
       if (t !== null) window.clearTimeout(t);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [dockedTarget, blockedDropNotice]);
+  }, [dockedTarget, blockedDropNotice, inspectedBucketKey]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -808,6 +860,7 @@ export function ProductionStage1Three({
       activeTex: THREE.CanvasTexture | null;
       hitMesh: THREE.Mesh;
       hoverLerp: number;
+      inspectLerp: number;
     }
 
     const hitSphereGeo = new THREE.SphereGeometry(1.24, 16, 16);
@@ -938,6 +991,7 @@ export function ProductionStage1Three({
         [],
         false,
         false,
+        false,
         maxAnisotropy,
       );
       const badgeMat = new THREE.MeshBasicMaterial({
@@ -978,6 +1032,7 @@ export function ProductionStage1Three({
         activeTex: initialTex,
         hitMesh,
         hoverLerp: 0,
+        inspectLerp: 0,
       };
     });
 
@@ -1098,6 +1153,11 @@ export function ProductionStage1Three({
       }
       if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+      if (stateRef.current.inspectedBucketKey) {
+        callbacksRef.current.setInspectedBucketKey(null);
+        return;
+      }
+
       updatePointerNdc(e.clientX, e.clientY);
       raycaster.setFromCamera(pointerNdc, camera);
 
@@ -1124,10 +1184,18 @@ export function ProductionStage1Three({
         const key = bucketHits[0].object.userData.bucketKey as string;
         const found = bucketEntries.find((b) => b.monthItem.key === key);
         if (found) {
-          callbacksRef.current.onSelectQuickMonth?.(
-            found.monthItem.month,
-            found.monthItem.year,
-          );
+          const monthEntries = bucketReportsRef.current.get(key) ?? [];
+          if (monthEntries.length > 0) {
+            // Read-only animated showcase inside enlarged bucket (no network/LLM requests raised)
+            playBucketExpandCue();
+            callbacksRef.current.setSelectedInspectReportIdx(0);
+            callbacksRef.current.setInspectedBucketKey(key);
+          } else {
+            callbacksRef.current.onSelectQuickMonth?.(
+              found.monthItem.month,
+              found.monthItem.year,
+            );
+          }
         }
       }
     };
@@ -1154,7 +1222,11 @@ export function ProductionStage1Three({
         return;
       }
 
-      if (stateRef.current.dockedTarget || stateRef.current.blockedDropNotice) {
+      if (
+        stateRef.current.dockedTarget ||
+        stateRef.current.blockedDropNotice ||
+        stateRef.current.inspectedBucketKey
+      ) {
         renderer.domElement.style.cursor = 'default';
         return;
       }
@@ -1264,8 +1336,11 @@ export function ProductionStage1Three({
         starMat.opacity = 0.25;
       }
 
-      // Animate 6 Bigger Medium-Size Spaced Month Buckets + Swell Big on Hover + Lingering Larger Interior Reports
+      // Animate 6 Month Buckets + Swell Big on Hover/Inspect + Floating Interior Reports
       const anyBucketHovered = hoveredBucketKeyLocal !== null;
+      const activeInspectKey = stateRef.current.inspectedBucketKey;
+      const anyBucketInspected = activeInspectKey !== null;
+
       for (let i = 0; i < bucketEntries.length; i += 1) {
         const b = bucketEntries[i];
         const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
@@ -1275,24 +1350,58 @@ export function ProductionStage1Three({
         const isActive =
           b.monthItem.month === stateRef.current.activeMonthNum &&
           b.monthItem.year === stateRef.current.activeYearNum;
-        const isHovered = hoveredBucketKeyLocal === b.monthItem.key;
+        const isHovered = !anyBucketInspected && hoveredBucketKeyLocal === b.monthItem.key;
+        const isInspected = activeInspectKey === b.monthItem.key;
 
         b.hoverLerp = THREE.MathUtils.damp(b.hoverLerp, isHovered ? 1 : 0, 8.5, dt);
-        const recedeBlend = anyBucketHovered && !isHovered ? 1 : 0;
+        b.inspectLerp = THREE.MathUtils.damp(b.inspectLerp, isInspected ? 1 : 0, 7.2, dt);
+
+        const recedeBlend = anyBucketInspected
+          ? isInspected
+            ? 0
+            : 1
+          : anyBucketHovered && !isHovered
+            ? 1
+            : 0;
         const floatY = Math.sin(elapsed * 1.5 + i * 0.55) * 0.045;
 
-        // Swell target bucket dramatically large & bring cleanly forward; gently recede neighbors
-        const pullX = b.basePos.x * (1 - b.hoverLerp * 0.14);
-        const pullY = b.basePos.y + floatY - b.hoverLerp * 0.34;
-        const pullZ = b.basePos.z + b.hoverLerp * 2.15 - recedeBlend * 0.42;
+        // Swell hovered/inspected bucket large & center forward; gently recede neighbors
+        const hoverX = b.basePos.x * (1 - b.hoverLerp * 0.14);
+        const hoverY = b.basePos.y + floatY - b.hoverLerp * 0.34;
+        const hoverZ = b.basePos.z + b.hoverLerp * 2.15 - recedeBlend * (anyBucketInspected ? 1.85 : 0.42);
+        const pullX = THREE.MathUtils.lerp(hoverX, 0, b.inspectLerp);
+        const pullY = THREE.MathUtils.lerp(hoverY, -0.05 + Math.sin(elapsed * 1.25) * 0.045, b.inspectLerp);
+        const pullZ = THREE.MathUtils.lerp(hoverZ, 5.25, b.inspectLerp);
         b.group.position.set(pullX, pullY, pullZ);
-        const s = 1 + b.hoverLerp * 0.62 - recedeBlend * 0.1;
+        b.group.rotation.y = Math.sin(elapsed * 0.85) * 0.08 * b.inspectLerp;
+
+        const baseScale = 1 + b.hoverLerp * 0.62 - recedeBlend * (anyBucketInspected ? 0.22 : 0.1);
+        const s = THREE.MathUtils.lerp(baseScale, 2.38, b.inspectLerp);
         b.group.scale.set(s, s, s);
 
-        b.wallMat.opacity = isHovered ? 0.38 : isFull ? 0.3 : isActive ? 0.26 : 0.2;
-        b.rimMat.color.setHex(isFull ? 0xfde68a : isHovered ? 0xe0f2fe : 0xbae6fd);
+        const emphasized = Math.max(b.hoverLerp, b.inspectLerp);
+        b.wallMat.opacity = isInspected
+          ? 0.34
+          : anyBucketInspected
+            ? 0.09
+            : isHovered
+              ? 0.38
+              : isFull
+                ? 0.3
+                : isActive
+                  ? 0.26
+                  : 0.2;
+        b.rimMat.color.setHex(isFull ? 0xfde68a : isHovered || isInspected ? 0xe0f2fe : 0xbae6fd);
         b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
-        b.rimMat.emissiveIntensity = isHovered ? 2.1 : isFull ? 1.35 : isActive ? 1.15 : 0.65;
+        b.rimMat.emissiveIntensity = isInspected
+          ? 1.9
+          : isHovered
+            ? 2.1
+            : isFull
+              ? 1.35
+              : isActive
+                ? 1.15
+                : 0.65;
         b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
         b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
@@ -1306,10 +1415,20 @@ export function ProductionStage1Three({
         );
         const liquidRadiusScale = 0.88 + fillRatio * 0.24;
         b.liquidMesh.scale.setScalar(liquidRadiusScale);
-        b.liquidMat.opacity = isHovered ? 0.42 : isFull ? 0.34 : isActive ? 0.25 : 0.15;
+        b.liquidMat.opacity = isInspected
+          ? 0.36
+          : anyBucketInspected
+            ? 0.06
+            : isHovered
+              ? 0.42
+              : isFull
+                ? 0.34
+                : isActive
+                  ? 0.25
+                  : 0.15;
 
         // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 10/10
-        b.sealBlend = THREE.MathUtils.damp(b.sealBlend, isFull ? 1 : 0, 9, dt);
+        b.sealBlend = THREE.MathUtils.damp(b.sealBlend, isFull && !isInspected ? 1 : 0, 9, dt);
         b.sealLidGroup.visible = b.sealBlend > 0.02;
         if (b.sealLidGroup.visible) {
           b.sealLidGroup.position.y = THREE.MathUtils.lerp(0.98, 0.75, b.sealBlend);
@@ -1318,7 +1437,7 @@ export function ProductionStage1Three({
           b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
         }
 
-        // Interior domain balls swell bigger and linger/float noticeably inside the hovered bucket
+        // Interior domain balls swell bigger and linger/float noticeably inside the hovered/inspected bucket
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
           const ball = b.reportBalls[bi];
           if (bi < reportCount) {
@@ -1327,27 +1446,27 @@ export function ProductionStage1Three({
             ball.mat.color.set(entry.accentHex);
             ball.mat.emissive.set(entry.accentHex);
             ball.mat.emissiveIntensity =
-              (entry.provider === 'fable' ? 0.85 : 0.55) + b.hoverLerp * 0.45;
+              (entry.provider === 'fable' ? 0.85 : 0.55) + emphasized * 0.5;
             const lingerWave =
-              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + b.hoverLerp * 0.065);
-            const swayX = Math.cos(elapsed * 1.6 + bi * 1.1) * b.hoverLerp * 0.055;
+              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + emphasized * 0.07);
+            const swayX = Math.cos(elapsed * 1.5 + bi * 1.1) * emphasized * 0.07;
             ball.mesh.position.set(
-              ball.baseOffset.x * (1 + b.hoverLerp * 0.22) + swayX,
-              ball.baseOffset.y + b.hoverLerp * 0.3 + lingerWave,
-              ball.baseOffset.z * (1 + b.hoverLerp * 0.22),
+              ball.baseOffset.x * (1 + emphasized * 0.26) + swayX,
+              ball.baseOffset.y + emphasized * 0.32 + lingerWave,
+              ball.baseOffset.z * (1 + emphasized * 0.22),
             );
-            const ballScale = 1 + b.hoverLerp * 0.92;
+            const ballScale = 1 + emphasized * 0.85;
             ball.mesh.scale.setScalar(ballScale);
           } else {
             ball.mesh.visible = false;
           }
         }
 
-        // Update inner label + enlarged existing-report preview pills when hovered or count changes
+        // Update inner label + enlarged existing-report preview pills when hovered/inspected or count changes
         const summarySig = reportsInBucket
           .map((r) => `${r.domain}:${r.provider}:${r.shortSummary}`)
           .join('|');
-        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isHovered ? summarySig : ''}`;
+        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isInspected ? 1 : 0}:${isHovered ? summarySig : ''}`;
         if (b.cachedSignature !== sig) {
           b.cachedSignature = sig;
           const nextTex = drawBucketLabelCanvas(
@@ -1356,6 +1475,7 @@ export function ProductionStage1Three({
             reportsInBucket,
             isActive,
             isHovered,
+            isInspected,
             maxAnisotropy,
           );
           const oldTex = b.activeTex;
@@ -1366,15 +1486,18 @@ export function ProductionStage1Three({
         }
       }
 
-      // Animate 5 Pure Core Domain Icons Jumping
+      // Animate 5 Pure Core Domain Icons Jumping (step gracefully aside while inspecting a bucket)
       for (let i = 0; i < orbEntries.length; i += 1) {
         const o = orbEntries[i];
         const isDragged = draggingOrbIdx === i;
-        const isHovered = pointerHoverOrbIdx === i;
+        const isHovered = !anyBucketInspected && pointerHoverOrbIdx === i;
 
         if (!isDragged) {
-          const bounce = Math.abs(Math.sin(elapsed * 2.4 + o.phase)) * 0.46;
-          _targetPos.set(o.homePos.x, o.homePos.y + bounce, o.homePos.z);
+          const bounce = anyBucketInspected
+            ? 0
+            : Math.abs(Math.sin(elapsed * 2.4 + o.phase)) * 0.46;
+          const inspectYOffset = anyBucketInspected ? -1.4 : 0;
+          _targetPos.set(o.homePos.x, o.homePos.y + bounce + inspectYOffset, o.homePos.z);
           o.currentPos.x = THREE.MathUtils.damp(o.currentPos.x, _targetPos.x, 10, dt);
           o.currentPos.y = THREE.MathUtils.damp(o.currentPos.y, _targetPos.y, 12, dt);
           o.currentPos.z = THREE.MathUtils.damp(o.currentPos.z, _targetPos.z, 10, dt);
@@ -1382,21 +1505,23 @@ export function ProductionStage1Three({
 
         o.group.position.copy(o.currentPos);
 
-        const targetScale = isDragged
-          ? hoveredBucketKeyLocal
-            ? 0.78
-            : 1.15
-          : isHovered
-            ? 1.14
-            : 1.0;
+        const targetScale = anyBucketInspected
+          ? 0.45
+          : isDragged
+            ? hoveredBucketKeyLocal
+              ? 0.78
+              : 1.15
+            : isHovered
+              ? 1.14
+              : 1.0;
         o.scaleLerp = THREE.MathUtils.damp(o.scaleLerp, targetScale, 12, dt);
         o.group.scale.setScalar(o.scaleLerp);
 
         const heightAboveFloor = Math.max(0, o.currentPos.y - (o.homePos.y - 0.5));
         const shadowScale = THREE.MathUtils.clamp(1.08 - heightAboveFloor * 0.34, 0.44, 1.08);
         o.shadowMesh.position.set(o.currentPos.x, o.homePos.y - 0.68, o.currentPos.z);
-        o.shadowMesh.scale.setScalar(isDragged ? 0.36 : shadowScale);
-        o.shadowMat.opacity = isDragged ? 0.1 : shadowScale * 0.28;
+        o.shadowMesh.scale.setScalar(anyBucketInspected ? 0.01 : isDragged ? 0.36 : shadowScale);
+        o.shadowMat.opacity = anyBucketInspected ? 0 : isDragged ? 0.1 : shadowScale * 0.28;
       }
 
       renderer.render(scene, camera);
@@ -1448,6 +1573,56 @@ export function ProductionStage1Three({
     });
   };
 
+  const inspectedBucket = useMemo(() => {
+    if (!inspectedBucketKey) return null;
+    const monthItem = stageQuickMonths.find((m) => m.key === inspectedBucketKey);
+    const entries = bucketReportsByKey.get(inspectedBucketKey) ?? [];
+    if (!monthItem || entries.length === 0) return null;
+
+    const parsedReports = entries.map((entry) => {
+      const qTurn = entry.record.turns.find((t) => t.role === 'user');
+      const aTurn = [...entry.record.turns].reverse().find((t) => t.role === 'assistant');
+      const topicDef = TOPICS.find((t) => t.domain === entry.domain) ?? TOPICS[0];
+      const readOut = aTurn ? extractReadOutSections(aTurn.content) : null;
+      const parsed = aTurn ? parseResponseEventsAndReport(aTurn.content, entry.domain) : null;
+      const rawEvents =
+        parsed && parsed.events.length > 0
+          ? parsed.events
+          : Array.isArray(aTurn?.eventCards)
+            ? aTurn.eventCards
+            : [];
+      const cards = rawEvents.map((evt, idx) => normalizeEventCardItem(evt, idx));
+      const fallbackPlain = aTurn?.content
+        ? aTurn.content
+            .replace(/<pa_events>[\s\S]*?<\/pa_events>/gi, '')
+            .replace(/<pa_caution_dates>[\s\S]*?<\/pa_caution_dates>/gi, '')
+            .replace(/^#{1,6}\s+/gm, '')
+            .replace(/[*_`~]/g, '')
+            .trim()
+        : '';
+
+      return {
+        ...entry,
+        topicDef,
+        question: (qTurn?.content || qTurn?.threadName || 'Report').trim(),
+        answer: readOut?.answer?.trim() || '',
+        summary: readOut?.summary?.trim() || (!readOut?.answer ? fallbackPlain : ''),
+        cards,
+      };
+    });
+
+    return {
+      monthItem,
+      reports: parsedReports,
+    };
+  }, [bucketReportsByKey, inspectedBucketKey, stageQuickMonths]);
+
+  const activeInspectedReport = inspectedBucket
+    ? inspectedBucket.reports[
+        Math.min(selectedInspectReportIdx, inspectedBucket.reports.length - 1)
+      ] ?? null
+    : null;
+
   return (
     <div
       className={`relative flex-1 min-h-0 overflow-hidden transition-colors duration-300 ${
@@ -1460,7 +1635,7 @@ export function ProductionStage1Three({
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
       {/* Subtle Bottom Guidance Text */}
-      {!dockedTarget && !blockedDropNotice && (
+      {!dockedTarget && !blockedDropNotice && !inspectedBucket && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3.5 z-10 flex justify-center px-4">
           <p
             className={`text-xs font-medium tracking-wide rounded-xl px-3.5 py-1.5 border ${
@@ -1475,10 +1650,213 @@ export function ProductionStage1Three({
                 : 'Drop icon into any month bucket above'
               : switchingMonthKey
                 ? 'Updating reference period…'
-                : `Drag any jumping icon into a month bucket above (${activeProvider === 'fable' ? 'Fable' : 'Gemini'} active)`}
+                : `Drag any jumping icon into a bucket to ask · Click any filled bucket to view reports (${activeProvider === 'fable' ? 'Fable' : 'Gemini'} active)`}
           </p>
         </div>
       )}
+
+      {/* Enlarged Read-Only Report Showcase Inside Clicked Bucket + Gentle Background Music */}
+      <AnimatePresence>
+        {inspectedBucket && activeInspectedReport && (
+          <motion.div
+            key="bucket-readonly-showcase"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            onClick={() => setInspectedBucketKey(null)}
+            className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6 bg-transparent"
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bucket-readonly-title"
+              initial={{ scale: 0.42, y: -42, opacity: 0 }}
+              animate={{ scale: 1, y: 12, opacity: 1 }}
+              exit={{ scale: 0.48, y: -36, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+              onClick={(e) => e.stopPropagation()}
+              className="fluent-3d-popup w-full max-w-lg max-h-[68vh] sm:max-h-[72vh] rounded-[30px] flex flex-col overflow-hidden text-slate-900"
+            >
+              {/* Bucket Interior Header (Read-Only Badge + Soft Music Indicator) */}
+              <div className="px-5 py-3.5 border-b border-white/75 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2
+                    id="bucket-readonly-title"
+                    className="font-display text-sm sm:text-base font-bold text-slate-900 truncate"
+                  >
+                    {inspectedBucket.monthItem.fullLabel}
+                  </h2>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300/80 bg-white/75 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 shrink-0">
+                    <Lock className="w-2.5 h-2.5 text-sky-600" />
+                    <span>Read-only · {inspectedBucket.reports.length}/10</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsMusicMuted((prev) => !prev)}
+                    aria-label={isMusicMuted ? 'Unmute background music' : 'Mute background music'}
+                    title={isMusicMuted ? 'Unmute ambient music' : 'Mute ambient music'}
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+                      isMusicMuted
+                        ? 'text-slate-500 hover:text-slate-800 hover:bg-white/75'
+                        : 'text-sky-700 bg-sky-500/12 hover:bg-sky-500/20'
+                    }`}
+                  >
+                    {isMusicMuted ? (
+                      <VolumeX className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInspectedBucketKey(null)}
+                    aria-label="Close bucket preview"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Read-Only Selector Pills if Bucket Holds Multiple Reports */}
+              {inspectedBucket.reports.length > 1 && (
+                <div className="px-5 py-2.5 border-b border-white/60 bg-white/35 flex flex-wrap items-center gap-1.5 shrink-0">
+                  {inspectedBucket.reports.map((rep, idx) => {
+                    const isSelected = idx === Math.min(selectedInspectReportIdx, inspectedBucket.reports.length - 1);
+                    return (
+                      <button
+                        key={rep.record.id}
+                        type="button"
+                        onClick={() => setSelectedInspectReportIdx(idx)}
+                        className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-sky-600 text-white shadow-xs'
+                            : 'bg-white/70 text-slate-700 hover:bg-white'
+                        }`}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: isSelected ? '#ffffff' : rep.accentHex }}
+                        />
+                        <span>{rep.domainLabel}</span>
+                        <span
+                          className={`text-[10px] font-mono ${
+                            isSelected ? 'text-sky-100' : 'text-slate-500'
+                          }`}
+                        >
+                          {rep.provider === 'fable' ? 'Fable' : 'Gemini'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Strictly Read-Only Report Content Inside the Bucket */}
+              <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-5 space-y-4 select-text">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-2">
+                    <span
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full"
+                      style={{ backgroundColor: `${activeInspectedReport.topicDef.accentHex}2a` }}
+                    >
+                      <TopicBackdropIcon
+                        icon={activeInspectedReport.topicDef.icon}
+                        color={activeInspectedReport.topicDef.glowHex}
+                        className="w-4 h-4"
+                      />
+                    </span>
+                    <span className="text-xs font-bold text-slate-900">
+                      {activeInspectedReport.domainLabel}
+                    </span>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
+                      activeInspectedReport.provider === 'fable'
+                        ? 'border-amber-300/90 bg-amber-100/80 text-amber-800'
+                        : 'border-sky-300/90 bg-sky-100/80 text-sky-800'
+                    }`}
+                  >
+                    {activeInspectedReport.provider === 'fable' ? 'Fable' : 'Gemini'}
+                  </span>
+                </div>
+
+                <div className="rounded-2xl border border-white/85 bg-white/60 px-4 py-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">
+                    Question
+                  </div>
+                  <p className="text-xs sm:text-[13px] font-semibold text-slate-900 leading-relaxed">
+                    {activeInspectedReport.question}
+                  </p>
+                </div>
+
+                {activeInspectedReport.answer && (
+                  <div className="rounded-2xl border border-white/85 bg-white/65 px-4 py-3 space-y-1">
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                      <Sparkles className="w-3 h-3 text-sky-600" />
+                      <span>Answer</span>
+                    </div>
+                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-800 whitespace-pre-line">
+                      {activeInspectedReport.answer}
+                    </p>
+                  </div>
+                )}
+
+                {activeInspectedReport.summary && (
+                  <div className="rounded-2xl border border-white/85 bg-white/60 px-4 py-3 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                      Summary
+                    </div>
+                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-800 whitespace-pre-line">
+                      {activeInspectedReport.summary}
+                    </p>
+                  </div>
+                )}
+
+                {activeInspectedReport.cards.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 px-1">
+                      Events in Report ({activeInspectedReport.cards.length})
+                    </div>
+                    {activeInspectedReport.cards.map((card) => (
+                      <div
+                        key={card.id}
+                        className="rounded-2xl border border-white/85 bg-white/65 px-4 py-3 space-y-1.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                            {card.title}
+                          </h3>
+                          {card.probability && (
+                            <span className="rounded-full bg-sky-100/90 border border-sky-200 px-2 py-0.5 text-[10px] font-semibold text-sky-800 shrink-0">
+                              {card.probability}
+                            </span>
+                          )}
+                        </div>
+                        {card.when && (
+                          <div className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-100/75 rounded-lg px-2 py-0.5">
+                            <Calendar className="w-3 h-3 text-amber-700 shrink-0" />
+                            <span>{card.when}</span>
+                          </div>
+                        )}
+                        {(card.summary || card.how) && (
+                          <p className="text-xs leading-relaxed text-slate-700">
+                            {card.how || card.summary}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Red Alert if Month Toggling / Reference Context Sync is Unavailable */}
       {monthSwitchError && (
