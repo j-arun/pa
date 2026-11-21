@@ -2485,6 +2485,15 @@ export default function App() {
                 questionText={productionStageData.latestUserTurn?.content}
                 periodLabel={activeCarefulPeriodLabel}
                 domain={productionStageData.latestUserTurn?.promptDomain}
+                providerAdapter={
+                  productionStageData.latestUserTurn?.adapterId === 'fable'
+                    ? 'fable'
+                    : productionStageData.latestUserTurn?.adapterId === 'gemini'
+                      ? 'gemini'
+                      : settings.publicLlm.activeAdapter === 'fable'
+                        ? 'fable'
+                        : 'gemini'
+                }
                 onCancelRequest={handleCancelRequest}
                 onRetry={() => {
                   if (productionStageData.latestUserTurn) {
@@ -2626,7 +2635,6 @@ export default function App() {
             {isProductionApp && isProdReportsMenuOpen && (
               <ProductionReportsMenu
                 reports={ratedThreads}
-                reportsPathDisplay={prodReportsDirDisplay}
                 activeReportId={activeProductionReportId}
                 onSelectReport={handleOpenProductionReport}
                 onClose={() => setIsProdReportsMenuOpen(false)}

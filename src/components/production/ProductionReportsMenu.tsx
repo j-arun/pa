@@ -3,10 +3,9 @@ import {
   ChevronRight,
   Folder,
   FolderOpen,
-  X,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PromptDomain, RatedThreadRecord } from '../../types/workbench';
 import {
   getMonthNameFromNumber,
@@ -18,7 +17,6 @@ import { EventCategoryEmblem, getDomainEmblemIcon } from '../DomainEmblem';
 
 interface ProductionReportsMenuProps {
   reports: RatedThreadRecord[];
-  reportsPathDisplay: string;
   activeReportId?: string | null;
   onSelectReport: (record: RatedThreadRecord) => void;
   onClose: () => void;
@@ -68,11 +66,20 @@ function formatRunTimeTooltip(isoString: string, domainLabel: string, fullQuesti
 
 export function ProductionReportsMenu({
   reports,
-  reportsPathDisplay,
   activeReportId,
   onSelectReport,
   onClose,
 }: ProductionReportsMenuProps) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const items = useMemo<FloatingReportItem[]>(() => {
     const out: FloatingReportItem[] = [];
     for (const rec of reports) {
@@ -173,40 +180,15 @@ export function ProductionReportsMenu({
   return (
     <motion.aside
       aria-label="Production Reports"
-      initial={{ x: -340, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -340, opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-      className="fixed top-14 left-0 bottom-9 z-30 w-80 max-w-[90vw] flex flex-col border-r border-slate-700/75 bg-[#0b1222]/96 backdrop-blur-xl shadow-[0_24px_70px_rgba(2,6,23,0.78)] text-slate-100 overflow-hidden"
+      initial={{ x: -24, opacity: 0, scale: 0.98 }}
+      animate={{ x: 0, opacity: 1, scale: 1 }}
+      exit={{ x: -24, opacity: 0, scale: 0.98 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+      className="fixed top-[4.25rem] left-3 sm:left-4 z-30 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-8.25rem)] flex flex-col rounded-2xl border border-slate-300/85 bg-[#f2f1ed]/96 backdrop-blur-xl shadow-[0_22px_54px_-12px_rgba(15,23,42,0.28)] text-slate-900 overflow-hidden"
     >
-      <div className="shrink-0 px-4 py-3 border-b border-slate-800/90 flex items-center justify-between gap-2 bg-[#080d1a]/90">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="w-4 h-4 text-sky-400 shrink-0" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-white">
-              Reports ({items.length})
-            </h2>
-          </div>
-          <p
-            title={reportsPathDisplay}
-            className="text-[10px] font-mono text-slate-400 truncate mt-0.5"
-          >
-            {reportsPathDisplay}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close reports menu"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-2.5 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-3 space-y-1.5">
         {yearGroups.length === 0 ? (
-          <div className="px-3 py-6 text-center text-xs text-slate-400">
+          <div className="px-3 py-5 text-center text-xs text-slate-600">
             No production reports saved yet. Drop any jumping domain icon into a month bucket to generate one.
           </div>
         ) : (
@@ -218,18 +200,18 @@ export function ProductionReportsMenu({
                 <button
                   type="button"
                   onClick={() => toggleNode(yearKey)}
-                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-100 hover:bg-slate-800/70 cursor-pointer"
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs font-bold text-slate-900 hover:bg-slate-900/5 cursor-pointer"
                 >
                   <span className="flex items-center gap-1.5">
                     {isYearOpen ? (
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
                     ) : (
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
                     )}
-                    <Folder className="w-3.5 h-3.5 text-amber-400" />
+                    <Folder className="w-3.5 h-3.5 text-amber-600" />
                     <span className="tabular-nums">{yg.year}</span>
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                  <span className="text-[10px] font-mono text-slate-500 tabular-nums">
                     {yg.total}
                   </span>
                 </button>
@@ -244,18 +226,18 @@ export function ProductionReportsMenu({
                           <button
                             type="button"
                             onClick={() => toggleNode(monthKey)}
-                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-sky-200 hover:bg-slate-800/70 cursor-pointer"
+                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-900/5 cursor-pointer"
                           >
                             <span className="flex items-center gap-1.5">
                               {isMonthOpen ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
                               ) : (
-                                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
                               )}
-                              <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+                              <FolderOpen className="w-3.5 h-3.5 text-sky-600" />
                               <span>{mg.month}</span>
                             </span>
-                            <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                            <span className="text-[10px] font-mono text-slate-500 tabular-nums">
                               {mg.items.length}/10
                             </span>
                           </button>
@@ -275,7 +257,7 @@ export function ProductionReportsMenu({
                                     <button
                                       type="button"
                                       onClick={() => toggleNode(provKey)}
-                                      className="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-300 hover:bg-slate-800/60 cursor-pointer"
+                                      className="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 hover:bg-slate-900/5 cursor-pointer"
                                     >
                                       <span className="flex items-center gap-1.5">
                                         {isProvOpen ? (
@@ -285,7 +267,7 @@ export function ProductionReportsMenu({
                                         )}
                                         <span
                                           className={`w-1.5 h-1.5 rounded-full ${
-                                            prov.id === 'gemini' ? 'bg-sky-400' : 'bg-amber-400'
+                                            prov.id === 'gemini' ? 'bg-sky-600' : 'bg-amber-600'
                                           }`}
                                         />
                                         <span>{prov.label}</span>
@@ -312,8 +294,8 @@ export function ProductionReportsMenu({
                                                 onClick={() => onSelectReport(entry.record)}
                                                 className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
                                                   isSelected
-                                                    ? 'bg-sky-500/20 text-white border border-sky-400/40'
-                                                    : 'text-slate-200 hover:bg-slate-800/80 border border-transparent'
+                                                    ? 'bg-sky-600/12 text-sky-950 border border-sky-500/45 shadow-2xs'
+                                                    : 'text-slate-800 hover:bg-white/80 border border-transparent'
                                                 }`}
                                               >
                                                 <EventCategoryEmblem

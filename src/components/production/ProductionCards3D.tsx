@@ -1,15 +1,14 @@
 import {
-  ArrowLeft,
   Briefcase,
   ChevronLeft,
   ChevronRight,
   DollarSign,
   Heart,
   Home,
+  Pause,
   RotateCcw,
   ShieldPlus,
   Sparkles,
-  Square,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -31,31 +30,34 @@ interface ProductionCards3DProps {
   questionText?: string;
   periodLabel?: string;
   domain?: PromptDomain;
+  providerAdapter?: 'gemini' | 'fable';
   onCancelRequest: () => void;
   onRetry: () => void;
   onStartNewThread: () => void;
 }
 
 const CARD_PALETTES = [
+  // Top Priority #1: Radiant Bright Sunlit Gold / Ivory
   {
-    bgTop: '#dfd2b8',
-    bgBottom: '#cbb896',
+    bgTop: '#fff7d6',
+    bgBottom: '#f7d97e',
     titleColor: '#ffffff',
-    subColor: 'rgba(255,255,255,0.88)',
-    accent: '#9a7b4f',
+    subColor: 'rgba(255,255,255,0.95)',
+    accent: '#d97706',
     chipBg: 'rgba(28,25,23,0.16)',
   },
+  // Top Priority #2: Radiant Luminous Pearl-Sky
   {
-    bgTop: '#8f6b73',
-    bgBottom: '#5e434a',
+    bgTop: '#eef8ff',
+    bgBottom: '#a8d8ff',
     titleColor: '#ffffff',
-    subColor: 'rgba(255,255,255,0.9)',
-    accent: '#e2a39e',
-    chipBg: 'rgba(15,23,42,0.28)',
+    subColor: 'rgba(255,255,255,0.95)',
+    accent: '#0284c7',
+    chipBg: 'rgba(15,23,42,0.22)',
   },
   {
-    bgTop: '#e4e3dc',
-    bgBottom: '#cccbc2',
+    bgTop: '#d2cfc4',
+    bgBottom: '#aaa69a',
     titleColor: '#ffffff',
     subColor: 'rgba(30,41,59,0.78)',
     accent: '#d97706',
@@ -237,6 +239,7 @@ interface CardGlitterUniforms {
   uGlitterTime: { value: number };
   uGlitterFocus: { value: number };
   uCardSeed: { value: number };
+  uPriorityBoost: { value: number };
   tTextMask: { value: THREE.Texture | null };
 }
 
@@ -244,20 +247,23 @@ function attachCardTextGlitterShader(
   material: THREE.MeshStandardMaterial,
   initialMask: THREE.Texture | null,
   cardSeed: number,
+  priorityBoost = 0,
 ): CardGlitterUniforms {
   const glitterUniforms: CardGlitterUniforms = {
     uGlitterTime: { value: 0 },
     uGlitterFocus: { value: 0 },
     uCardSeed: { value: cardSeed },
+    uPriorityBoost: { value: priorityBoost },
     tTextMask: { value: initialMask },
   };
   material.userData.glitterUniforms = glitterUniforms;
-  material.customProgramCacheKey = () => 'pa-card-text-glitter-v1';
+  material.customProgramCacheKey = () => 'pa-card-text-glitter-v3';
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uGlitterTime = glitterUniforms.uGlitterTime;
     shader.uniforms.uGlitterFocus = glitterUniforms.uGlitterFocus;
     shader.uniforms.uCardSeed = glitterUniforms.uCardSeed;
+    shader.uniforms.uPriorityBoost = glitterUniforms.uPriorityBoost;
     shader.uniforms.tTextMask = glitterUniforms.tTextMask;
 
     shader.vertexShader = shader.vertexShader
@@ -279,6 +285,7 @@ vCardTextUv = uv;`,
 uniform float uGlitterTime;
 uniform float uGlitterFocus;
 uniform float uCardSeed;
+uniform float uPriorityBoost;
 uniform sampler2D tTextMask;
 varying vec2 vCardTextUv;`,
       )
@@ -286,17 +293,30 @@ varying vec2 vCardTextUv;`,
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
 float txtMask = texture2D(tTextMask, vCardTextUv).r;
-float sweepCenter = fract(uGlitterTime * 0.36 + uCardSeed * 0.17) * 2.4 - 0.7;
-float sweepCoord = vCardTextUv.x * 0.72 + (1.0 - vCardTextUv.y) * 0.55;
-float sweepBand = exp(-pow((sweepCoord - sweepCenter) * 7.2, 2.0));
-vec2 sparkGrid = floor(vCardTextUv * vec2(220.0, 290.0));
-float sparkHash = fract(sin(dot(sparkGrid, vec2(127.1, 311.7)) + uCardSeed * 19.3) * 43758.5453);
-float sparkTwinkle = pow(max(0.0, sin(uGlitterTime * 4.4 + sparkHash * 31.4159)), 11.0);
-float dust = sparkTwinkle * step(0.83, sparkHash);
-float focusLift = 0.08 + 0.24 * clamp(uGlitterFocus, 0.0, 1.5);
-float glitterAmp = (sweepBand * 0.82 + dust * 1.4) * (0.35 + 0.95 * clamp(uGlitterFocus, 0.0, 1.5));
-vec3 glitterTint = mix(vec3(0.84, 0.94, 1.0), vec3(1.0, 0.97, 0.88), sparkHash);
-totalEmissiveRadiance += glitterTint * txtMask * (focusLift + glitterAmp);`,
+float sweepCoord = vCardTextUv.x * 0.75 + (1.0 - vCardTextUv.y) * 0.62;
+float sweepCenter = fract(uGlitterTime * 0.44 + uCardSeed * 0.19) * 2.4 - 0.6;
+float sweepBand = exp(-pow((sweepCoord - sweepCenter) * 7.8, 2.0));
+float sweepCenter2 = fract(uGlitterTime * 0.28 + uCardSeed * 0.41 + 0.5) * 2.4 - 0.6;
+float sweepBand2 = exp(-pow(((1.0 - vCardTextUv.x) * 0.65 + (1.0 - vCardTextUv.y) * 0.65 - sweepCenter2) * 8.5, 2.0));
+
+vec2 sparkGridFine = floor(vCardTextUv * vec2(260.0, 340.0));
+float hashFine = fract(sin(dot(sparkGridFine, vec2(127.1, 311.7)) + uCardSeed * 19.3) * 43758.5453);
+float twinkleFine = pow(max(0.0, sin(uGlitterTime * 5.6 + hashFine * 37.699)), 7.0);
+float dustFine = twinkleFine * step(0.76, hashFine);
+
+vec2 sparkGridMacro = floor(vCardTextUv * vec2(130.0, 175.0));
+float hashMacro = fract(sin(dot(sparkGridMacro, vec2(269.5, 183.3)) + uCardSeed * 27.1) * 29431.7123);
+float twinkleMacro = pow(max(0.0, cos(uGlitterTime * 4.2 + hashMacro * 25.132)), 9.0);
+float dustMacro = twinkleMacro * step(0.84, hashMacro);
+
+float gFocus = clamp(uGlitterFocus, 0.0, 2.2);
+float focusLift = 0.24 + 0.26 * gFocus;
+float glitterAmp = (sweepBand * 1.25 + sweepBand2 * 0.72 + dustFine * 1.95 + dustMacro * 1.55) * (0.68 + 0.85 * gFocus);
+vec3 glitterTint = mix(vec3(0.86, 0.96, 1.0), vec3(1.0, 0.92, 0.62), hashFine);
+float edgeDist = min(min(vCardTextUv.x, 1.0 - vCardTextUv.x), min(vCardTextUv.y, 1.0 - vCardTextUv.y));
+float priorityRimGlow = uPriorityBoost * smoothstep(0.08, 0.0, edgeDist) * 0.65;
+vec3 priorityFaceLift = vec3(1.0, 0.97, 0.88) * uPriorityBoost * (0.22 + sweepBand * 0.14);
+totalEmissiveRadiance += glitterTint * txtMask * (focusLift + glitterAmp) * (1.0 + uPriorityBoost * 0.35) + priorityFaceLift + vec3(1.0, 0.94, 0.72) * priorityRimGlow;`,
       );
   };
 
@@ -309,6 +329,7 @@ function renderCardFaceTexture(
   maxAnisotropy: number,
   isDetailMode: boolean,
 ): RenderedCardTextures {
+  const isTopPriority = index < 2;
   const width = isDetailMode ? 1056 : 768;
   const height = isDetailMode ? 1408 : 1024;
   const canvas = document.createElement('canvas');
@@ -330,13 +351,47 @@ function renderCardFaceTexture(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  // Top & lower editorial focal scrim so text always stays razor-sharp with rich contrast
-  const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.44);
-  topScrim.addColorStop(0, 'rgba(15, 23, 42, 0.36)');
-  topScrim.addColorStop(0.65, 'rgba(15, 23, 42, 0.14)');
-  topScrim.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  if (isTopPriority) {
+    // Luminous radial glow halo on the top two highest-possibility priority cards
+    const halo = ctx.createRadialGradient(
+      width * 0.5,
+      height * 0.45,
+      width * 0.06,
+      width * 0.5,
+      height * 0.45,
+      width * 0.72,
+    );
+    halo.addColorStop(0, 'rgba(255, 255, 255, 0.58)');
+    halo.addColorStop(0.55, 'rgba(255, 250, 224, 0.28)');
+    halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, width, height);
+
+    // Bright crisp luminous border inside the priority card face
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+    ctx.lineWidth = Math.max(4, Math.round((width / 768) * 6));
+    ctx.beginPath();
+    ctx.roundRect(14, 14, width - 28, height - 28, Math.round((width / 768) * 28));
+    ctx.stroke();
+    ctx.restore();
+
+    maskCtx.save();
+    maskCtx.strokeStyle = '#ffffff';
+    maskCtx.lineWidth = Math.max(4, Math.round((width / 768) * 6));
+    maskCtx.beginPath();
+    maskCtx.roundRect(14, 14, width - 28, height - 28, Math.round((width / 768) * 28));
+    maskCtx.stroke();
+    maskCtx.restore();
+  }
+
+  // Top & lower editorial focal scrim so text & glitter always stay razor-sharp with rich contrast
+  const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.46);
+  topScrim.addColorStop(0, isTopPriority ? 'rgba(15, 23, 42, 0.62)' : 'rgba(10, 16, 30, 0.54)');
+  topScrim.addColorStop(0.65, isTopPriority ? 'rgba(15, 23, 42, 0.28)' : 'rgba(10, 16, 30, 0.24)');
+  topScrim.addColorStop(1, 'rgba(10, 16, 30, 0)');
   ctx.fillStyle = topScrim;
-  ctx.fillRect(0, 0, width, height * 0.44);
+  ctx.fillRect(0, 0, width, height * 0.46);
 
   const sheen = ctx.createRadialGradient(
     width * 0.25,
@@ -346,7 +401,7 @@ function renderCardFaceTexture(
     height * 0.25,
     width * 0.85,
   );
-  sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+  sheen.addColorStop(0, isTopPriority ? 'rgba(255,255,255,0.44)' : 'rgba(255,255,255,0.22)');
   sheen.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = sheen;
   ctx.fillRect(0, 0, width, height);
@@ -371,8 +426,8 @@ function renderCardFaceTexture(
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
     ctx.fillStyle = fillStyle;
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.34)';
-    ctx.shadowBlur = 12 * scale;
+    ctx.shadowColor = 'rgba(8, 15, 30, 0.56)';
+    ctx.shadowBlur = 14 * scale;
     if (maxW !== undefined) ctx.fillText(text, x, y, maxW);
     else ctx.fillText(text, x, y);
     ctx.restore();
@@ -383,35 +438,35 @@ function renderCardFaceTexture(
     maskCtx.textBaseline = baseline;
     maskCtx.fillStyle = maskIntensity;
     maskCtx.shadowColor = '#ffffff';
-    maskCtx.shadowBlur = 5 * scale;
+    maskCtx.shadowBlur = 7 * scale;
     if (maxW !== undefined) maskCtx.fillText(text, x, y, maxW);
     else maskCtx.fillText(text, x, y);
     maskCtx.restore();
   };
 
-  // Category eyebrow
+  // Category eyebrow (Health, Career, Family, Finance, Love)
   if (card.category) {
     const catLabel = card.category.toUpperCase();
     drawMaskedText(
       catLabel,
       padX,
       cursorY,
-      `700 ${Math.round(18 * scale)}px "DM Sans", system-ui, sans-serif`,
-      'rgba(255, 255, 255, 0.86)',
+      `800 ${Math.round(19 * scale)}px "DM Sans", system-ui, sans-serif`,
+      '#ffffff',
       'left',
       'top',
       width - padX * 2,
-      '#b8b8b8',
+      '#ffffff',
     );
     cursorY += 32 * scale;
   }
 
-  // Title (editorial bold top-left with strong readability & glitter mask)
+  // Title (editorial bold top-left with strong readability & full glitter mask)
   const titleFont = `700 ${Math.round((isDetailMode ? 48 : 46) * scale)}px "Plus Jakarta Sans", system-ui, sans-serif`;
   ctx.font = titleFont;
   const titleLines = wrapLines(ctx, card.title, width - padX * 2, 3);
   for (const line of titleLines) {
-    drawMaskedText(line, padX, cursorY, titleFont, '#ffffff', 'left', 'top');
+    drawMaskedText(line, padX, cursorY, titleFont, '#ffffff', 'left', 'top', undefined, '#ffffff');
     cursorY += 56 * scale;
   }
 
@@ -419,18 +474,27 @@ function renderCardFaceTexture(
   cursorY += 12 * scale;
   const whenStr = card.when || card.dateRange || card.timeframe || 'Upcoming window';
   const probStr = card.probability || card.likelihood || '';
-  const pillFont = `600 ${Math.round(22 * scale)}px "DM Sans", system-ui, sans-serif`;
+  const pillFont = `700 ${Math.round(22 * scale)}px "DM Sans", system-ui, sans-serif`;
   ctx.font = pillFont;
   const pillText = probStr ? `${whenStr}  ·  ${probStr}` : whenStr;
   const pillW = Math.min(width - padX * 2, ctx.measureText(pillText).width + 42 * scale);
 
-  ctx.fillStyle = 'rgba(10, 18, 34, 0.34)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
-  ctx.lineWidth = 1.5 * scale;
+  ctx.fillStyle = 'rgba(8, 15, 30, 0.56)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+  ctx.lineWidth = 1.75 * scale;
   ctx.beginPath();
   ctx.roundRect(padX, cursorY, pillW, 44 * scale, 14 * scale);
   ctx.fill();
   ctx.stroke();
+
+  // Glitter border highlight around the period & probability pill
+  maskCtx.save();
+  maskCtx.strokeStyle = '#cfcfcf';
+  maskCtx.lineWidth = 2 * scale;
+  maskCtx.beginPath();
+  maskCtx.roundRect(padX, cursorY, pillW, 44 * scale, 14 * scale);
+  maskCtx.stroke();
+  maskCtx.restore();
 
   drawMaskedText(
     pillText,
@@ -441,7 +505,7 @@ function renderCardFaceTexture(
     'left',
     'middle',
     width - padX * 2 - 42 * scale,
-    '#d8d8d8',
+    '#ffffff',
   );
 
   // Center emblem illustration cleanly framed above the focal summary plaque
@@ -451,10 +515,10 @@ function renderCardFaceTexture(
   drawDomainArtwork(ctx, card.icon, palette.accent, 0, 0);
   ctx.restore();
 
-  // Focused Text Plaque inside the Card (Summary highlight for clear reading focus)
+  // Focused Text Plaque inside the Card (Summary card reading highlight with full glitter)
   const rawSummary = (card.summary || card.how || '').trim();
   if (rawSummary) {
-    const summaryFont = `500 ${Math.round((isDetailMode ? 24 : 21) * scale)}px "DM Sans", system-ui, sans-serif`;
+    const summaryFont = `600 ${Math.round((isDetailMode ? 24 : 21) * scale)}px "DM Sans", system-ui, sans-serif`;
     ctx.font = summaryFont;
     const plaqueX = padX;
     const plaqueW = width - padX * 2;
@@ -468,15 +532,15 @@ function renderCardFaceTexture(
       const plaqueH = innerPad * 1.85 + headerHeight + summaryLines.length * lineStep;
       const plaqueY = (isDetailMode ? height - 154 * scale : height - 110 * scale) - plaqueH;
 
-      // Frosted dark focal panel behind text so inside-card text has crisp visual focus
+      // Frosted dark focal panel behind reading text so white glittering text pops on every card
       const plaqueGrad = ctx.createLinearGradient(0, plaqueY, 0, plaqueY + plaqueH);
-      plaqueGrad.addColorStop(0, isDetailMode ? 'rgba(10, 18, 34, 0.52)' : 'rgba(10, 18, 34, 0.36)');
-      plaqueGrad.addColorStop(1, isDetailMode ? 'rgba(10, 18, 34, 0.64)' : 'rgba(10, 18, 34, 0.46)');
+      plaqueGrad.addColorStop(0, isDetailMode ? 'rgba(8, 15, 30, 0.62)' : 'rgba(8, 15, 30, 0.52)');
+      plaqueGrad.addColorStop(1, isDetailMode ? 'rgba(8, 15, 30, 0.74)' : 'rgba(8, 15, 30, 0.62)');
       ctx.save();
       ctx.fillStyle = plaqueGrad;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
       ctx.lineWidth = 1.75 * scale;
-      ctx.shadowColor = 'rgba(2, 6, 23, 0.28)';
+      ctx.shadowColor = 'rgba(2, 6, 23, 0.36)';
       ctx.shadowBlur = 18 * scale;
       ctx.beginPath();
       ctx.roundRect(plaqueX, plaqueY, plaqueW, plaqueH, 20 * scale);
@@ -492,11 +556,11 @@ function renderCardFaceTexture(
           plaqueX + innerPad,
           textY,
           `700 ${Math.round(16 * scale)}px "DM Sans", system-ui, sans-serif`,
-          'rgba(186, 230, 253, 0.95)',
+          'rgba(224, 242, 254, 0.98)',
           'left',
           'top',
           undefined,
-          '#c8c8c8',
+          '#e8e8e8',
         );
         textY += headerHeight;
       }
@@ -507,11 +571,11 @@ function renderCardFaceTexture(
           plaqueX + innerPad,
           textY,
           summaryFont,
-          'rgba(255, 255, 255, 0.96)',
+          '#ffffff',
           'left',
           'top',
           plaqueW - innerPad * 2,
-          '#e8e8e8',
+          '#ffffff',
         );
         textY += lineStep;
       }
@@ -606,6 +670,205 @@ function formatWaitingPeriodLabel(rawPeriod?: string): string {
   return trimmed;
 }
 
+function drawFourPointSparkle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerCurve = 0.22,
+) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - outerR);
+  ctx.quadraticCurveTo(
+    cx + outerR * innerCurve,
+    cy - outerR * innerCurve,
+    cx + outerR,
+    cy,
+  );
+  ctx.quadraticCurveTo(
+    cx + outerR * innerCurve,
+    cy + outerR * innerCurve,
+    cx,
+    cy + outerR,
+  );
+  ctx.quadraticCurveTo(
+    cx - outerR * innerCurve,
+    cy + outerR * innerCurve,
+    cx - outerR,
+    cy,
+  );
+  ctx.quadraticCurveTo(
+    cx - outerR * innerCurve,
+    cy - outerR * innerCurve,
+    cx,
+    cy - outerR,
+  );
+  ctx.closePath();
+}
+
+function createAdapterBallSpriteTexture(
+  provider: 'gemini' | 'fable',
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  const isFable = provider === 'fable';
+  const cx = size / 2;
+  const cy = size / 2 - 18;
+
+  // Soft interior radial glow inside the crystal ball
+  const aura = ctx.createRadialGradient(cx, cy, 14, cx, cy, 220);
+  if (isFable) {
+    aura.addColorStop(0, 'rgba(253, 224, 71, 0.56)');
+    aura.addColorStop(0.42, 'rgba(192, 132, 252, 0.36)');
+    aura.addColorStop(1, 'rgba(192, 132, 252, 0)');
+  } else {
+    aura.addColorStop(0, 'rgba(186, 230, 253, 0.58)');
+    aura.addColorStop(0.42, 'rgba(56, 189, 248, 0.34)');
+    aura.addColorStop(1, 'rgba(56, 189, 248, 0)');
+  }
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 220, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  if (isFable) {
+    // Fable Emblem: Stylized open storybook / faceted diamond crest + golden star spark
+    const crestGrad = ctx.createLinearGradient(cx - 72, cy - 72, cx + 72, cy + 72);
+    crestGrad.addColorStop(0, '#fef08a');
+    crestGrad.addColorStop(0.5, '#f472b6');
+    crestGrad.addColorStop(1, '#a855f7');
+
+    ctx.shadowColor = 'rgba(250, 204, 21, 0.65)';
+    ctx.shadowBlur = 22;
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = crestGrad;
+    ctx.lineWidth = 5;
+    ctx.lineJoin = 'round';
+
+    // Faceted open wings / book emblem
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 10);
+    ctx.bezierCurveTo(cx - 28, cy - 42, cx - 72, cy - 38, cx - 80, cy - 16);
+    ctx.lineTo(cx - 80, cy + 44);
+    ctx.bezierCurveTo(cx - 56, cy + 28, cx - 22, cy + 32, cx, cy + 54);
+    ctx.bezierCurveTo(cx + 22, cy + 32, cx + 56, cy + 28, cx + 80, cy + 44);
+    ctx.lineTo(cx + 80, cy - 16);
+    ctx.bezierCurveTo(cx + 72, cy - 38, cx + 28, cy - 42, cx, cy - 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Center spine line
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 10);
+    ctx.lineTo(cx, cy + 54);
+    ctx.stroke();
+
+    // Rising radiant Fable star above crest
+    const starGrad = ctx.createLinearGradient(cx - 30, cy - 92, cx + 30, cy - 28);
+    starGrad.addColorStop(0, '#ffffff');
+    starGrad.addColorStop(1, '#fde047');
+    ctx.fillStyle = starGrad;
+    drawFourPointSparkle(ctx, cx, cy - 64, 34, 0.24);
+    ctx.fill();
+  } else {
+    // Gemini Emblem: Iconic curved 4-point star sparkle + twin starlet
+    const starGrad = ctx.createLinearGradient(cx - 84, cy - 84, cx + 84, cy + 84);
+    starGrad.addColorStop(0, '#ffffff');
+    starGrad.addColorStop(0.48, '#7dd3fc');
+    starGrad.addColorStop(1, '#818cf8');
+
+    ctx.shadowColor = 'rgba(125, 211, 252, 0.78)';
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = starGrad;
+    drawFourPointSparkle(ctx, cx - 8, cy + 4, 84, 0.2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Companion small top-right star
+    ctx.fillStyle = '#e0f2fe';
+    drawFourPointSparkle(ctx, cx + 64, cy - 58, 30, 0.22);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Small crisp letters inside the center of the ball showing picked adapter
+  const label = isFable ? 'FABLE' : 'GEMINI';
+  const pillW = 216;
+  const pillH = 58;
+  const pillX = size / 2 - pillW / 2;
+  const pillY = size / 2 + 86;
+
+  ctx.save();
+  ctx.fillStyle = isFable ? 'rgba(38, 12, 54, 0.78)' : 'rgba(8, 22, 46, 0.78)';
+  ctx.strokeStyle = isFable ? 'rgba(253, 224, 71, 0.82)' : 'rgba(125, 211, 252, 0.85)';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = isFable ? 'rgba(244, 114, 182, 0.45)' : 'rgba(56, 189, 248, 0.45)';
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.roundRect(pillX, pillY, pillW, pillH, 29);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = '800 30px "Plus Jakarta Sans", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = isFable ? 'rgba(253, 224, 71, 0.8)' : 'rgba(125, 211, 252, 0.85)';
+  ctx.shadowBlur = 10;
+  ctx.fillText(label.split('').join(' '), size / 2, pillY + pillH / 2 + 1);
+  ctx.restore();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = maxAnisotropy;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createMicroAdapterSymbolTexture(
+  provider: 'gemini' | 'fable',
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const isFable = provider === 'fable';
+  const cx = size / 2;
+  const cy = size / 2;
+
+  const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, 56);
+  glow.addColorStop(0, isFable ? 'rgba(253, 224, 71, 0.75)' : 'rgba(186, 230, 253, 0.78)');
+  glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 56, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = isFable ? '#fef08a' : '#e0f2fe';
+  drawFourPointSparkle(ctx, cx, cy, isFable ? 28 : 34, isFable ? 0.28 : 0.2);
+  ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = maxAnisotropy;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export function ProductionCards3D({
   cards,
   readOutSections,
@@ -614,15 +877,28 @@ export function ProductionCards3D({
   questionText,
   periodLabel,
   domain,
+  providerAdapter = 'gemini',
   onCancelRequest,
   onRetry,
   onStartNewThread,
 }: ProductionCards3DProps) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isReasoningOpen, setIsReasoningOpen] = useState(false);
-  const [showReadOut, setShowReadOut] = useState(true);
   const [isAnswerShrunk, setIsAnswerShrunk] = useState(false);
+  const [shrunkPos, setShrunkPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingChip, setIsDraggingChip] = useState(false);
+  const chipDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originLeft: number;
+    originTop: number;
+    width: number;
+    height: number;
+    moved: boolean;
+  } | null>(null);
   const [scrollTick, setScrollTick] = useState(0);
 
   const selectedCard = selectedIndex !== null ? cards[selectedIndex] ?? null : null;
@@ -630,8 +906,8 @@ export function ProductionCards3D({
   useEffect(() => {
     setSelectedIndex(null);
     setIsReasoningOpen(false);
-    setShowReadOut(true);
     setIsAnswerShrunk(false);
+    setShrunkPos(null);
   }, [cards]);
 
   useEffect(() => {
@@ -651,6 +927,7 @@ export function ProductionCards3D({
   const interactionRef = useRef({
     selectedIndex,
     isWaitingForReply,
+    providerAdapter,
     scrollTarget: 0,
     onSelectCard: (idx: number) => {
       setSelectedIndex(idx);
@@ -666,6 +943,7 @@ export function ProductionCards3D({
   });
   interactionRef.current.selectedIndex = selectedIndex;
   interactionRef.current.isWaitingForReply = isWaitingForReply;
+  interactionRef.current.providerAdapter = providerAdapter;
 
   const shiftScroll = (delta: number) => {
     const maxOffset = Math.max(0, cards.length - 1);
@@ -740,35 +1018,175 @@ export function ProductionCards3D({
     topSpecularLight.position.set(0, 6.2, 3.6);
     scene.add(topSpecularLight);
 
-    // 1. Stage 2 Thinking Orbital Group
+    // 1. Stage 2 Thinking Crystal Sphere (Bigger rotating ball with jumping/bubbling Gemini & Fable graphics inside)
     const thinkingGroup = new THREE.Group();
-    const pulseCoreGeo = new THREE.IcosahedronGeometry(0.62, 2);
-    const pulseCoreMat = new THREE.MeshPhysicalMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.75,
-      metalness: 0.25,
-      roughness: 0.12,
-      clearcoat: 1.0,
-    });
-    const pulseCore = new THREE.Mesh(pulseCoreGeo, pulseCoreMat);
-    thinkingGroup.add(pulseCore);
 
-    const orbitRingGeo = new THREE.TorusGeometry(1.18, 0.028, 16, 64);
+    const innerCoreGeo = new THREE.SphereGeometry(0.68, 32, 32);
+    const innerCoreMat = new THREE.MeshBasicMaterial({
+      color: 0x0ea5e9,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+    });
+    const innerCoreAura = new THREE.Mesh(innerCoreGeo, innerCoreMat);
+    innerCoreAura.renderOrder = 1;
+    thinkingGroup.add(innerCoreAura);
+
+    const outerGlassGeo = new THREE.SphereGeometry(1.18, 48, 48);
+    const outerGlassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x7dd3fc,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.22,
+      metalness: 0.12,
+      roughness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.06,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+    });
+    const outerGlassOrb = new THREE.Mesh(outerGlassGeo, outerGlassMat);
+    outerGlassOrb.renderOrder = 4;
+    thinkingGroup.add(outerGlassOrb);
+
+    const cageGeo = new THREE.IcosahedronGeometry(1.2, 2);
+    const cageMat = new THREE.MeshBasicMaterial({
+      color: 0xbae6fd,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+    });
+    const geodesicCage = new THREE.Mesh(cageGeo, cageMat);
+    geodesicCage.renderOrder = 5;
+    thinkingGroup.add(geodesicCage);
+
+    const orbitRingGeo1 = new THREE.TorusGeometry(1.5, 0.028, 16, 80);
+    const orbitRingGeo2 = new THREE.TorusGeometry(1.72, 0.02, 16, 80);
     const orbitRingMat = new THREE.MeshStandardMaterial({
       color: 0x7dd3fc,
       emissive: 0x38bdf8,
-      emissiveIntensity: 0.9,
-      metalness: 0.85,
-      roughness: 0.18,
+      emissiveIntensity: 0.95,
+      metalness: 0.86,
+      roughness: 0.16,
     });
-    const orbitRing1 = new THREE.Mesh(orbitRingGeo, orbitRingMat);
-    const orbitRing2 = new THREE.Mesh(orbitRingGeo, orbitRingMat);
+    const orbitRing1 = new THREE.Mesh(orbitRingGeo1, orbitRingMat);
+    const orbitRing2 = new THREE.Mesh(orbitRingGeo2, orbitRingMat);
     orbitRing1.rotation.x = Math.PI * 0.35;
     orbitRing2.rotation.y = Math.PI * 0.35;
     thinkingGroup.add(orbitRing1, orbitRing2);
+
+    // Inner jumping & bubbling provider adapter graphics (Gemini / Fable)
+    const geminiSpriteTex = createAdapterBallSpriteTexture('gemini', maxAnisotropy);
+    const fableSpriteTex = createAdapterBallSpriteTexture('fable', maxAnisotropy);
+    const geminiSpriteMat = new THREE.SpriteMaterial({
+      map: geminiSpriteTex,
+      transparent: true,
+      depthWrite: false,
+    });
+    const fableSpriteMat = new THREE.SpriteMaterial({
+      map: fableSpriteTex,
+      transparent: true,
+      depthWrite: false,
+    });
+    const centerAdapterSprite = new THREE.Sprite(geminiSpriteMat);
+    centerAdapterSprite.scale.set(1.26, 1.26, 1);
+    centerAdapterSprite.renderOrder = 2;
+    thinkingGroup.add(centerAdapterSprite);
+
+    const geminiMicroTex = createMicroAdapterSymbolTexture('gemini', maxAnisotropy);
+    const fableMicroTex = createMicroAdapterSymbolTexture('fable', maxAnisotropy);
+    const geminiMicroMat = new THREE.SpriteMaterial({
+      map: geminiMicroTex,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+    const fableMicroMat = new THREE.SpriteMaterial({
+      map: fableMicroTex,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+
+    const bubbleGeo = new THREE.SphereGeometry(0.068, 16, 16);
+    const bubbleMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe0f2fe,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.72,
+      roughness: 0.1,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    interface InnerBubbleEntry {
+      mesh: THREE.Mesh;
+      phase: number;
+      speed: number;
+      orbitR: number;
+      angleOffset: number;
+      baseScale: number;
+    }
+    const innerBubbles: InnerBubbleEntry[] = Array.from({ length: 14 }, (_, idx) => {
+      const mesh = new THREE.Mesh(bubbleGeo, bubbleMat);
+      mesh.renderOrder = 2;
+      thinkingGroup.add(mesh);
+      return {
+        mesh,
+        phase: idx / 14,
+        speed: 0.24 + (idx % 5) * 0.055,
+        orbitR: 0.28 + (idx % 4) * 0.17,
+        angleOffset: idx * 2.39996,
+        baseScale: 0.62 + (idx % 4) * 0.28,
+      };
+    });
+
+    interface InnerMicroSpriteEntry {
+      sprite: THREE.Sprite;
+      phase: number;
+      speed: number;
+      orbitR: number;
+      angleOffset: number;
+      baseScale: number;
+    }
+    const innerMicroSymbols: InnerMicroSpriteEntry[] = Array.from({ length: 6 }, (_, idx) => {
+      const sprite = new THREE.Sprite(geminiMicroMat);
+      sprite.renderOrder = 2;
+      thinkingGroup.add(sprite);
+      return {
+        sprite,
+        phase: idx / 6,
+        speed: 0.2 + (idx % 3) * 0.06,
+        orbitR: 0.42 + (idx % 3) * 0.15,
+        angleOffset: idx * 1.047 + 0.4,
+        baseScale: 0.22 + (idx % 3) * 0.05,
+      };
+    });
+
+    thinkingGroup.position.set(0, -0.06, 0);
     scene.add(thinkingGroup);
-    disposables.push(pulseCoreGeo, pulseCoreMat, orbitRingGeo, orbitRingMat);
+    disposables.push(
+      innerCoreGeo,
+      innerCoreMat,
+      outerGlassGeo,
+      outerGlassMat,
+      cageGeo,
+      cageMat,
+      orbitRingGeo1,
+      orbitRingGeo2,
+      orbitRingMat,
+      geminiSpriteTex,
+      fableSpriteTex,
+      geminiSpriteMat,
+      fableSpriteMat,
+      geminiMicroTex,
+      fableMicroTex,
+      geminiMicroMat,
+      fableMicroMat,
+      bubbleGeo,
+      bubbleMat,
+    );
 
     // 2. Gallery 3D Fanned Cards Group (Screenshot 1)
     const galleryGroup = new THREE.Group();
@@ -791,8 +1209,16 @@ export function ProductionCards3D({
       roughness: 0.22,
       clearcoat: 0.8,
     });
+    const priorityRimMetalMat = new THREE.MeshPhysicalMaterial({
+      color: 0xfff8dc,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.45,
+      metalness: 0.86,
+      roughness: 0.14,
+      clearcoat: 1.0,
+    });
     const facePlaneGeo = new THREE.ShapeGeometry(createRoundedRectShape(cardWidth - 0.02, cardHeight - 0.02, 0.18));
-    disposables.push(slabGeo, rimMetalMat, facePlaneGeo);
+    disposables.push(slabGeo, rimMetalMat, priorityRimMetalMat, facePlaneGeo);
 
     // Fix UVs on facePlaneGeo to 0..1 cleanly so CanvasTexture maps edge-to-edge
     const uvAttr = facePlaneGeo.attributes.uv;
@@ -817,17 +1243,23 @@ export function ProductionCards3D({
     }
 
     const galleryCards: GalleryCardMeshEntry[] = cards.map((card, idx) => {
+      const isTopPriority = idx < 2;
       const group = new THREE.Group();
-      const slabMesh = new THREE.Mesh(slabGeo, rimMetalMat);
+      const slabMesh = new THREE.Mesh(slabGeo, isTopPriority ? priorityRimMetalMat : rimMetalMat);
       group.add(slabMesh);
 
       const { colorTexture, textMaskTexture } = renderCardFaceTexture(card, idx, maxAnisotropy, false);
       const faceMat = new THREE.MeshStandardMaterial({
         map: colorTexture,
-        roughness: 0.34,
-        metalness: 0.06,
+        roughness: isTopPriority ? 0.22 : 0.36,
+        metalness: isTopPriority ? 0.1 : 0.06,
       });
-      const glitterUniforms = attachCardTextGlitterShader(faceMat, textMaskTexture, idx + 1);
+      const glitterUniforms = attachCardTextGlitterShader(
+        faceMat,
+        textMaskTexture,
+        idx + 1,
+        isTopPriority ? 1.0 : 0.0,
+      );
       const faceMesh = new THREE.Mesh(facePlaneGeo, faceMat);
       faceMesh.position.z = 0.056;
       faceMesh.userData = { cardIndex: idx };
@@ -901,7 +1333,7 @@ export function ProductionCards3D({
     });
     const detailGlitterUniforms =
       detailEntries.length > 0
-        ? attachCardTextGlitterShader(detailFaceMat, detailEntries[0].textMaskTexture, 1)
+        ? attachCardTextGlitterShader(detailFaceMat, detailEntries[0].textMaskTexture, 1, 1.0)
         : null;
     const detailFaceMesh = new THREE.Mesh(detailFaceGeo, detailFaceMat);
     detailFaceMesh.position.z = 0.071;
@@ -1049,6 +1481,8 @@ export function ProductionCards3D({
     let currentScroll = 0;
     let detailBlend = 0;
     let detailArrivalPulse = 0;
+    let galleryArrivalPulse = 1.65;
+    let wasWaiting = interactionRef.current.isWaitingForReply;
     let lastActiveDetailTexIdx = -1;
     let frameInterval = isSoftwareGl ? 1000 / 30 : 0;
     let lastRenderMs = 0;
@@ -1069,6 +1503,11 @@ export function ProductionCards3D({
       elapsed += dt;
 
       const isWait = interactionRef.current.isWaitingForReply;
+      if (wasWaiting && !isWait) {
+        galleryArrivalPulse = 1.85;
+      }
+      wasWaiting = isWait;
+
       const detailIdx = interactionRef.current.selectedIndex;
       const inDetail = !isWait && detailIdx !== null;
 
@@ -1078,6 +1517,7 @@ export function ProductionCards3D({
 
       detailBlend = THREE.MathUtils.damp(detailBlend, inDetail ? 1 : 0, 7.5, dt);
       detailArrivalPulse = THREE.MathUtils.damp(detailArrivalPulse, 0, 2.2, dt);
+      galleryArrivalPulse = THREE.MathUtils.damp(galleryArrivalPulse, 0, 1.15, dt);
 
       // Background color smoothly blends between studio alabaster and obsidian stage
       if (scene.background instanceof THREE.Color) {
@@ -1086,13 +1526,72 @@ export function ProductionCards3D({
       }
 
       if (isWait) {
-        pulseCore.rotation.y = elapsed * 0.95;
-        pulseCore.rotation.x = elapsed * 0.55;
-        orbitRing1.rotation.z = elapsed * 1.4;
-        orbitRing2.rotation.x = elapsed * 1.1;
-        const s = 1 + Math.sin(elapsed * 3.1) * 0.08;
-        pulseCore.scale.setScalar(s);
-        thinkingGroup.position.y = Math.sin(elapsed * 2.0) * 0.05;
+        const isFable = interactionRef.current.providerAdapter === 'fable';
+        const viewportW = mount?.clientWidth || window.innerWidth;
+        const responsiveSphereScale = viewportW < 560 ? 0.84 : 1.04;
+        thinkingGroup.scale.setScalar(responsiveSphereScale);
+        thinkingGroup.position.y = -0.06 + Math.sin(elapsed * 1.9) * 0.05;
+
+        // Swap crisp adapter emblem & subtle sphere palette inside the rotating ball
+        centerAdapterSprite.material = isFable ? fableSpriteMat : geminiSpriteMat;
+        innerCoreMat.color.setHex(isFable ? 0xc084fc : 0x0ea5e9);
+        outerGlassMat.color.setHex(isFable ? 0xf5d0fe : 0x7dd3fc);
+        outerGlassMat.emissive.setHex(isFable ? 0x9333ea : 0x0284c7);
+        cageMat.color.setHex(isFable ? 0xfde047 : 0xbae6fd);
+        orbitRingMat.color.setHex(isFable ? 0xf5d0fe : 0x7dd3fc);
+        orbitRingMat.emissive.setHex(isFable ? 0xd946ef : 0x38bdf8);
+        bubbleMat.color.setHex(isFable ? 0xfef08a : 0xe0f2fe);
+        bubbleMat.emissive.setHex(isFable ? 0xe879f9 : 0x38bdf8);
+
+        // Rotate the larger 3D outer crystal sphere, geodesic lattice, and rings
+        outerGlassOrb.rotation.y = elapsed * 0.62;
+        outerGlassOrb.rotation.x = elapsed * 0.34;
+        geodesicCage.rotation.y = -elapsed * 0.48;
+        geodesicCage.rotation.z = elapsed * 0.28;
+        orbitRing1.rotation.z = elapsed * 1.25;
+        orbitRing1.rotation.y = elapsed * 0.45;
+        orbitRing2.rotation.x = elapsed * 0.98;
+        orbitRing2.rotation.z = -elapsed * 0.4;
+
+        // Subtle breathing aura core
+        const auraPulse = 1 + Math.sin(elapsed * 3.0) * 0.1;
+        innerCoreAura.scale.setScalar(auraPulse);
+
+        // Jumping & gently pulsing adapter emblem (Gemini / Fable) inside the sphere
+        const jumpWave = Math.abs(Math.sin(elapsed * 3.2));
+        centerAdapterSprite.position.set(
+          Math.sin(elapsed * 1.4) * 0.04,
+          -0.1 + jumpWave * 0.22,
+          0.12,
+        );
+        const jumpScale = 1.24 + Math.sin(elapsed * 6.4) * 0.06;
+        centerAdapterSprite.scale.set(jumpScale, jumpScale, 1);
+
+        // Bubbling 3D spheres rising & swirling inside the spinning crystal ball
+        for (const b of innerBubbles) {
+          const cycle = (elapsed * b.speed + b.phase) % 1;
+          const y = -0.82 + cycle * 1.64;
+          const radialEnvelope = Math.sqrt(Math.max(0.08, 1 - y * y * 1.15));
+          const r = b.orbitR * radialEnvelope;
+          const theta = b.angleOffset + elapsed * 1.65 + cycle * Math.PI * 1.6;
+          b.mesh.position.set(Math.cos(theta) * r, y, Math.sin(theta) * r);
+          const fadeScale = Math.sin(cycle * Math.PI);
+          b.mesh.scale.setScalar(Math.max(0.01, b.baseScale * fadeScale));
+        }
+
+        // Bubbling mini adapter graphical sparkles inside the ball
+        const microMat = isFable ? fableMicroMat : geminiMicroMat;
+        for (const ms of innerMicroSymbols) {
+          ms.sprite.material = microMat;
+          const cycle = (elapsed * ms.speed + ms.phase) % 1;
+          const y = -0.74 + cycle * 1.48;
+          const radialEnvelope = Math.sqrt(Math.max(0.1, 1 - y * y * 1.18));
+          const r = ms.orbitR * radialEnvelope;
+          const theta = ms.angleOffset - elapsed * 1.2 + cycle * Math.PI * 1.2;
+          ms.sprite.position.set(Math.cos(theta) * r, y, Math.sin(theta) * r);
+          const s = ms.baseScale * (0.45 + 0.75 * Math.sin(cycle * Math.PI));
+          ms.sprite.scale.set(s, s, 1);
+        }
       } else {
         // Flying bubble scroll physics on perspective rail
         const prevScroll = currentScroll;
@@ -1129,12 +1628,12 @@ export function ProductionCards3D({
           entry.group.scale.setScalar(scaleFactor);
           entry.group.visible = posZ > -10 && posX > -9 && posX < 9;
 
-          // Animate glittering focus on front/hovered gallery cards
-          const frontFocus = Math.max(0, 1 - Math.abs(rel) * 0.85);
+          // Animate vivid multi-layer glitter across ALL gallery cards (strongest on reveal & hover)
+          const frontFocus = Math.max(0, 1 - Math.abs(rel) * 0.72);
           entry.glitterUniforms.uGlitterTime.value = elapsed;
           entry.glitterUniforms.uGlitterFocus.value = Math.min(
-            1.4,
-            frontFocus * 0.55 + entry.hoverLerp * 0.85,
+            2.2,
+            0.95 + frontFocus * 0.55 + entry.hoverLerp * 0.85 + galleryArrivalPulse,
           );
         }
 
@@ -1146,6 +1645,7 @@ export function ProductionCards3D({
           if (detailGlitterUniforms) {
             detailGlitterUniforms.tTextMask.value = detailEntries[detailIdx].textMaskTexture;
             detailGlitterUniforms.uCardSeed.value = detailIdx + 1;
+            detailGlitterUniforms.uPriorityBoost.value = detailIdx < 2 ? 1.0 : 0.0;
           }
           detailArrivalPulse = 1.35;
         }
@@ -1243,7 +1743,7 @@ export function ProductionCards3D({
   }, [errorDetail, onRetry, onStartNewThread]);
 
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden select-none">
+    <div ref={stageRef} className="relative flex-1 min-h-0 overflow-hidden select-none">
       {/* Real Three.js 3D Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
@@ -1286,10 +1786,11 @@ export function ProductionCards3D({
             <button
               type="button"
               onClick={onCancelRequest}
-              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-[#140a12]/90 px-4 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-950/80 cursor-pointer"
+              aria-label="Pause"
+              title="Pause"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-500/45 bg-[#140a12]/90 text-rose-300 shadow-[0_8px_24px_rgba(0,0,0,0.45)] hover:bg-rose-950/80 hover:text-rose-200 transition-colors cursor-pointer"
             >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>Cancel</span>
+              <Pause className="w-4 h-4 fill-current" />
             </button>
           </div>
         </div>
@@ -1302,64 +1803,115 @@ export function ProductionCards3D({
       {!isWaitingForReply && !errorDetail && selectedIndex === null && (
         <>
           {/* Floating Light-Theme Answer Bubble right over the top of the 3D cards */}
-          {hasAnswer && showReadOut && (
-            <div className="pointer-events-none absolute top-3 inset-x-0 z-10 px-4 sm:px-8">
+          {hasAnswer && (
+            <>
               {isAnswerShrunk ? (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setIsAnswerShrunk(false)}
-                    aria-label="Expand answer pane"
-                    title="Click to expand answer"
-                    className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-[#f8fbff]/96 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 shadow-[0_12px_28px_-10px_rgba(15,23,42,0.22)] hover:bg-white transition-all cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                    <span>Answer</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    const stageEl = stageRef.current;
+                    if (!stageEl) return;
+                    const stageRect = stageEl.getBoundingClientRect();
+                    const btnRect = e.currentTarget.getBoundingClientRect();
+                    chipDragRef.current = {
+                      pointerId: e.pointerId,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      originLeft: btnRect.left - stageRect.left,
+                      originTop: btnRect.top - stageRect.top,
+                      width: btnRect.width,
+                      height: btnRect.height,
+                      moved: false,
+                    };
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                  }}
+                  onPointerMove={(e) => {
+                    const drag = chipDragRef.current;
+                    const stageEl = stageRef.current;
+                    if (!drag || drag.pointerId !== e.pointerId || !stageEl) return;
+                    const dx = e.clientX - drag.startX;
+                    const dy = e.clientY - drag.startY;
+                    if (!drag.moved && Math.hypot(dx, dy) > 4) {
+                      drag.moved = true;
+                      setIsDraggingChip(true);
+                    }
+                    if (drag.moved) {
+                      const stageRect = stageEl.getBoundingClientRect();
+                      const maxX = Math.max(8, stageRect.width - drag.width - 8);
+                      const maxY = Math.max(8, stageRect.height - drag.height - 8);
+                      setShrunkPos({
+                        x: Math.min(maxX, Math.max(8, drag.originLeft + dx)),
+                        y: Math.min(maxY, Math.max(8, drag.originTop + dy)),
+                      });
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    const drag = chipDragRef.current;
+                    if (!drag || drag.pointerId !== e.pointerId) return;
+                    const wasMoved = drag.moved;
+                    chipDragRef.current = null;
+                    setIsDraggingChip(false);
+                    e.currentTarget.releasePointerCapture?.(e.pointerId);
+                    if (!wasMoved) {
+                      setIsAnswerShrunk(false);
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    chipDragRef.current = null;
+                    setIsDraggingChip(false);
+                  }}
+                  aria-label="Expand answer pane (drag to move)"
+                  title="Drag to move · Click to expand answer"
+                  style={
+                    shrunkPos
+                      ? { left: shrunkPos.x, top: shrunkPos.y }
+                      : { left: '50%', top: 12, transform: 'translateX(-50%)' }
+                  }
+                  className={`absolute z-20 inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-[#f8fbff]/96 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 shadow-[0_12px_28px_-10px_rgba(15,23,42,0.28)] hover:bg-white touch-none select-none ${
+                    isDraggingChip ? 'cursor-grabbing scale-105' : 'cursor-grab'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                  <span>Answer</span>
+                </button>
               ) : (
-                <div className="max-w-2xl mx-auto">
-                  <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
-                        <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                        <span>Answer</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsAnswerShrunk(true);
-                        }}
-                        aria-label="Shrink answer pane"
-                        title="Shrink answer"
-                        className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full hover:bg-sky-100/80 transition-colors cursor-pointer shrink-0"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                      </button>
-                    </div>
-                    <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-36 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain whitespace-pre-line select-text">
-                      {answerText}
+                <div className="pointer-events-none absolute top-3 inset-x-0 z-10 px-4 sm:px-8">
+                  <div className="max-w-2xl mx-auto">
+                    <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
+                          <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Answer</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsAnswerShrunk(true);
+                          }}
+                          aria-label="Shrink answer pane"
+                          title="Shrink answer"
+                          className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full hover:bg-sky-100/80 transition-colors cursor-pointer shrink-0"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                        </button>
+                      </div>
+                      <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-36 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain whitespace-pre-line select-text">
+                        {answerText}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
 
           {/* Bottom Card Navigation Strip */}
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex items-center justify-between px-5 sm:px-8">
             <div className="pointer-events-auto flex items-center gap-2">
-              {hasAnswer && (
-                <button
-                  type="button"
-                  onClick={() => setShowReadOut((prev) => !prev)}
-                  className="rounded-xl border border-slate-300 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-white cursor-pointer"
-                >
-                  {showReadOut ? 'Hide Answer' : 'Show Answer'}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={onStartNewThread}
@@ -1402,20 +1954,7 @@ export function ProductionCards3D({
       {/* Expanded 3D Card Overlays + Slide-Up Reasoning */}
       {!isWaitingForReply && !errorDetail && selectedCard && (
         <>
-          <div className="pointer-events-none absolute top-4 inset-x-0 z-20 flex items-center justify-between px-5 sm:px-8">
-            <button
-              type="button"
-              onClick={() => {
-                setIsReasoningOpen(false);
-                setSelectedIndex(null);
-              }}
-              aria-label="Back"
-              title="Back"
-              className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/90 bg-[#0d1424]/95 text-white hover:bg-slate-800 cursor-pointer"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-
+          <div className="pointer-events-none absolute top-4 inset-x-0 z-20 flex items-center justify-end px-5 sm:px-8">
             <button
               type="button"
               onClick={() => setIsReasoningOpen((prev) => !prev)}
