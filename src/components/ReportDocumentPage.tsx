@@ -51,7 +51,9 @@ function getProviderLabel(turn: ConversationTurn, isExternalFile?: boolean): str
             ? 'Claude'
             : turn.adapterId === 'fable'
               ? 'Fable'
-              : 'Gemini'
+              : turn.adapterId === 'chatgpt'
+                ? 'ChatGPT'
+                : 'Gemini'
         }`;
   return `${scopeLabel} · ${turn.model}`;
 }

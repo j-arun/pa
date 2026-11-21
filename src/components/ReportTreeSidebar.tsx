@@ -1,4 +1,5 @@
 import {
+  Bot,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -63,6 +64,7 @@ const TREE_ADAPTERS: ReadonlyArray<{
   { adapterId: 'fable', label: 'Fable', isPrivate: false },
   { adapterId: 'gemini', label: 'Gemini', isPrivate: false },
   { adapterId: 'claude', label: 'Sonnet', isPrivate: false },
+  { adapterId: 'chatgpt', label: 'ChatGPT', isPrivate: false },
 ];
 
 function normalizeRecordPlacement(record: RatedThreadRecord): {
@@ -111,7 +113,8 @@ function normalizeRecordPlacement(record: RatedThreadRecord): {
     rawAdapter === 'ollama' ||
     rawAdapter === 'fable' ||
     rawAdapter === 'gemini' ||
-    rawAdapter === 'claude'
+    rawAdapter === 'claude' ||
+    rawAdapter === 'chatgpt'
       ? rawAdapter
       : rawScope === 'private'
         ? 'ollama'
@@ -438,7 +441,7 @@ export function ReportTreeSidebar({
                           )}
                         </button>
 
-                        {/* Level 3: 4 Adapter Folders (Local, Fable, Gemini, Sonnet) */}
+                        {/* Level 3: Adapter Folders (Local, Fable, Gemini, Sonnet, ChatGPT) */}
                         {isDomainExpanded && (
                           <div className="pl-3 space-y-0.5 border-l border-slate-200/70 dark:border-slate-800/80 ml-3">
                             {TREE_ADAPTERS.map(({ adapterId, label: adapterLabel, isPrivate }) => {
@@ -502,6 +505,8 @@ export function ReportTreeSidebar({
                                       <Lock className="w-3 h-3 text-emerald-600/80 dark:text-emerald-400/80 shrink-0" />
                                     ) : adapterId === 'gemini' ? (
                                       <Sparkles className="w-3 h-3 text-sky-500 shrink-0" />
+                                    ) : adapterId === 'chatgpt' ? (
+                                      <Bot className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />
                                     ) : (
                                       <Cloud className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0" />
                                     )}

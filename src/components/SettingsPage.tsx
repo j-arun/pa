@@ -297,6 +297,7 @@ export function SettingsPage({
   };
 
   const handleTestAdapter = async (adapterId: AnyAdapterId) => {
+    if (adapterId === 'chatgpt') return;
     setTestingAdapterId(adapterId);
     try {
       const options =

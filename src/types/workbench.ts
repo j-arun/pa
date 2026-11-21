@@ -14,7 +14,8 @@ export interface PromptBuilderSettings {
 
 export type PrivateAdapterId = 'ollama';
 export type PublicAdapterId = 'gemini' | 'claude' | 'fable';
-export type AnyAdapterId = PrivateAdapterId | PublicAdapterId;
+export type ImportedCarrierId = 'chatgpt';
+export type AnyAdapterId = PrivateAdapterId | PublicAdapterId | ImportedCarrierId;
 
 export type GeminiThinkingPreset = 'LOW' | 'MEDIUM' | 'HIGH';
 

@@ -38,6 +38,7 @@ const ADAPTER_FOLDER_NAMES: Record<AnyAdapterId, string> = {
   fable: 'Fable',
   gemini: 'Gemini',
   claude: 'Sonnet',
+  chatgpt: 'ChatGPT',
 };
 
 function sanitizeId(rawId: string): string {
@@ -117,7 +118,8 @@ function normalizeAdapterId(rawAdapter?: string, scope?: ConversationScope): Any
     rawAdapter === 'ollama' ||
     rawAdapter === 'fable' ||
     rawAdapter === 'gemini' ||
-    rawAdapter === 'claude'
+    rawAdapter === 'claude' ||
+    rawAdapter === 'chatgpt'
   ) {
     return rawAdapter;
   }
@@ -201,6 +203,9 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
       result.scope = 'public';
     } else if (lower === 'sonnet' || lower === 'claude' || lower === 'claude sonnet') {
       result.adapterId = 'claude';
+      result.scope = 'public';
+    } else if (lower === 'chatgpt' || lower === 'openai' || lower === 'gpt') {
+      result.adapterId = 'chatgpt';
       result.scope = 'public';
     }
   }

@@ -1,10 +1,13 @@
 import {
+  Check,
   Cloud,
+  Copy,
   Home,
   Lock,
   PanelLeft,
   PanelRight,
   Settings,
+  Upload,
   X,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -31,6 +34,7 @@ import type {
   LlmContextLogEntry,
   LlmContextTelemetry,
   PromptDomain,
+  PublicAdapterId,
   RatedThreadRecord,
   WorkbenchSettings,
 } from './types/workbench';
@@ -65,6 +69,7 @@ import {
   showDesktopNotification,
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
+import { parseMarkdownReportImport } from './utils/markdownImport';
 
 function appendCachedContext(
   instruction: string,
@@ -138,6 +143,9 @@ export default function App() {
   const skipNextAutoPersistRef = useRef(false);
   const persistDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const replyToastTimerRef = useRef<number | null>(null);
+  const mdFileInputRef = useRef<HTMLInputElement | null>(null);
+  const promptCopiedTimerRef = useRef<number | null>(null);
+  const [promptCopied, setPromptCopied] = useState(false);
   const activeRequestAbortRef = useRef<{
     exchangeId: string;
     controller: AbortController;
@@ -162,7 +170,7 @@ export default function App() {
   });
   const [bottomBarHeight, setBottomBarHeight] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_bottom_bar_height'));
-    return Number.isFinite(raw) && raw >= 28 && raw <= 220 ? raw : 30;
+    return Number.isFinite(raw) && raw >= 28 && raw <= 220 ? raw : 34;
   });
   const [activeResizer, setActiveResizer] = useState<'left' | 'right' | 'bottom' | null>(null);
   const [telemetry, setTelemetry] = useState<LlmContextTelemetry>({
@@ -175,7 +183,6 @@ export default function App() {
   const [sessionTokens, setSessionTokens] = useState<number>(0);
   const [contextLogs, setContextLogs] = useState<LlmContextLogEntry[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const isContextRailVisible = isContextRailOpen;
 
   useEffect(() => {
     try {
@@ -878,6 +885,196 @@ export default function App() {
 
   const displayedScope: ConversationScope = activeThreadScope ?? scope;
 
+  const hasReportForRightPane =
+    !isSettingsOpen &&
+    (Boolean(activeReportRecord) || turns.some((t) => t.role === 'assistant'));
+  const isContextRailVisible = isContextRailOpen && hasReportForRightPane;
+
+  useEffect(() => {
+    if (!hasReportForRightPane && isContextRailOpen) {
+      setIsContextRailOpen(false);
+    }
+  }, [hasReportForRightPane, isContextRailOpen]);
+
+  const completedReportTurns = useMemo<ConversationTurn[] | null>(() => {
+    if (isSettingsOpen || isSending) return null;
+    if (activeReportRecord && activeReportRecord.turns.some((t) => t.role === 'assistant')) {
+      return activeReportRecord.turns;
+    }
+    if (turns.some((t) => t.role === 'assistant')) {
+      return turns;
+    }
+    return null;
+  }, [activeReportRecord, isSending, isSettingsOpen, turns]);
+
+  const hasCompletedReport = Boolean(completedReportTurns);
+
+  const handleCopyReportPrompt = useCallback(async () => {
+    if (!completedReportTurns) return;
+    const userTurns = completedReportTurns.filter((t) => t.role === 'user');
+    const rootUser = userTurns[0];
+    if (!rootUser) return;
+
+    const assistantReply = [...completedReportTurns]
+      .reverse()
+      .find((t) => t.role === 'assistant');
+    const targetScope = rootUser.scope ?? assistantReply?.scope ?? scope;
+    const fallbackAdapter: PublicAdapterId =
+      assistantReply?.adapterId === 'claude' ||
+      assistantReply?.adapterId === 'fable' ||
+      assistantReply?.adapterId === 'gemini'
+        ? assistantReply.adapterId
+        : settings.publicLlm.activeAdapter;
+
+    const fallbackSysInstruction = [
+      targetScope === 'private'
+        ? settings.privateLlm.systemInstruction.trim()
+        : settings.publicLlm.adapters[fallbackAdapter].systemInstruction.trim(),
+      EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const systemInstructionText =
+      rootUser.systemInstruction?.trim() ||
+      (targetScope === 'private'
+        ? rootUser.privateSystemInstruction?.trim()
+        : rootUser.publicSystemInstruction?.trim()) ||
+      fallbackSysInstruction;
+
+    const referenceContextText =
+      rootUser.cachedContext?.trim() ||
+      (targetScope === 'private'
+        ? rootUser.privateCachedContext?.trim()
+        : rootUser.publicCachedContext?.trim()) ||
+      '';
+
+    const questionBlocks = userTurns.map((u, idx) =>
+      userTurns.length === 1
+        ? `Question:\n${u.content.trim()}`
+        : idx === 0
+          ? `Question:\n${u.content.trim()}`
+          : `Follow-up #${idx}:\n${u.content.trim()}`,
+    );
+
+    const fullPrompt = [
+      systemInstructionText ? `System Instruction:\n${systemInstructionText}` : '',
+      referenceContextText ? `Reference Context:\n${referenceContextText}` : '',
+      ...questionBlocks,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    if (!fullPrompt) return;
+
+    let copied = false;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(fullPrompt);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+
+    if (!copied) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = fullPrompt;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        copied = document.execCommand('copy');
+        textarea.remove();
+      } catch {
+        copied = false;
+      }
+    }
+
+    if (copied) {
+      setPromptCopied(true);
+      if (promptCopiedTimerRef.current) window.clearTimeout(promptCopiedTimerRef.current);
+      promptCopiedTimerRef.current = window.setTimeout(() => setPromptCopied(false), 2000);
+      pushContextLog(
+        'success',
+        'Copied System Instruction + Reference Context + Question to clipboard',
+      );
+    } else {
+      pushContextLog('error', 'Failed to copy prompt to clipboard');
+    }
+  }, [completedReportTurns, pushContextLog, scope, settings]);
+
+  const handleImportMarkdownFiles = useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+      const files = Array.from(fileList);
+      const importedResults: Array<{
+        record: RatedThreadRecord;
+        htmlReport: string;
+        detectedPeriodLabel: string;
+        detectedDomainLabel: string;
+        detectedCarrierLabel: string;
+      }> = [];
+
+      let workingReports = [...ratedThreads];
+
+      for (const file of files) {
+        try {
+          const rawMarkdown = await file.text();
+          if (!rawMarkdown.trim()) continue;
+          const parsed = parseMarkdownReportImport({
+            rawMarkdown,
+            fileName: file.name,
+            fallbackMonth: settingsRef.current.contextCache.activeMonth,
+            fallbackYear: settingsRef.current.contextCache.activeYear,
+            fallbackDomain: settingsRef.current.promptBuilder.activeDomain,
+            existingReports: workingReports,
+          });
+          workingReports = [parsed.record, ...workingReports];
+          importedResults.push(parsed);
+        } catch (err) {
+          pushContextLog(
+            'error',
+            `Failed to import ${file.name}: ${err instanceof Error ? err.message : 'Invalid markdown file'}`,
+          );
+        }
+      }
+
+      if (importedResults.length === 0) return;
+
+      setRatedThreads(workingReports);
+      for (const item of importedResults) {
+        void syncReportToDisk(item.record, item.htmlReport);
+      }
+
+      const primary = importedResults[importedResults.length - 1];
+      setIsSettingsOpen(false);
+      setActiveReportExchangeId(primary.record.id);
+
+      const summaryDetail = `${primary.detectedPeriodLabel} · ${primary.detectedDomainLabel} · ${primary.detectedCarrierLabel}`;
+      pushContextLog(
+        'success',
+        importedResults.length === 1
+          ? `Imported "${primary.record.turns[0]?.threadName || 'Report'}" -> ${summaryDetail}`
+          : `Imported ${importedResults.length} Markdown reports (latest -> ${summaryDetail})`,
+      );
+      setReplyToast({
+        title:
+          importedResults.length === 1
+            ? 'Markdown report imported'
+            : `${importedResults.length} Markdown reports imported`,
+        preview: summaryDetail,
+        isError: false,
+      });
+      if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+      replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 4500);
+    },
+    [pushContextLog, ratedThreads, syncReportToDisk],
+  );
+
   useEffect(() => {
     const root = document.documentElement;
     root.removeAttribute('data-pa-theme');
@@ -1119,6 +1316,18 @@ export default function App() {
       .filter(Boolean)
       .join('\n\n');
 
+    const userTurnWithPrompt: ConversationTurn = {
+      ...userTurn,
+      systemInstruction: targetSystemInstruction,
+      cachedContext: targetCachedContext || userTurn.cachedContext,
+    };
+
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === userTurn.id && t.role === 'user' ? userTurnWithPrompt : t,
+      ),
+    );
+
     setIsSending(true);
     const requestStartedAt = Date.now();
     const fullPromptChars =
@@ -1281,9 +1490,12 @@ export default function App() {
         refContextChars: userTurn.refContextChars,
       };
 
+      const effectiveBaseTurns = baseThreadTurns.map((t) =>
+        t.id === userTurn.id && t.role === 'user' ? userTurnWithPrompt : t,
+      );
       const rootUserTurn =
-        baseThreadTurns.find((t) => t.role === 'user') ?? userTurn;
-      const combinedTurns = [...baseThreadTurns, preliminaryReplyTurn];
+        effectiveBaseTurns.find((t) => t.role === 'user') ?? userTurnWithPrompt;
+      const combinedTurns = [...effectiveBaseTurns, preliminaryReplyTurn];
       const combinedExchanges = buildExchangesFromTurns(combinedTurns);
       const htmlReport = buildThreadHtmlDocument({
         title: rootUserTurn.threadName || userTurn.threadName || 'Assistant Report',
@@ -1305,7 +1517,11 @@ export default function App() {
       };
 
       setTurns((prev) => [
-        ...prev.filter((t) => t.exchangeId !== userTurn.id),
+        ...prev
+          .filter((t) => t.exchangeId !== userTurn.id)
+          .map((t) =>
+            t.id === userTurn.id && t.role === 'user' ? userTurnWithPrompt : t,
+          ),
         assistantTurn,
       ]);
 
@@ -1891,25 +2107,47 @@ export default function App() {
             </button>
           </div>
 
-          {/* Zone 3: Care Must Be Taken Sidebar Control */}
+          {/* Zone 3: Icon-Only Markdown Upload + Care Must Be Taken Toggle */}
           <div className="flex items-center justify-end justify-self-end gap-1.5 shrink-0">
+            <input
+              ref={mdFileInputRef}
+              type="file"
+              accept=".md,.markdown,text/markdown,text/plain"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void handleImportMarkdownFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
             <button
               type="button"
-              onClick={() => {
-                setIsContextRailOpen((prev) => !prev);
-              }}
-              aria-label={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
-              title={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
-              aria-pressed={isContextRailVisible}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 ${
-                isContextRailVisible
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                  : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
+              onClick={() => mdFileInputRef.current?.click()}
+              aria-label="Import Markdown report"
+              title="Import Markdown report (.md)"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
             >
-              <PanelRight className="w-4 h-4" />
+              <Upload className="w-4 h-4" />
             </button>
+            {hasReportForRightPane && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsContextRailOpen((prev) => !prev);
+                }}
+                aria-label={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
+                title={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
+                aria-pressed={isContextRailVisible}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 cursor-pointer ${
+                  isContextRailVisible
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+                style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
+              >
+                <PanelRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </header>
 
@@ -2081,7 +2319,7 @@ export default function App() {
           style={{ height: bottomBarHeight }}
           className="shrink-0 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex flex-col justify-center gap-1.5 text-xs overflow-hidden"
         >
-          <div className="flex items-center justify-between gap-4 min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
             <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
               <span
                 className="w-2 h-2 rounded-full shrink-0"
@@ -2092,9 +2330,75 @@ export default function App() {
                 aria-hidden="true"
               />
               <span className="truncate font-medium">{connectedEngineText}</span>
+
+              {displayedScope === 'public' && (
+                <div
+                  role="group"
+                  aria-label="Public LLM provider toggle"
+                  title={
+                    canSwitchScope
+                      ? 'Switch Public provider between Gemini and Fable'
+                      : 'Gemini / Fable switching is only available on Home before starting a report'
+                  }
+                  className={`inline-flex items-center p-0.5 rounded-md bg-slate-200/75 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
+                    canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
+                  }`}
+                >
+                  {(['gemini', 'fable'] as const).map((providerId) => {
+                    const isSelected = settings.publicLlm.activeAdapter === providerId;
+                    const label = providerId === 'gemini' ? 'Gemini' : 'Fable';
+                    return (
+                      <button
+                        key={providerId}
+                        type="button"
+                        disabled={!canSwitchScope}
+                        aria-pressed={isSelected}
+                        onClick={() => {
+                          if (!canSwitchScope) return;
+                          setSettings((previous) => ({
+                            ...previous,
+                            publicLlm: {
+                              ...previous.publicLlm,
+                              activeAdapter: providerId,
+                            },
+                          }));
+                        }}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
+                          !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+                        } ${
+                          isSelected
+                            ? 'bg-white dark:bg-slate-900 shadow-2xs text-slate-900 dark:text-white'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                        style={isSelected ? { color: 'var(--pa-accent-text)' } : undefined}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
+              {hasCompletedReport && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyReportPrompt()}
+                    title="Copy System Instruction, Reference Context, and Question"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 dark:border-slate-700/85 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 font-sans text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    {promptCopied ? (
+                      <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    ) : (
+                      <Copy className="w-3 h-3 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                    )}
+                    <span>{promptCopied ? 'Copied' : 'Copy Prompt'}</span>
+                  </button>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                </>
+              )}
               <span
                 className={
                   displayedTelemetry.phase === 'Thinking'

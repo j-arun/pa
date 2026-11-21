@@ -317,6 +317,7 @@ function getShortModelLabel(
   if (lower.includes('sonnet')) return 'Sonnet';
   if (lower.includes('opus')) return 'Opus';
   if (lower.includes('haiku')) return 'Haiku';
+  if (lower.includes('chatgpt') || lower.includes('gpt') || adapterId === 'chatgpt') return 'ChatGPT';
   if (lower.includes('gemini') || adapterId === 'gemini') return 'Gemini';
   if (adapterId === 'claude') return 'Claude';
   if (turnScope === 'private' || adapterId === 'ollama') {

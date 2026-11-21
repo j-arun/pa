@@ -1560,7 +1560,9 @@ export function buildThreadHtmlDocument({
                     ? 'Claude'
                     : turn.adapterId === 'fable'
                       ? 'Fable'
-                      : 'Gemini'
+                      : turn.adapterId === 'chatgpt'
+                        ? 'ChatGPT'
+                        : 'Gemini'
                 }`;
           const { cleanMarkdown } = parseResponseEventsAndReport(turn.content, domain);
           return `<section class="report-card">
