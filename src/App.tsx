@@ -2209,10 +2209,19 @@ export default function App() {
     });
   };
 
+  const isReportRunning =
+    isSending || (isProductionApp && productionStageData.isWaitingForReply);
+
+  useEffect(() => {
+    if (isReportRunning) {
+      setIsProdReportsMenuOpen(false);
+    }
+  }, [isReportRunning]);
+
   return (
     <div className="h-screen w-screen overflow-hidden flex mica-canvas text-slate-900 dark:text-slate-100 select-none sm:select-auto">
-      {/* Left WinUI 3 NavigationView Rail (Dev Mode ONLY — Hidden in Production Mode) */}
-      {!isProductionApp && isLeftRailOpen && (
+      {/* Left WinUI 3 NavigationView Rail (Dev Mode ONLY — Hidden in Production Mode and while a report is running) */}
+      {!isProductionApp && !isReportRunning && isLeftRailOpen && (
         <>
           <aside
             style={{ width: leftRailWidth }}
@@ -2294,30 +2303,32 @@ export default function App() {
             }`}
           >
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                data-prod-reports-toggle="true"
-                onClick={() => setIsProdReportsMenuOpen((prev) => !prev)}
-                aria-expanded={isProdReportsMenuOpen}
-                aria-pressed={isProdReportsMenuOpen}
-                aria-label={isProdReportsMenuOpen ? 'Hide Reports slider' : 'Show Reports slider'}
-                title={
-                  isProdReportsMenuOpen
-                    ? `Hide Reports (${prodReportsDirDisplay})`
-                    : `Show Reports (${prodReportsDirDisplay})`
-                }
-                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
-                  isProdDarkTheme
-                    ? isProdReportsMenuOpen
-                      ? 'bg-slate-800 border-sky-400/70 text-sky-300'
-                      : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
-                    : isProdReportsMenuOpen
-                      ? 'bg-sky-50 border-sky-400 text-sky-700'
-                      : 'border-slate-200 bg-white text-sky-600 hover:bg-slate-50 hover:border-slate-300'
-                }`}
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
+              {!isReportRunning && (
+                <button
+                  type="button"
+                  data-prod-reports-toggle="true"
+                  onClick={() => setIsProdReportsMenuOpen((prev) => !prev)}
+                  aria-expanded={isProdReportsMenuOpen}
+                  aria-pressed={isProdReportsMenuOpen}
+                  aria-label={isProdReportsMenuOpen ? 'Hide Reports slider' : 'Show Reports slider'}
+                  title={
+                    isProdReportsMenuOpen
+                      ? `Hide Reports (${prodReportsDirDisplay})`
+                      : `Show Reports (${prodReportsDirDisplay})`
+                  }
+                  className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                    isProdDarkTheme
+                      ? isProdReportsMenuOpen
+                        ? 'bg-slate-800 border-sky-400/70 text-sky-300'
+                        : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
+                      : isProdReportsMenuOpen
+                        ? 'bg-sky-50 border-sky-400 text-sky-700'
+                        : 'border-slate-200 bg-white text-sky-600 hover:bg-slate-50 hover:border-slate-300'
+                  }`}
+                >
+                  <PanelLeft className="w-4 h-4" />
+                </button>
+              )}
 
               <button
                 type="button"
@@ -2384,21 +2395,23 @@ export default function App() {
           <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-4">
             {/* Zone 1: Left Rail Toggle + Title + Icon-only Top Navigation */}
             <div className="flex items-center gap-2.5 min-w-0">
-              <button
-                type="button"
-                onClick={() => setIsLeftRailOpen((prev) => !prev)}
-                aria-label={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
-                title={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
-                aria-pressed={isLeftRailOpen}
-                className={`hidden md:inline-flex p-1.5 rounded-lg border transition-colors shrink-0 ${
-                  isLeftRailOpen
-                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-                    : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-                style={isLeftRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
+              {!isReportRunning && (
+                <button
+                  type="button"
+                  onClick={() => setIsLeftRailOpen((prev) => !prev)}
+                  aria-label={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+                  title={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+                  aria-pressed={isLeftRailOpen}
+                  className={`hidden md:inline-flex p-1.5 rounded-lg border transition-colors shrink-0 ${
+                    isLeftRailOpen
+                      ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                      : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                  style={isLeftRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+                >
+                  <PanelLeft className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -2774,7 +2787,7 @@ export default function App() {
 
           {/* Floating Left-Hand Production Reports Slider */}
           <AnimatePresence>
-            {isProductionApp && isProdReportsMenuOpen && (
+            {isProductionApp && !isReportRunning && isProdReportsMenuOpen && (
               <ProductionReportsMenu
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
