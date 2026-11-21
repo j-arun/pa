@@ -7,6 +7,7 @@ import {
   PanelLeft,
   PanelRight,
   Settings,
+  ShieldAlert,
   Upload,
   X,
 } from 'lucide-react';
@@ -22,15 +23,21 @@ import { SettingsPage } from './components/SettingsPage';
 import { WhatsAppSymbol } from './components/WhatsAppSymbol';
 import {
   WorkbenchPage,
+  formatProviderErrorDetail,
+  getEventRatingSortScore,
   type SendThreadMessagePayload,
   type ThreadMetadataPatch,
 } from './components/WorkbenchPage';
+import { ProductionCards3D } from './components/production/ProductionCards3D';
+import { ProductionStage1Three } from './components/production/ProductionStage1Three';
+import { ProductionTimelinePanel } from './components/production/ProductionTimelinePanel';
 import { useSpeechIO } from './hooks/useSpeechIO';
 import type {
   AnyAdapterId,
   CarefulDateItem,
   ConversationScope,
   ConversationTurn,
+  EventCardItem,
   LlmContextLogEntry,
   LlmContextTelemetry,
   PromptDomain,
@@ -60,6 +67,8 @@ import {
   EVENT_EXTRACTION_SYSTEM_DIRECTIVE,
   buildThreadHtmlDocument,
   extractCarefulDatesFromHtml,
+  extractReadOutSections,
+  normalizeEventCardItem,
   parseResponseEventsAndReport,
   type ThreadHtmlExchangeInput,
 } from './utils/eventParser';
@@ -70,6 +79,11 @@ import {
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
 import { parseMarkdownReportImport } from './utils/markdownImport';
+
+const IS_PRODUCTION_APP =
+  import.meta.env.PROD ||
+  (typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mode') === 'production');
 
 function appendCachedContext(
   instruction: string,
@@ -113,9 +127,12 @@ function buildExchangesFromTurns(threadTurns: ConversationTurn[]): ThreadHtmlExc
 }
 
 export default function App() {
+  const isProductionApp = IS_PRODUCTION_APP;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeReportExchangeId, setActiveReportExchangeId] = useState<string | null>(null);
-  const [scope, setScope] = useState<ConversationScope>(() => loadScope());
+  const [scope, setScope] = useState<ConversationScope>(() =>
+    IS_PRODUCTION_APP ? 'public' : loadScope(),
+  );
   const [settings, setSettings] = useState<WorkbenchSettings>(() => loadSettings());
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [ratedThreads, setRatedThreads] = useState<RatedThreadRecord[]>(() =>
@@ -883,11 +900,14 @@ export default function App() {
     turns.length === 0 &&
     !isSending;
 
-  const displayedScope: ConversationScope = activeThreadScope ?? scope;
+  const displayedScope: ConversationScope = isProductionApp
+    ? 'public'
+    : (activeThreadScope ?? scope);
 
   const hasReportForRightPane =
-    !isSettingsOpen &&
-    (Boolean(activeReportRecord) || turns.some((t) => t.role === 'assistant'));
+    (!isSettingsOpen || isProductionApp) &&
+    ((!isProductionApp && Boolean(activeReportRecord)) ||
+      turns.some((t) => t.role === 'assistant'));
   const isContextRailVisible = isContextRailOpen && hasReportForRightPane;
 
   useEffect(() => {
@@ -1183,29 +1203,26 @@ export default function App() {
   const activeCarefulDates = useMemo<CarefulDateItem[]>(() => {
     const items: CarefulDateItem[] = [];
     const seen = new Set<string>();
-    const sourceTurns = activeReportRecord?.turns ?? turns;
+    const sourceTurns = (!isProductionApp ? activeReportRecord?.turns : undefined) ?? turns;
     const rootQ = sourceTurns.find((t) => t.role === 'user');
 
     for (const turn of sourceTurns) {
       if (turn.role !== 'assistant') continue;
-      let list: CarefulDateItem[] = [];
-      if (Array.isArray(turn.carefulDates) && turn.carefulDates.length > 0) {
-        list = turn.carefulDates;
-      } else {
-        if (turn.content && turn.content.trim().length > 40) {
-          list = parseResponseEventsAndReport(
-            turn.content,
-            rootQ?.promptDomain,
-          ).carefulDates;
-        }
-        if (list.length === 0 && turn.htmlReport) {
-          list = extractCarefulDatesFromHtml(
-            turn.htmlReport,
-            rootQ?.promptDomain,
-          );
-        }
-      }
-      for (const cd of list) {
+      const stored = Array.isArray(turn.carefulDates) ? turn.carefulDates : [];
+      const freshFromMarkdown =
+        turn.content && turn.content.trim().length > 40
+          ? parseResponseEventsAndReport(turn.content, rootQ?.promptDomain).carefulDates
+          : [];
+      const freshFromHtml =
+        stored.length === 0 && freshFromMarkdown.length === 0 && turn.htmlReport
+          ? extractCarefulDatesFromHtml(turn.htmlReport, rootQ?.promptDomain)
+          : [];
+      const combinedList =
+        freshFromMarkdown.length >= stored.length
+          ? [...freshFromMarkdown, ...stored, ...freshFromHtml]
+          : [...stored, ...freshFromMarkdown, ...freshFromHtml];
+
+      for (const cd of combinedList) {
         const dedupeKey = `${cd.domain.toLowerCase()}|${cd.date.toLowerCase()}|${cd.note.toLowerCase()}`;
         if (seen.has(dedupeKey)) continue;
         seen.add(dedupeKey);
@@ -1213,7 +1230,66 @@ export default function App() {
       }
     }
     return items;
-  }, [activeReportRecord, turns]);
+  }, [activeReportRecord, isProductionApp, turns]);
+
+  const productionStageData = useMemo(() => {
+    const userTurns = turns.filter((t) => t.role === 'user');
+    const latestUserTurn = userTurns[userTurns.length - 1] ?? null;
+    const rootUserTurn = userTurns[0] ?? null;
+    const latestReplyTurn = latestUserTurn
+      ? turns.find((t) => t.role === 'assistant' && t.exchangeId === latestUserTurn.id) ??
+        [...turns].reverse().find((t) => t.role === 'assistant') ??
+        null
+      : null;
+    const latestErrorTurn = latestUserTurn
+      ? turns.find((t) => t.role === 'error' && t.exchangeId === latestUserTurn.id) ?? null
+      : null;
+
+    let cards: EventCardItem[] = [];
+    if (latestReplyTurn) {
+      const parsedFromReport = parseResponseEventsAndReport(
+        latestReplyTurn.content,
+        latestUserTurn?.promptDomain ?? rootUserTurn?.promptDomain,
+      ).events;
+      const raw =
+        parsedFromReport.length > 0
+          ? parsedFromReport
+          : Array.isArray(latestReplyTurn.eventCards)
+            ? latestReplyTurn.eventCards
+            : [];
+      cards = raw
+        .map((evt, idx) => normalizeEventCardItem(evt, idx))
+        .map((evt, idx) => ({ evt, idx, score: getEventRatingSortScore(evt) }))
+        .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx))
+        .map((entry) => entry.evt);
+    }
+
+    const readOutSections = latestReplyTurn
+      ? extractReadOutSections(latestReplyTurn.content)
+      : null;
+
+    const isWaitingForReply =
+      isSending && Boolean(latestUserTurn) && !latestReplyTurn && !latestErrorTurn;
+
+    const errorDetail =
+      !isWaitingForReply && latestErrorTurn && !latestReplyTurn
+        ? [
+            [latestErrorTurn.adapterId, latestErrorTurn.model].filter(Boolean).join(' · '),
+            formatProviderErrorDetail(latestErrorTurn.content),
+          ]
+            .filter(Boolean)
+            .join(': ')
+        : null;
+
+    return {
+      latestUserTurn,
+      latestReplyTurn,
+      cards,
+      readOutSections,
+      isWaitingForReply,
+      errorDetail,
+    };
+  }, [isSending, turns]);
 
   const activeCarefulPeriodLabel = useMemo(() => {
     const sourceTurns = activeReportRecord?.turns ?? turns;
@@ -1247,15 +1323,22 @@ export default function App() {
     overrideCachedContext?: string;
     abortController?: AbortController;
   }) => {
-    const targetScope = userTurn.scope ?? scope;
+    const targetScope: ConversationScope = isProductionApp
+      ? 'public'
+      : (userTurn.scope ?? scope);
+    const activeProdPublicAdapter: PublicAdapterId =
+      settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+    const targetPublicAdapter: PublicAdapterId = isProductionApp
+      ? activeProdPublicAdapter
+      : settings.publicLlm.activeAdapter;
     const targetAdapterId: AnyAdapterId =
       targetScope === 'private'
         ? settings.privateLlm.activeAdapter
-        : settings.publicLlm.activeAdapter;
+        : targetPublicAdapter;
     const targetModel =
       targetScope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+        : settings.publicLlm.adapters[targetPublicAdapter].model;
     const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
     const targetCachedContext = (
       overrideCachedContext !== undefined
@@ -1525,6 +1608,26 @@ export default function App() {
         assistantTurn,
       ]);
 
+      // In Production Mode, save completed reports silently into backend folder structure (no left-hand Reports UI)
+      if (isProductionApp) {
+        const finalizedTurns = [...effectiveBaseTurns, assistantTurn].map((t) =>
+          t.id === rootUserTurn.id && t.role === 'user'
+            ? { ...t, isFinalized: true }
+            : t,
+        );
+        const silentRecord: RatedThreadRecord = {
+          id: rootUserTurn.id,
+          turns: finalizedTurns,
+          ratedAt: nowIso,
+          isFinalized: true,
+        };
+        setRatedThreads((prevRated) => {
+          const withoutCurrent = prevRated.filter((item) => item.id !== rootUserTurn.id);
+          return [silentRecord, ...withoutCurrent];
+        });
+        void syncReportToDisk(silentRecord, htmlReport);
+      }
+
       setSessionTokens((prev) => prev + totalTokens);
       setTelemetry((prev) => ({
         ...prev,
@@ -1558,7 +1661,7 @@ export default function App() {
       if (settings.notifications?.desktopNotificationOnReply !== false && shortPreview) {
         showDesktopNotification(replyTitle, shortPreview);
       }
-      if (shortPreview) {
+      if (!isProductionApp && shortPreview) {
         setReplyToast({ title: replyTitle, preview: shortPreview, isError: false });
         if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
         replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 4500);
@@ -1614,11 +1717,13 @@ export default function App() {
       if (settings.notifications?.soundOnReply !== false) {
         playReplyChime(true);
       }
-      const errTitle = "What's up";
-      const friendlyError = 'Try "What\'s up" little later ..';
-      setReplyToast({ title: errTitle, preview: friendlyError, isError: true });
-      if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-      replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+      if (!isProductionApp) {
+        const errTitle = "What's up";
+        const friendlyError = 'Try "What\'s up" little later ..';
+        setReplyToast({ title: errTitle, preview: friendlyError, isError: true });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+      }
     } finally {
       if (activeRequestAbortRef.current?.exchangeId === userTurn.id) {
         activeRequestAbortRef.current = null;
@@ -1666,16 +1771,22 @@ export default function App() {
     if (isFollowUp && rootUserTurn?.isFinalized) {
       return;
     }
-    const effectiveScope: ConversationScope =
-      (isFollowUp ? rootUserTurn?.scope : undefined) ?? scope;
+    const effectiveScope: ConversationScope = isProductionApp
+      ? 'public'
+      : ((isFollowUp ? rootUserTurn?.scope : undefined) ?? scope);
+    const activeProdPublicAdapter: PublicAdapterId =
+      settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+    const selectedPublicAdapter: PublicAdapterId = isProductionApp
+      ? activeProdPublicAdapter
+      : settings.publicLlm.activeAdapter;
     const selectedAdapterId: AnyAdapterId =
       effectiveScope === 'private'
         ? settings.privateLlm.activeAdapter
-        : settings.publicLlm.activeAdapter;
+        : selectedPublicAdapter;
     const selectedModelName =
       effectiveScope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+        : settings.publicLlm.adapters[selectedPublicAdapter].model;
 
     const currentActiveMonth =
       targetMonth ?? settingsRef.current.contextCache.activeMonth;
@@ -1917,8 +2028,8 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex mica-canvas text-slate-900 dark:text-slate-100 select-none sm:select-auto">
-      {/* Left WinUI 3 NavigationView Rail (Adjustable & Resizable) */}
-      {isLeftRailOpen && (
+      {/* Left WinUI 3 NavigationView Rail (Dev Mode ONLY — Hidden in Production Mode) */}
+      {!isProductionApp && isLeftRailOpen && (
         <>
           <aside
             style={{ width: leftRailWidth }}
@@ -1990,170 +2101,259 @@ export default function App() {
 
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* Fluent Top Menu Bar */}
-        <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-4">
-          {/* Zone 1: Left Rail Toggle + Title + Icon-only Top Navigation */}
-          <div className="flex items-center gap-2.5 min-w-0">
+        {isProductionApp ? (
+          /* Minimal Production Header: New Thread/Home + Watch-Out Timeline Toggle ONLY */
+          <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-4">
             <button
               type="button"
-              onClick={() => setIsLeftRailOpen((prev) => !prev)}
-              aria-label={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
-              title={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
-              aria-pressed={isLeftRailOpen}
-              className={`hidden md:inline-flex p-1.5 rounded-lg border transition-colors shrink-0 ${
-                isLeftRailOpen
-                  ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-                  : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-              style={isLeftRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+              onClick={handleStartNewThread}
+              title="Home / New Thread"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              <PanelLeft className="w-4 h-4" />
+              <WhatsAppSymbol className="w-5 h-5 shrink-0" />
+              <span>What&apos;s up</span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsSettingsOpen(false);
-                setActiveReportExchangeId(null);
-              }}
-              title="Home"
-              aria-label="Home"
-              className="md:hidden p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 shrink-0"
-              style={{ color: 'var(--pa-accent)' }}
-            >
-              <Home className="w-4 h-4" />
-            </button>
-            {(isSettingsOpen || activeReportRecord) && (
-              <span className="font-display text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
-                {isSettingsOpen ? 'Settings' : 'Reference Report'}
-              </span>
-            )}
 
-            <span
-              aria-hidden="true"
-              className="hidden md:inline-block h-4 w-px bg-slate-200/90 dark:bg-slate-700/80 mx-0.5 shrink-0"
-            />
-
-            <nav className="flex items-center gap-1 shrink-0" aria-label="Primary pages">
+            <div className="flex items-center gap-2 shrink-0">
+              {hasReportForRightPane && (
+                <button
+                  type="button"
+                  onClick={() => setIsContextRailOpen((prev) => !prev)}
+                  aria-label={isContextRailVisible ? 'Hide Watch Out Timeline' : 'Show Watch Out Timeline'}
+                  aria-pressed={isContextRailVisible}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    isContextRailVisible
+                      ? 'border-amber-400/70 bg-amber-500/15 text-amber-200'
+                      : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Watch Out</span>
+                  {activeCarefulDates.length > 0 && (
+                    <span className="rounded-md bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-200">
+                      {activeCarefulDates.length}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+          </header>
+        ) : (
+          /* Dev Mode Top Menu Bar */
+          <header className="h-14 shrink-0 px-4 sm:px-6 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-slate-900/75 backdrop-blur-xl flex items-center justify-between sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 sm:gap-4">
+            {/* Zone 1: Left Rail Toggle + Title + Icon-only Top Navigation */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setIsLeftRailOpen((prev) => !prev)}
+                aria-label={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+                title={isLeftRailOpen ? 'Hide left rail' : 'Show left rail'}
+                aria-pressed={isLeftRailOpen}
+                className={`hidden md:inline-flex p-1.5 rounded-lg border transition-colors shrink-0 ${
+                  isLeftRailOpen
+                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                    : 'border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+                style={isLeftRailOpen ? { color: 'var(--pa-accent-text)' } : undefined}
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => {
-                  setIsSettingsOpen((prev) => !prev);
+                  setIsSettingsOpen(false);
                   setActiveReportExchangeId(null);
                 }}
-                aria-label="Settings"
-                title="Settings"
-                aria-current={isSettingsOpen ? 'page' : undefined}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                  isSettingsOpen
-                    ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
-                    : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
-                }`}
-                style={isSettingsOpen ? { color: 'var(--pa-accent)' } : undefined}
+                title="Home"
+                aria-label="Home"
+                className="md:hidden p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 shrink-0"
+                style={{ color: 'var(--pa-accent)' }}
               >
-                <Settings className="w-4 h-4" />
+                <Home className="w-4 h-4" />
               </button>
-            </nav>
-          </div>
+              {(isSettingsOpen || activeReportRecord) && (
+                <span className="font-display text-sm font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">
+                  {isSettingsOpen ? 'Settings' : 'Reference Report'}
+                </span>
+              )}
 
-          {/* Zone 2: Private / Public Toggle in Top Menu Bar */}
-          <div
-            role="group"
-            aria-label="Conversation target"
-            title={
-              canSwitchScope
-                ? 'Choose Private or Public for your new thread'
-                : 'Private / Public switching is only available when starting a new thread'
-            }
-            className={`inline-flex items-center justify-self-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
-              canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
-            }`}
-          >
-            <button
-              type="button"
-              disabled={!canSwitchScope}
-              aria-pressed={displayedScope === 'private'}
-              onClick={() => {
-                if (canSwitchScope) setScope('private');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
-              } ${
-                displayedScope === 'private'
-                  ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
+              <span
+                aria-hidden="true"
+                className="hidden md:inline-block h-4 w-px bg-slate-200/90 dark:bg-slate-700/80 mx-0.5 shrink-0"
+              />
+
+              <nav className="flex items-center gap-1 shrink-0" aria-label="Primary pages">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsOpen((prev) => !prev);
+                    setActiveReportExchangeId(null);
+                  }}
+                  aria-label="Settings"
+                  title="Settings"
+                  aria-current={isSettingsOpen ? 'page' : undefined}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                    isSettingsOpen
+                      ? 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 shadow-xs'
+                      : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-white/80 dark:hover:bg-slate-800/80 hover:border-slate-200/80 dark:hover:border-slate-700/80'
+                  }`}
+                  style={isSettingsOpen ? { color: 'var(--pa-accent)' } : undefined}
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              </nav>
+            </div>
+
+            {/* Zone 2: Private / Public Toggle in Top Menu Bar */}
+            <div
+              role="group"
+              aria-label="Conversation target"
+              title={
+                canSwitchScope
+                  ? 'Choose Private or Public for your new thread'
+                  : 'Private / Public switching is only available when starting a new thread'
+              }
+              className={`inline-flex items-center justify-self-center p-1 rounded-lg bg-slate-200/70 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
+                canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
               }`}
             >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Private</span>
-            </button>
-            <button
-              type="button"
-              disabled={!canSwitchScope}
-              aria-pressed={displayedScope === 'public'}
-              onClick={() => {
-                if (canSwitchScope) setScope('public');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
-              } ${
-                displayedScope === 'public'
-                  ? 'bg-white dark:bg-slate-900 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
-              }`}
-              style={displayedScope === 'public' ? { color: 'var(--pa-accent-text)' } : undefined}
-            >
-              <Cloud className="w-3.5 h-3.5" />
-              <span>Public</span>
-            </button>
-          </div>
-
-          {/* Zone 3: Icon-Only Markdown Upload + Care Must Be Taken Toggle */}
-          <div className="flex items-center justify-end justify-self-end gap-1.5 shrink-0">
-            <input
-              ref={mdFileInputRef}
-              type="file"
-              accept=".md,.markdown,text/markdown,text/plain"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                void handleImportMarkdownFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => mdFileInputRef.current?.click()}
-              aria-label="Import Markdown report"
-              title="Import Markdown report (.md)"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-            </button>
-            {hasReportForRightPane && (
               <button
                 type="button"
+                disabled={!canSwitchScope}
+                aria-pressed={displayedScope === 'private'}
                 onClick={() => {
-                  setIsContextRailOpen((prev) => !prev);
+                  if (canSwitchScope) setScope('private');
                 }}
-                aria-label={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
-                title={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
-                aria-pressed={isContextRailVisible}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 cursor-pointer ${
-                  isContextRailVisible
-                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+                } ${
+                  displayedScope === 'private'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
                 }`}
-                style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
               >
-                <PanelRight className="w-4 h-4" />
+                <Lock className="w-3.5 h-3.5" />
+                <span>Private</span>
               </button>
-            )}
-          </div>
-        </header>
+              <button
+                type="button"
+                disabled={!canSwitchScope}
+                aria-pressed={displayedScope === 'public'}
+                onClick={() => {
+                  if (canSwitchScope) setScope('public');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+                } ${
+                  displayedScope === 'public'
+                    ? 'bg-white dark:bg-slate-900 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 disabled:hover:text-slate-600 dark:disabled:hover:text-slate-400'
+                }`}
+                style={displayedScope === 'public' ? { color: 'var(--pa-accent-text)' } : undefined}
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Public</span>
+              </button>
+            </div>
 
-        {/* Main Assistant Surface + Agent Session Sidebar */}
+            {/* Zone 3: Icon-Only Markdown Upload + Care Must Be Taken Toggle */}
+            <div className="flex items-center justify-end justify-self-end gap-1.5 shrink-0">
+              <input
+                ref={mdFileInputRef}
+                type="file"
+                accept=".md,.markdown,text/markdown,text/plain"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleImportMarkdownFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => mdFileInputRef.current?.click()}
+                aria-label="Import Markdown report"
+                title="Import Markdown report (.md)"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+              {hasReportForRightPane && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsContextRailOpen((prev) => !prev);
+                  }}
+                  aria-label={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
+                  title={isContextRailVisible ? 'Hide Care Must Be Taken' : 'Show Care Must Be Taken'}
+                  aria-pressed={isContextRailVisible}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors shrink-0 cursor-pointer ${
+                    isContextRailVisible
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                  style={isContextRailVisible ? { color: 'var(--pa-accent-text)' } : undefined}
+                >
+                  <PanelRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </header>
+        )}
+
+        {/* Main Assistant Surface */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
-          {isSettingsOpen ? (
+          {isProductionApp ? (
+            turns.length === 0 ? (
+              <ProductionStage1Three
+                activeMonthNum={settings.contextCache.activeMonth ?? new Date().getMonth() + 1}
+                activeYearNum={settings.contextCache.activeYear ?? new Date().getFullYear()}
+                activePromptDomain={activePromptDomain}
+                isSending={isSending}
+                switchingMonthKey={switchingMonthKey}
+                monthSwitchError={monthSwitchError}
+                onDismissMonthSwitchError={() => setMonthSwitchError(null)}
+                onPromptDomainChange={(activeDomain) =>
+                  setSettings((previous) => ({
+                    ...previous,
+                    promptBuilder: {
+                      ...previous.promptBuilder,
+                      activeDomain,
+                    },
+                  }))
+                }
+                onSelectQuickMonth={(month, year) => void handleQuickSelectMonth(month, year)}
+                onSubmitQuestion={(payload) =>
+                  void handleSendMessage({
+                    text: payload.text,
+                    inputMode: 'text',
+                    threadName: payload.threadName,
+                    promptDomain: payload.domain,
+                    isFollowUp: false,
+                    targetMonth: payload.month,
+                    targetYear: payload.year,
+                  })
+                }
+              />
+            ) : (
+              <ProductionCards3D
+                cards={productionStageData.cards}
+                readOutSections={productionStageData.readOutSections}
+                isWaitingForReply={productionStageData.isWaitingForReply}
+                errorDetail={productionStageData.errorDetail}
+                questionText={productionStageData.latestUserTurn?.content}
+                periodLabel={activeCarefulPeriodLabel}
+                domain={productionStageData.latestUserTurn?.promptDomain}
+                onCancelRequest={handleCancelRequest}
+                onRetry={() => {
+                  if (productionStageData.latestUserTurn) {
+                    void handleRetryExchange(productionStageData.latestUserTurn.id);
+                  }
+                }}
+                onStartNewThread={handleStartNewThread}
+              />
+            )
+          ) : isSettingsOpen ? (
             <SettingsPage
               settings={settings}
               onApplySettings={(next) => {
@@ -2280,225 +2480,312 @@ export default function App() {
             />
           )}
 
-          {/* Floating Right-Hand Careful Dates by Domain Drawer */}
+          {/* Floating Right-Hand Watch-Out Drawer */}
           <AnimatePresence>
-            {!isSettingsOpen &&
-              isContextRailVisible && (
-                <ContextMonitorRail
+            {isContextRailVisible &&
+              (isProductionApp ? (
+                <ProductionTimelinePanel
                   carefulDates={activeCarefulDates}
                   periodLabel={activeCarefulPeriodLabel}
                   onClose={() => setIsContextRailOpen(false)}
                 />
-              )}
+              ) : (
+                !isSettingsOpen && (
+                  <ContextMonitorRail
+                    carefulDates={activeCarefulDates}
+                    periodLabel={activeCarefulPeriodLabel}
+                    onClose={() => setIsContextRailOpen(false)}
+                  />
+                )
+              ))}
           </AnimatePresence>
         </div>
 
-        {/* Bottom Panel Drag Splitter */}
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize bottom status panel"
-          title="Drag up or down to resize bottom panel"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            startPaneResize('bottom', e.clientY, bottomBarHeight);
-          }}
-          className="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 group hover:bg-sky-500/15 transition-colors"
-        >
-          <span
-            className={`h-0.5 w-11 rounded-full transition-colors ${
-              activeResizer === 'bottom'
-                ? 'bg-sky-500'
-                : 'bg-slate-300/75 dark:bg-slate-700/75 group-hover:bg-sky-500/80'
-            }`}
-          />
-        </div>
+        {/* Bottom Panel Drag Splitter (Dev Mode ONLY) */}
+        {!isProductionApp && (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize bottom status panel"
+            title="Drag up or down to resize bottom panel"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              startPaneResize('bottom', e.clientY, bottomBarHeight);
+            }}
+            className="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center border-t border-slate-200/80 dark:border-slate-800/80 bg-white/75 dark:bg-slate-900/75 group hover:bg-sky-500/15 transition-colors"
+          >
+            <span
+              className={`h-0.5 w-11 rounded-full transition-colors ${
+                activeResizer === 'bottom'
+                  ? 'bg-sky-500'
+                  : 'bg-slate-300/75 dark:bg-slate-700/75 group-hover:bg-sky-500/80'
+              }`}
+            />
+          </div>
+        )}
 
-        {/* Bottom Panel Status Bar (Adjustable Height) */}
-        <footer
-          style={{ height: bottomBarHeight }}
-          className="shrink-0 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex flex-col justify-center gap-1.5 text-xs overflow-hidden"
-        >
-          <div className="flex items-center justify-between gap-3 min-w-0">
-            <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
+        {/* Bottom Panel Status Bar */}
+        {isProductionApp ? (
+          <footer className="h-9 shrink-0 px-4 sm:px-6 border-t border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0 text-slate-200">
               <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{
-                  backgroundColor:
-                    displayedScope === 'private' ? '#10B981' : 'var(--pa-accent)',
-                }}
+                className="w-2 h-2 rounded-full shrink-0 bg-sky-400"
                 aria-hidden="true"
               />
-              <span className="truncate font-medium">{connectedEngineText}</span>
-
-              {displayedScope === 'public' && (
-                <div
-                  role="group"
-                  aria-label="Public LLM provider toggle"
-                  title={
-                    canSwitchScope
-                      ? 'Switch Public provider between Gemini and Fable'
-                      : 'Gemini / Fable switching is only available on Home before starting a report'
-                  }
-                  className={`inline-flex items-center p-0.5 rounded-md bg-slate-200/75 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
-                    canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
-                  }`}
-                >
-                  {(['gemini', 'fable'] as const).map((providerId) => {
-                    const isSelected = settings.publicLlm.activeAdapter === providerId;
-                    const label = providerId === 'gemini' ? 'Gemini' : 'Fable';
-                    return (
-                      <button
-                        key={providerId}
-                        type="button"
-                        disabled={!canSwitchScope}
-                        aria-pressed={isSelected}
-                        onClick={() => {
-                          if (!canSwitchScope) return;
-                          setSettings((previous) => ({
-                            ...previous,
-                            publicLlm: {
-                              ...previous.publicLlm,
-                              activeAdapter: providerId,
-                            },
-                          }));
-                        }}
-                        className={`px-2 py-0.5 rounded text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
-                          !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
-                        } ${
-                          isSelected
-                            ? 'bg-white dark:bg-slate-900 shadow-2xs text-slate-900 dark:text-white'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                        }`}
-                        style={isSelected ? { color: 'var(--pa-accent-text)' } : undefined}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <span className="truncate font-medium text-xs">
+                Public ·{' '}
+                {(settings.publicLlm.activeAdapter === 'fable' ? 'Fable' : 'Gemini')}
+              </span>
+              <div
+                role="group"
+                aria-label="Public LLM provider toggle"
+                title={
+                  canSwitchScope
+                    ? 'Switch Public provider between Gemini and Fable'
+                    : 'Gemini / Fable switching is only available on Home before starting a report'
+                }
+                className={`inline-flex items-center p-0.5 rounded-md bg-slate-800/95 border border-slate-700/80 shrink-0 transition-opacity ${
+                  canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
+                }`}
+              >
+                {(['gemini', 'fable'] as const).map((providerId) => {
+                  const activeProdAdapter =
+                    settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+                  const isSelected = activeProdAdapter === providerId;
+                  const label = providerId === 'gemini' ? 'Gemini' : 'Fable';
+                  return (
+                    <button
+                      key={providerId}
+                      type="button"
+                      disabled={!canSwitchScope}
+                      aria-pressed={isSelected}
+                      onClick={() => {
+                        if (!canSwitchScope) return;
+                        setSettings((previous) => ({
+                          ...previous,
+                          publicLlm: {
+                            ...previous.publicLlm,
+                            activeAdapter: providerId,
+                          },
+                        }));
+                      }}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
+                        !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+                      } ${
+                        isSelected
+                          ? 'bg-slate-950 text-sky-300 shadow-2xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
-              {hasCompletedReport && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyReportPrompt()}
-                    title="Copy System Instruction, Reference Context, and Question"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 dark:border-slate-700/85 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 font-sans text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+            <span
+              className={`font-mono text-[11px] tabular-nums ${
+                displayedTelemetry.phase === 'Thinking'
+                  ? 'text-sky-400 font-semibold'
+                  : displayedTelemetry.phase === 'Error'
+                    ? 'text-red-400 font-semibold'
+                    : displayedTelemetry.phase === 'Ready'
+                      ? 'text-emerald-400 font-semibold'
+                      : 'text-slate-400'
+              }`}
+            >
+              {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                : displayedTelemetry.phase}
+            </span>
+          </footer>
+        ) : (
+          <footer
+            style={{ height: bottomBarHeight }}
+            className="shrink-0 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl flex flex-col justify-center gap-1.5 text-xs overflow-hidden"
+          >
+            <div className="flex items-center justify-between gap-3 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 text-slate-600 dark:text-slate-300">
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{
+                    backgroundColor:
+                      displayedScope === 'private' ? '#10B981' : 'var(--pa-accent)',
+                  }}
+                  aria-hidden="true"
+                />
+                <span className="truncate font-medium">{connectedEngineText}</span>
+
+                {displayedScope === 'public' && (
+                  <div
+                    role="group"
+                    aria-label="Public LLM provider toggle"
+                    title={
+                      canSwitchScope
+                        ? 'Switch Public provider between Gemini and Fable'
+                        : 'Gemini / Fable switching is only available on Home before starting a report'
+                    }
+                    className={`inline-flex items-center p-0.5 rounded-md bg-slate-200/75 dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shrink-0 transition-opacity ${
+                      canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
+                    }`}
                   >
-                    {promptCopied ? (
-                      <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    ) : (
-                      <Copy className="w-3 h-3 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                    )}
-                    <span>{promptCopied ? 'Copied' : 'Copy Prompt'}</span>
-                  </button>
-                  <span className="text-slate-300 dark:text-slate-700">|</span>
-                </>
-              )}
-              <span
-                className={
-                  displayedTelemetry.phase === 'Thinking'
-                    ? 'text-sky-600 dark:text-sky-400 font-semibold'
-                    : displayedTelemetry.phase === 'Error'
-                      ? 'text-red-600 dark:text-red-400 font-semibold'
-                      : displayedTelemetry.phase === 'Ready'
-                        ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                        : 'text-slate-500 dark:text-slate-400'
-                }
-              >
-                {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
-                  ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                  : displayedTelemetry.phase}
-              </span>
-              <span className="text-slate-300 dark:text-slate-700">|</span>
-              {displayedTelemetry.refContextDomain && (
-                <>
-                  <span
-                    title={`Reference Context fetched for domain=${displayedTelemetry.refContextDomain}: ${displayedTelemetry.refContextTokens !== undefined ? `${displayedTelemetry.refContextTokens.toLocaleString()} tokens (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} chars)` : 'fetching…'}`}
-                    className="font-semibold"
-                    style={{ color: 'var(--pa-accent-text)' }}
-                  >
-                    Domain ({displayedTelemetry.refContextDomain}):{' '}
+                    {(['gemini', 'fable'] as const).map((providerId) => {
+                      const isSelected = settings.publicLlm.activeAdapter === providerId;
+                      const label = providerId === 'gemini' ? 'Gemini' : 'Fable';
+                      return (
+                        <button
+                          key={providerId}
+                          type="button"
+                          disabled={!canSwitchScope}
+                          aria-pressed={isSelected}
+                          onClick={() => {
+                            if (!canSwitchScope) return;
+                            setSettings((previous) => ({
+                              ...previous,
+                              publicLlm: {
+                                ...previous.publicLlm,
+                                activeAdapter: providerId,
+                              },
+                            }));
+                          }}
+                          className={`px-2 py-0.5 rounded text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
+                            !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
+                          } ${
+                            isSelected
+                              ? 'bg-white dark:bg-slate-900 shadow-2xs text-slate-900 dark:text-white'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                          style={isSelected ? { color: 'var(--pa-accent-text)' } : undefined}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
+                {hasCompletedReport && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyReportPrompt()}
+                      title="Copy System Instruction, Reference Context, and Question"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 dark:border-slate-700/85 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 font-sans text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+                    >
+                      {promptCopied ? (
+                        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <Copy className="w-3 h-3 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                      )}
+                      <span>{promptCopied ? 'Copied' : 'Copy Prompt'}</span>
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                  </>
+                )}
+                <span
+                  className={
+                    displayedTelemetry.phase === 'Thinking'
+                      ? 'text-sky-600 dark:text-sky-400 font-semibold'
+                      : displayedTelemetry.phase === 'Error'
+                        ? 'text-red-600 dark:text-red-400 font-semibold'
+                        : displayedTelemetry.phase === 'Ready'
+                          ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                          : 'text-slate-500 dark:text-slate-400'
+                  }
+                >
+                  {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                    ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                    : displayedTelemetry.phase}
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                {displayedTelemetry.refContextDomain && (
+                  <>
+                    <span
+                      title={`Reference Context fetched for domain=${displayedTelemetry.refContextDomain}: ${displayedTelemetry.refContextTokens !== undefined ? `${displayedTelemetry.refContextTokens.toLocaleString()} tokens (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} chars)` : 'fetching…'}`}
+                      className="font-semibold"
+                      style={{ color: 'var(--pa-accent-text)' }}
+                    >
+                      Domain ({displayedTelemetry.refContextDomain}):{' '}
+                      {displayedTelemetry.refContextTokens !== undefined
+                        ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok`
+                        : 'fetching…'}
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                  </>
+                )}
+                <span
+                  title={
+                    displayedTelemetry.totalTokens !== undefined
+                      ? `Input: ${displayedTelemetry.inputTokens?.toLocaleString() ?? '—'} · Output: ${displayedTelemetry.outputTokens?.toLocaleString() ?? '—'} · Total: ${displayedTelemetry.totalTokens.toLocaleString()}${sessionTokens > 0 ? ` · Session: ${sessionTokens.toLocaleString()}` : ''}`
+                      : 'Total tokens (input + output)'
+                  }
+                >
+                  Tokens:{' '}
+                  {displayedTelemetry.isThinking && displayedTelemetry.inputTokens !== undefined
+                    ? `~${displayedTelemetry.inputTokens.toLocaleString()} in`
+                    : displayedTelemetry.totalTokens !== undefined
+                      ? displayedTelemetry.totalTokens.toLocaleString()
+                      : sessionTokens > 0
+                        ? sessionTokens.toLocaleString()
+                        : '—'}
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <span>
+                  {displayedTelemetry.tokensPerSecond !== undefined
+                    ? `${displayedTelemetry.tokensPerSecond.toFixed(1)} tok/s`
+                    : '— tok/s'}
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <span>
+                  Time:{' '}
+                  {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                    ? `${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                    : displayedTelemetry.durationMs !== undefined
+                      ? `${(displayedTelemetry.durationMs / 1000).toFixed(2)}s`
+                      : '—'}
+                </span>
+                <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
+                <span className="hidden xl:inline text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
+                  {configFileInfo.filePath}
+                </span>
+              </div>
+            </div>
+
+            {bottomBarHeight >= 54 && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/70 dark:border-slate-800/70 select-text">
+                {displayedTelemetry.refContextDomain && (
+                  <span>
+                    Ref ({displayedTelemetry.refContextDomain}):{' '}
                     {displayedTelemetry.refContextTokens !== undefined
-                      ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok`
+                      ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} ch)`
                       : 'fetching…'}
                   </span>
-                  <span className="text-slate-300 dark:text-slate-700">|</span>
-                </>
-              )}
-              <span
-                title={
-                  displayedTelemetry.totalTokens !== undefined
-                    ? `Input: ${displayedTelemetry.inputTokens?.toLocaleString() ?? '—'} · Output: ${displayedTelemetry.outputTokens?.toLocaleString() ?? '—'} · Total: ${displayedTelemetry.totalTokens.toLocaleString()}${sessionTokens > 0 ? ` · Session: ${sessionTokens.toLocaleString()}` : ''}`
-                    : 'Total tokens (input + output)'
-                }
-              >
-                Tokens:{' '}
-                {displayedTelemetry.isThinking && displayedTelemetry.inputTokens !== undefined
-                  ? `~${displayedTelemetry.inputTokens.toLocaleString()} in`
-                  : displayedTelemetry.totalTokens !== undefined
-                    ? displayedTelemetry.totalTokens.toLocaleString()
-                    : sessionTokens > 0
-                      ? sessionTokens.toLocaleString()
-                      : '—'}
-              </span>
-              <span className="text-slate-300 dark:text-slate-700">|</span>
-              <span>
-                {displayedTelemetry.tokensPerSecond !== undefined
-                  ? `${displayedTelemetry.tokensPerSecond.toFixed(1)} tok/s`
-                  : '— tok/s'}
-              </span>
-              <span className="text-slate-300 dark:text-slate-700">|</span>
-              <span>
-                Time:{' '}
-                {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
-                  ? `${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                  : displayedTelemetry.durationMs !== undefined
-                    ? `${(displayedTelemetry.durationMs / 1000).toFixed(2)}s`
-                    : '—'}
-              </span>
-              <span className="hidden xl:inline text-slate-300 dark:text-slate-700">|</span>
-              <span className="hidden xl:inline text-slate-500 dark:text-slate-400 truncate max-w-[180px]">
-                {configFileInfo.filePath}
-              </span>
-            </div>
-          </div>
-
-          {bottomBarHeight >= 54 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-200/70 dark:border-slate-800/70 select-text">
-              {displayedTelemetry.refContextDomain && (
+                )}
                 <span>
-                  Ref ({displayedTelemetry.refContextDomain}):{' '}
-                  {displayedTelemetry.refContextTokens !== undefined
-                    ? `${displayedTelemetry.refContextTokens.toLocaleString()} tok (${(displayedTelemetry.refContextChars ?? 0).toLocaleString()} ch)`
-                    : 'fetching…'}
+                  Prompt Size:{' '}
+                  {displayedTelemetry.promptChars > 0
+                    ? `${displayedTelemetry.promptChars.toLocaleString()} ch (${displayedTelemetry.historyTurnsUsed}t)`
+                    : '—'}
                 </span>
-              )}
-              <span>
-                Prompt Size:{' '}
-                {displayedTelemetry.promptChars > 0
-                  ? `${displayedTelemetry.promptChars.toLocaleString()} ch (${displayedTelemetry.historyTurnsUsed}t)`
-                  : '—'}
-              </span>
-              <span>
-                Input: {displayedTelemetry.inputTokens !== undefined ? displayedTelemetry.inputTokens.toLocaleString() : '—'}
-              </span>
-              <span>
-                Output: {displayedTelemetry.outputTokens !== undefined ? displayedTelemetry.outputTokens.toLocaleString() : '—'}
-              </span>
-              <span>
-                Session: {sessionTokens.toLocaleString()} tok
-              </span>
-              <span className={displayedTelemetry.lastError ? 'text-red-600 dark:text-red-400 truncate' : 'truncate'}>
-                Status: {displayedTelemetry.lastError || 'Healthy · No active errors'}
-              </span>
-            </div>
-          )}
-        </footer>
+                <span>
+                  Input: {displayedTelemetry.inputTokens !== undefined ? displayedTelemetry.inputTokens.toLocaleString() : '—'}
+                </span>
+                <span>
+                  Output: {displayedTelemetry.outputTokens !== undefined ? displayedTelemetry.outputTokens.toLocaleString() : '—'}
+                </span>
+                <span>
+                  Session: {sessionTokens.toLocaleString()} tok
+                </span>
+                <span className={displayedTelemetry.lastError ? 'text-red-600 dark:text-red-400 truncate' : 'truncate'}>
+                  Status: {displayedTelemetry.lastError || 'Healthy · No active errors'}
+                </span>
+              </div>
+            )}
+          </footer>
+        )}
       </div>
 
       {/* Reply Arrival Toast Notification */}

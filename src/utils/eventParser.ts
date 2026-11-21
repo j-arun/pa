@@ -122,7 +122,7 @@ function inferIconFromText(text: string, fallbackIndex: number): EventCardIconTy
 function cleanPlainSummary(raw: string): string {
   return raw
     .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/\|[^\n]*\|/g, ' ')
+    .replace(/^\s*\|[^\n]*\|\s*$/gm, ' ')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/[*_`~>]/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -275,11 +275,22 @@ function normalizeIcon(
   return inferIconFromText(hintText, index);
 }
 
-const DATE_RANGE_REGEX =
-  /\b(?:\d{4}-\d{2}-\d{2}(?:\s*(?:to|–|-|through)\s*\d{4}-\d{2}-\d{2})?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*(?:to|–|-|through)\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+)?\d{1,2}(?:st|nd|rd|th)?)?(?:,?\s*\d{4})?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b/i;
+const MONTH_WORD_PATTERN =
+  '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Sept|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+
+const DATE_RANGE_REGEX = new RegExp(
+  `\\b(?:` +
+    `\\d{4}-\\d{2}-\\d{2}(?:\\s*(?:to|–|-|—|through|thru)\\s*\\d{4}-\\d{2}-\\d{2})?|` +
+    `${MONTH_WORD_PATTERN}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s*(?:to|–|-|—|through|thru|&|,)\\s*(?:${MONTH_WORD_PATTERN}\\s+)?\\d{1,2}(?:st|nd|rd|th)?)*(?:,?\\s*\\d{4})?|` +
+    `\\d{1,2}(?:st|nd|rd|th)?(?:\\s*(?:to|–|-|—|through|thru|&|,)\\s*\\d{1,2}(?:st|nd|rd|th)?)*\\s+${MONTH_WORD_PATTERN}(?:,?\\s*\\d{4})?|` +
+    `(?:early|mid|late)[\\s-]+${MONTH_WORD_PATTERN}(?:,?\\s*\\d{4})?|` +
+    `${MONTH_WORD_PATTERN}\\s+\\d{4}` +
+  `)\\b`,
+  'i',
+);
 
 const LIKELIHOOD_REGEX =
-  /\b(?:(?:very\s+high|high|moderate-high|moderate|medium|low|strong|probable|likely)\s*(?:likelihood|probability|rating|chance)?\s*(?:[:·(\-]\s*\d{1,3}%\)?)?|\d{1,3}%\s*(?:likelihood|probability|rating|chance|confidence)?)\b/i;
+  /\b(?:(?:very\s+high|high(?:ly)?\s*likely|mostly\s*likely|moderate[-\s]*(?:to[-\s]*high|high)?|medium|low|strong|probable|likely)\s*(?:likelihood|probability|rating|chance)?(?:\s*[:·(\-–—]\s*(?:\d{1,3}%|rating\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)\)?)?|\d{1,3}%(?:\s*(?:likelihood|probability|rating|chance|confidence))?(?:\s*[·|/-]\s*rating\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)?|rating\s*[:#\-]?\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)(?=$|[\s.,;|•–—])/i;
 
 function extractDateAndLikelihood(text: string): {
   dateRange?: string;
@@ -294,9 +305,27 @@ function extractDateAndLikelihood(text: string): {
 }
 
 function isOverviewHeading(heading: string): boolean {
-  return /^(?:overview|executive summary|summary|introduction|background|context|conclusion|key takeaways|read[\s_-]*out|answers?|questions?\s*(?:&|and)\s*answers?)$/i.test(
-    heading.trim(),
+  const trimmed = heading.trim();
+  return (
+    /^(?:overview|executive\s+summary|month(?:ly)?\s+summary|two[-\s]?months?\s+(?:summary|explanation|outlook)|2[-\s]?months?\s+(?:summary|explanation|outlook)|summary|introduction|background|context|conclusion|key\s+takeaways?|read[\s_-]*out|answers?(?:\s+to\b.*)?|questions?\s*(?:&|and)\s*answers?|timeline\s*(?:&|and)\s*rating\s*matrix|care\s+must\s+be\s+taken)$/i.test(
+      trimmed,
+    ) ||
+    /^(?:\d+[.)]\s*)?(?:overview|executive\s+summary|month(?:ly)?\s+summary|summary|introduction|conclusion|read[\s_-]*out|answers?)\b/i.test(
+      trimmed,
+    )
   );
+}
+
+function isBreakdownCategorySubheading(heading: string): boolean {
+  const cleaned = cleanLineKeepText(heading);
+  if (!cleaned) return false;
+  if (/^(?:detailed\s+)?[a-z\s&/,-]{2,42}\s+(?:domain\s+)?event\s+breakdown\b/i.test(cleaned)) {
+    return true;
+  }
+  if (/^(?:detailed\s+)?(?:career|retail(?:\s+domain)?|family|domestic|love|relationship|health|finance)\s+(?:domain\s+)?(?:events?|event\s+breakdown|cards?)\b/i.test(cleaned)) {
+    return true;
+  }
+  return false;
 }
 
 const WHEN_LABEL_REGEX =
@@ -306,47 +335,95 @@ const PROB_LABEL_REGEX =
   /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:probability(?:\s+rating)?|likelihood(?:\s+rating)?|chance|confidence|rating)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
 
 const HOW_LABEL_REGEX =
-  /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:how(?:\s+it\s+(?:will\s+)?happen(?:s)?)?|what(?:\s+happens|\s+will\s+happen)?|details?|description|mechanism|explanation|breakdown|outcome)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+  /^(?:[-*•+]\s*)?(?:\*\*|__)?(?:how(?:\s+it\s+(?:will\s+)?happen(?:s)?)?|what(?:\s+happens|\s+will\s+happen)?|details?|description|mechanism|explanation|breakdown|outcome|care\s+plan|precautions?)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
 
-function parseEventHeadingLine(line: string, sectionHeadingLevel: number): string | null {
+function parseEventHeadingLine(
+  line: string,
+  sectionHeadingLevel: number,
+): { title: string; inlineRemainder?: string } | null {
   const headingMatch = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
   if (headingMatch) {
     const level = headingMatch[1].length;
     const text = cleanLineKeepText(headingMatch[2]);
     if (!text) return null;
-    if (level > sectionHeadingLevel || /^event\s+\d+\b/i.test(text)) {
-      return text;
+    if (level > sectionHeadingLevel || /^event\s*#?\s*\d+\b/i.test(text)) {
+      return { title: text };
     }
     return null;
   }
 
-  const boldEventMatch = line.match(
-    /^\s*(?:[-*•]\s*|\d+\.\s*)?(?:\*\*|__)(Event\s+\d+(?:\s*[:\-–—.]\s*[^*_]+)?)(?:\*\*|__)\s*:?\s*$/i,
+  // "- **Event 1: Title** — details" or "- **Event 1** | Nov 12 | 80%"
+  const boldEventWithRemainderMatch = line.match(
+    /^\s*(?:[-*•]\s*|\d+[.)]\s*)?(?:\*\*|__)(Event\s*#?\s*\d+(?:\s*[:\-–—.,]\s*[^*_\n]+)?)(?:\*\*|__)\s*(?:[:\-–—|,]\s*(.+))?$/i,
   );
-  if (boldEventMatch) {
-    return cleanLineKeepText(boldEventMatch[1]);
+  if (boldEventWithRemainderMatch) {
+    const title = cleanLineKeepText(boldEventWithRemainderMatch[1]);
+    const remainder = boldEventWithRemainderMatch[2]?.trim();
+    if (title) {
+      return { title, ...(remainder ? { inlineRemainder: remainder } : {}) };
+    }
   }
 
+  // "- Event 1, Date Range, Prob, Mechanism" or "- Event 1: Title — ..."
   const plainEventMatch = line.match(
-    /^\s*(?:[-*•]\s*|\d+\.\s*)?(Event\s+\d+\s*[:\-–—]\s*.+)$/i,
+    /^\s*(?:[-*•]\s*|\d+[.)]\s*)?(Event\s*#?\s*\d+\s*[:\-–—|,]\s*.+)$/i,
   );
   if (plainEventMatch) {
-    return cleanLineKeepText(plainEventMatch[1]);
+    const raw = plainEventMatch[1].trim();
+    const parts = raw.split(/\s*(?:\||—|–|:\s+|\s+-\s+|,\s+)\s*/);
+    if (parts.length >= 2) {
+      const firstPart = cleanLineKeepText(parts[0]);
+      const secondPart = cleanLineKeepText(parts[1]);
+      let titleCandidate = firstPart;
+      let consumedCount = 1;
+
+      if (/^event\s*#?\s*\d+$/i.test(firstPart)) {
+        if (secondPart && !DATE_RANGE_REGEX.test(secondPart) && !LIKELIHOOD_REGEX.test(secondPart)) {
+          titleCandidate = cleanLineKeepText(`${firstPart}: ${secondPart}`);
+          consumedCount = 2;
+        } else {
+          // Format: "Event 2, 2026-12-03 to 2026-12-11, Moderate · 72%, Mechanism..."
+          const mechanismPart = parts
+            .slice(1)
+            .map((p) => cleanLineKeepText(p))
+            .find(
+              (p) =>
+                p.length >= 8 &&
+                !DATE_RANGE_REGEX.test(p) &&
+                !LIKELIHOOD_REGEX.test(p) &&
+                !/^(?:rating\s*\d|moderate|high|low)/i.test(p),
+            );
+          if (mechanismPart) {
+            titleCandidate = truncateText(mechanismPart, 64);
+          }
+        }
+      }
+      const remainder = parts.slice(consumedCount).join(' — ').trim();
+      return {
+        title: titleCandidate,
+        ...(remainder ? { inlineRemainder: remainder } : {}),
+      };
+    }
+    return { title: cleanLineKeepText(raw) };
   }
 
-  const boldStandaloneMatch = line.match(
-    /^\s*(?:[-*•]\s*|\d+\.\s*)?(?:\*\*|__)([^*\n_]{4,96})(?:\*\*|__)\s*:?\s*$/,
+  // Standalone bold title or bulleted bold title with optional inline remainder ("- **Career Push**: Nov 12...")
+  const boldBulletOrStandaloneMatch = line.match(
+    /^\s*(?:[-*•]\s*|\d+[.)]\s*)?(?:\*\*|__)([^*\n_]{4,110})(?:\*\*|__)\s*(?:[:\-–—|]\s*(.+))?$/,
   );
-  if (boldStandaloneMatch) {
-    const inner = cleanLineKeepText(boldStandaloneMatch[1]);
+  if (boldBulletOrStandaloneMatch) {
+    const inner = cleanLineKeepText(boldBulletOrStandaloneMatch[1]);
+    const remainder = boldBulletOrStandaloneMatch[2]?.trim();
     if (
       inner &&
       !WHEN_LABEL_REGEX.test(`${inner}:`) &&
       !PROB_LABEL_REGEX.test(`${inner}:`) &&
       !HOW_LABEL_REGEX.test(`${inner}:`) &&
-      !isOverviewHeading(inner)
+      !isOverviewHeading(inner) &&
+      !isCautionSectionHeading(inner) &&
+      !DATE_RANGE_REGEX.test(inner.replace(/^dates?\s*[:\-]?\s*/i, ''))
     ) {
-      return inner;
+      return { title: inner, ...(remainder ? { inlineRemainder: remainder } : {}) };
     }
   }
 
@@ -448,6 +525,189 @@ function parseSingleEventBlock(
   );
 }
 
+function parseEventsFromSectionSlice(
+  sectionLines: string[],
+  sectionHeading: string,
+  sectionLevel: number,
+  startIndex: number,
+  fallbackDomain?: PromptDomain,
+): EventCardItem[] {
+  const eventBlocks: Array<{
+    title: string;
+    contextHeading: string;
+    bodyLines: string[];
+  }> = [];
+  let currentTitle: string | null = null;
+  let currentBody: string[] = [];
+  let activeCategoryHeading = sectionHeading;
+
+  for (let idx = 0; idx < sectionLines.length; idx += 1) {
+    const line = sectionLines[idx];
+    const headingMatch = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const headingText = cleanLineKeepText(headingMatch[2]);
+      if (isOverviewHeading(headingText) || isCautionSectionHeading(headingText)) {
+        if (currentTitle) {
+          eventBlocks.push({
+            title: currentTitle,
+            contextHeading: activeCategoryHeading,
+            bodyLines: currentBody,
+          });
+          currentTitle = null;
+          currentBody = [];
+        }
+        continue;
+      }
+      if (isBreakdownCategorySubheading(headingText) && level >= sectionLevel) {
+        if (currentTitle) {
+          eventBlocks.push({
+            title: currentTitle,
+            contextHeading: activeCategoryHeading,
+            bodyLines: currentBody,
+          });
+          currentTitle = null;
+          currentBody = [];
+        }
+        activeCategoryHeading = headingText;
+        continue;
+      }
+    }
+
+    const detected = parseEventHeadingLine(line, sectionLevel);
+    if (detected) {
+      if (currentTitle) {
+        eventBlocks.push({
+          title: currentTitle,
+          contextHeading: activeCategoryHeading,
+          bodyLines: currentBody,
+        });
+      }
+      currentTitle = detected.title;
+      currentBody = detected.inlineRemainder ? [detected.inlineRemainder] : [];
+      continue;
+    }
+    if (currentTitle !== null) {
+      currentBody.push(line);
+    }
+  }
+
+  if (currentTitle) {
+    eventBlocks.push({
+      title: currentTitle,
+      contextHeading: activeCategoryHeading,
+      bodyLines: currentBody,
+    });
+  }
+
+  const parsedBlocks = eventBlocks
+    .filter(
+      (b) =>
+        !isOverviewHeading(b.title) &&
+        !isCautionSectionHeading(b.title) &&
+        !isBreakdownCategorySubheading(b.title),
+    )
+    .map((block, idx) =>
+      parseSingleEventBlock(
+        block.title,
+        block.bodyLines,
+        block.contextHeading || sectionHeading,
+        startIndex + idx,
+        fallbackDomain,
+      ),
+    );
+
+  if (parsedBlocks.length > 0) {
+    return parsedBlocks;
+  }
+
+  // Markdown table fallback inside the Event Cards / Breakdown / Matrix section
+  const tableEvents: EventCardItem[] = [];
+  for (let i = 0; i < sectionLines.length; i += 1) {
+    const line = sectionLines[i];
+    if (!/^\s*\|.*\|\s*$/.test(line)) continue;
+    if (i + 1 >= sectionLines.length || !/^\s*\|[\s|:-]+\|\s*$/.test(sectionLines[i + 1].trim())) {
+      continue;
+    }
+    const parseRow = (row: string) =>
+      row
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((c) => cleanLineKeepText(c));
+    const headers = parseRow(line).map((h) => h.toLowerCase());
+    const dataRows: string[][] = [];
+    let j = i + 2;
+    while (j < sectionLines.length && /^\s*\|.*\|\s*$/.test(sectionLines[j])) {
+      dataRows.push(parseRow(sectionLines[j]));
+      j += 1;
+    }
+    i = j - 1;
+
+    const whenIdx = headers.findIndex((h) => /when|date|time|window|period/.test(h));
+    const probIdx = headers.findIndex((h) => /prob|likel|chance|conf/.test(h));
+    const ratingIdx = headers.findIndex((h) => /\brating\b/.test(h));
+    const howIdx = headers.findIndex((h) => /how|detail|what|desc|summary|explain|trigger|mechanism|organ/.test(h));
+    let titleIdx = headers.findIndex((h) => /event|issue|title|name|milestone|heading/.test(h));
+    if (titleIdx < 0) {
+      titleIdx = whenIdx === 0 && headers.length > 1 ? 1 : 0;
+    }
+
+    for (let r = 0; r < dataRows.length; r += 1) {
+      const cells = dataRows[r];
+      if (cells.length === 0 || cells.every((c) => !c)) continue;
+      const title = cells[titleIdx] || `Event ${startIndex + tableEvents.length + 1}`;
+      const whenText = whenIdx >= 0 ? cells[whenIdx] : undefined;
+      const probParts = [
+        probIdx >= 0 ? cells[probIdx] : '',
+        ratingIdx >= 0 && ratingIdx !== probIdx ? `Rating ${cells[ratingIdx]}` : '',
+      ].filter(Boolean);
+      const probText = probParts.join(' · ') || undefined;
+      const howText =
+        howIdx >= 0
+          ? cells[howIdx]
+          : cells
+              .filter(
+                (_, ci) =>
+                  ci !== titleIdx && ci !== whenIdx && ci !== probIdx && ci !== ratingIdx,
+              )
+              .join(' — ');
+      const { category, icon } = inferCategoryAndIcon(
+        `${sectionHeading} ${title} ${howText}`,
+        fallbackDomain,
+      );
+      tableEvents.push(
+        normalizeEventCardItem(
+          {
+            id: `evt-${startIndex + tableEvents.length + 1}`,
+            title,
+            summary: howText || title,
+            how: howText || title,
+            category,
+            dateRange: whenText,
+            when: whenText,
+            likelihood: probText,
+            probability: probText,
+            timeframe: whenText,
+            icon,
+          },
+          startIndex + tableEvents.length,
+        ),
+      );
+    }
+  }
+
+  return tableEvents;
+}
+
+function isExplicitBreakdownSectionHeading(heading: string): boolean {
+  return (
+    /(?:\bevent\s+cards?\b|\bevent\s+breakdown\b|detailed\s+.{0,48}\bevents?\b)/i.test(heading) &&
+    !/\btimeline\s*(?:&|and)\s*rating\s*matrix\b/i.test(heading)
+  );
+}
+
 function extractBreakdownSectionEvents(
   cleanMarkdown: string,
   fallbackDomain?: PromptDomain,
@@ -479,142 +739,111 @@ function extractBreakdownSectionEvents(
     }
   }
 
-  // Filter major report sections (not individual "Event 1" / "Event 2" headings)
   const nonEventHeadings = allHeadings.filter(
-    (h) => !/^event\s+\d+\b/i.test(h.text),
+    (h) => !/^event\s*#?\s*\d+\b/i.test(h.text),
   );
 
-  // 1. Prefer an explicit "Detailed <Domain> Event Breakdown" or "Event Breakdown" heading
-  let targetHeading = nonEventHeadings.find((h) =>
-    /(?:detailed\s+.{0,40}\bevent\s+breakdown|\bevent\s+breakdown\b)/i.test(h.text),
+  // 1. Collect all explicit Event Cards / Detailed <Domain> Event Breakdown sections,
+  // preferring top-level "Event Cards" containers if they wrap nested domain breakdown headings.
+  const explicitHeadings = nonEventHeadings.filter((h) =>
+    isExplicitBreakdownSectionHeading(h.text),
   );
 
-  // 2. Otherwise fall back to the 3rd major section heading in the report
-  if (!targetHeading && nonEventHeadings.length >= 3) {
+  const sectionSpan = (heading: HeadingEntry) => {
+    const nextPeer = allHeadings.find(
+      (h) =>
+        h.lineIdx > heading.lineIdx &&
+        h.level <= heading.level &&
+        !/^event\s*#?\s*\d+\b/i.test(h.text),
+    );
+    return {
+      startLine: heading.lineIdx + 1,
+      endLine: nextPeer ? nextPeer.lineIdx : lines.length,
+    };
+  };
+
+  const selectedTargets: Array<HeadingEntry & { startLine: number; endLine: number }> = [];
+  for (const h of explicitHeadings) {
+    const span = sectionSpan(h);
+    const alreadyCovered = selectedTargets.some(
+      (parent) => h.lineIdx >= parent.startLine && h.lineIdx < parent.endLine,
+    );
+    if (!alreadyCovered) {
+      selectedTargets.push({ ...h, ...span });
+    }
+  }
+
+  // 2. Fallback to the 3rd major section heading if no explicit Event Cards / Breakdown heading matched
+  if (selectedTargets.length === 0 && nonEventHeadings.length >= 3) {
     const preferredLevel = nonEventHeadings.some((h) => h.level === 2)
       ? 2
       : nonEventHeadings.some((h) => h.level === 3)
         ? 3
         : nonEventHeadings[0].level;
     const levelSections = nonEventHeadings.filter((h) => h.level === preferredLevel);
-    targetHeading = levelSections[2] ?? nonEventHeadings[2];
-  }
-
-  let sectionLines: string[] = [];
-  let sectionHeading = '';
-  let sectionLevel = 2;
-
-  if (targetHeading) {
-    sectionHeading = targetHeading.text;
-    sectionLevel = targetHeading.level;
-    const nextPeerHeading = allHeadings.find(
-      (h) =>
-        h.lineIdx > targetHeading!.lineIdx &&
-        h.level <= targetHeading!.level &&
-        !/^event\s+\d+\b/i.test(h.text),
-    );
-    const endIdx = nextPeerHeading ? nextPeerHeading.lineIdx : lines.length;
-    sectionLines = lines.slice(targetHeading.lineIdx + 1, endIdx);
-  } else {
-    // No structured sections found — check if inline Event 1..N blocks exist directly
-    sectionLines = lines;
-    sectionLevel = 2;
-  }
-
-  const eventBlocks: Array<{ title: string; bodyLines: string[] }> = [];
-  let currentTitle: string | null = null;
-  let currentBody: string[] = [];
-
-  for (const line of sectionLines) {
-    const detectedTitle = parseEventHeadingLine(line, sectionLevel);
-    if (detectedTitle) {
-      if (currentTitle) {
-        eventBlocks.push({ title: currentTitle, bodyLines: currentBody });
-      }
-      currentTitle = detectedTitle;
-      currentBody = [];
-      continue;
-    }
-    if (currentTitle !== null) {
-      currentBody.push(line);
+    const thirdHeading = levelSections[2] ?? nonEventHeadings[2];
+    if (
+      thirdHeading &&
+      !isCautionSectionHeading(thirdHeading.text) &&
+      !isOverviewHeading(thirdHeading.text)
+    ) {
+      selectedTargets.push({ ...thirdHeading, ...sectionSpan(thirdHeading) });
     }
   }
 
-  if (currentTitle) {
-    eventBlocks.push({ title: currentTitle, bodyLines: currentBody });
-  }
+  const collectedEvents: EventCardItem[] = [];
+  const primarySectionHeading = selectedTargets[0]?.text || '';
 
-  const parsedBlocks = eventBlocks
-    .filter((b) => !isOverviewHeading(b.title))
-    .map((block, idx) =>
-      parseSingleEventBlock(
-        block.title,
-        block.bodyLines,
-        sectionHeading,
-        idx,
-        fallbackDomain,
-      ),
-    );
-
-  if (parsedBlocks.length > 0) {
-    return { events: parsedBlocks, sectionHeading };
-  }
-
-  // Markdown table fallback inside the 3rd / Event Breakdown section
-  const tableLines = sectionLines.filter((l) => /^\s*\|.*\|\s*$/.test(l));
-  if (tableLines.length >= 3) {
-    const parseRow = (row: string) =>
-      row
-        .trim()
-        .replace(/^\|/, '')
-        .replace(/\|$/, '')
-        .split('|')
-        .map((c) => cleanLineKeepText(c));
-    const headers = parseRow(tableLines[0]).map((h) => h.toLowerCase());
-    const dataRows = tableLines.slice(2);
-    const titleIdx = Math.max(
-      0,
-      headers.findIndex((h) => /event|title|name|milestone|heading/.test(h)),
-    );
-    const whenIdx = headers.findIndex((h) => /when|date|time|window|period/.test(h));
-    const probIdx = headers.findIndex((h) => /prob|likel|chance|rating|conf/.test(h));
-    const howIdx = headers.findIndex((h) => /how|detail|what|desc|summary|explain/.test(h));
-
-    const tableEvents: EventCardItem[] = [];
-    for (let r = 0; r < dataRows.length; r += 1) {
-      const cells = parseRow(dataRows[r]);
-      if (cells.length === 0 || cells.every((c) => !c)) continue;
-      const title = cells[titleIdx] || `Event ${r + 1}`;
-      const whenText = whenIdx >= 0 ? cells[whenIdx] : undefined;
-      const probText = probIdx >= 0 ? cells[probIdx] : undefined;
-      const howText =
-        howIdx >= 0
-          ? cells[howIdx]
-          : cells.filter((_, ci) => ci !== titleIdx && ci !== whenIdx && ci !== probIdx).join(' — ');
-      const { category, icon } = inferCategoryAndIcon(
-        `${sectionHeading} ${title} ${howText}`,
+  if (selectedTargets.length > 0) {
+    for (const target of selectedTargets) {
+      const slice = lines.slice(target.startLine, target.endLine);
+      const parsed = parseEventsFromSectionSlice(
+        slice,
+        target.text,
+        target.level,
+        collectedEvents.length,
         fallbackDomain,
       );
-      tableEvents.push({
-        id: `evt-${r + 1}`,
-        title,
-        summary: howText || title,
-        how: howText || title,
-        category,
-        dateRange: whenText,
-        when: whenText,
-        likelihood: probText,
-        probability: probText,
-        timeframe: whenText,
-        icon,
-      });
+      collectedEvents.push(...parsed);
     }
-    if (tableEvents.length > 0) {
-      return { events: tableEvents, sectionHeading };
+  } else {
+    const parsed = parseEventsFromSectionSlice(
+      lines,
+      '',
+      2,
+      0,
+      fallbackDomain,
+    );
+    collectedEvents.push(...parsed);
+  }
+
+  if (collectedEvents.length > 0) {
+    return {
+      events: collectedEvents.slice(0, 24),
+      sectionHeading: primarySectionHeading,
+    };
+  }
+
+  // 3. Fallback to Timeline & Rating Matrix table if Section 3 had no structured event blocks
+  const matrixHeading = nonEventHeadings.find((h) => isTimelineMatrixHeading(h.text));
+  if (matrixHeading) {
+    const span = sectionSpan(matrixHeading);
+    const matrixEvents = parseEventsFromSectionSlice(
+      lines.slice(span.startLine, span.endLine),
+      matrixHeading.text,
+      matrixHeading.level,
+      0,
+      fallbackDomain,
+    );
+    if (matrixEvents.length > 0) {
+      return {
+        events: matrixEvents.slice(0, 24),
+        sectionHeading: matrixHeading.text,
+      };
     }
   }
 
-  return { events: [], sectionHeading };
+  return { events: [], sectionHeading: primarySectionHeading };
 }
 
 function extractFallbackEvents(
@@ -752,7 +981,7 @@ function inferDomainFromLine(line: string, fallbackDomain?: PromptDomain): strin
 }
 
 function isCautionSectionHeading(heading: string): boolean {
-  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|specific\s+.{0,32}dates\s+to\s+be\s+very\s+careful|warning\s+dates|risk\s+windows|sensitivity\s+dates|precaution)\b/i.test(
+  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch(?:\s+out)?|avoid|be\s+(?:very\s+)?careful(?:\s+about)?|be\s+cautious)|specific\s+.{0,48}dates\s+to\s+(?:be\s+)?(?:very\s+)?(?:careful|watch|cautious)|dates\s+(?:you\s+need|not)\s+to\s+(?:be\s+careful|miss)|watch[\s-]*out\s+(?:dates|windows|for)|care\s+must\s+be\s+taken|warning\s+dates|risk\s+windows|sensitivity\s+dates|precaution(?:s)?)\b/i.test(
     heading,
   );
 }
@@ -761,56 +990,166 @@ function extractFallbackCautionDates(
   cleanMarkdown: string,
   fallbackDomain?: PromptDomain,
 ): CarefulDateItem[] {
-  const items: CarefulDateItem[] = [];
+  const explicitItems: CarefulDateItem[] = [];
+  const heuristicItems: CarefulDateItem[] = [];
   const seen = new Set<string>();
   const lines = cleanMarkdown.split(/\r?\n/);
   let inCautionSection = false;
+  let inExcludedProseSection = false;
+  let cautionSectionHeadingLevel = 2;
+  let cautionSectionHeadingText = '';
 
-  for (const rawLine of lines) {
+  const pushCautionItem = (rawDate: string, rawNote: string, severitySource: string) => {
+    const cleanedNote = stripAstrologicalInfo(cleanPlainSummary(rawNote)) || cleanPlainSummary(rawNote);
+    const cleanedDate = rawDate.trim();
+    if (!cleanedDate) return;
+    const finalNote = truncateText(
+      cleanedNote && cleanedNote.toLowerCase() !== cleanedDate.toLowerCase()
+        ? cleanedNote
+        : `Exercise extra care around ${cleanedDate}.`,
+      170,
+    );
+
+    const severity: CarefulDateItem['severity'] =
+      /\b(high|avoid|critical|severe|major|conflict|risk|danger)\b/i.test(severitySource)
+        ? 'high'
+        : /\b(watch|minor|mild)\b/i.test(severitySource)
+          ? 'watch'
+          : 'caution';
+
+    const domain = inferDomainFromLine(
+      `${cautionSectionHeadingText} ${severitySource} ${finalNote}`,
+      fallbackDomain,
+    );
+    const dedupeKey = `${cleanedDate.toLowerCase()}|${finalNote.toLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    const targetList = inCautionSection ? explicitItems : heuristicItems;
+    targetList.push({
+      id: `cd-fb-${targetList.length + 1}`,
+      domain,
+      date: truncateText(cleanedDate, 44),
+      note: finalNote,
+      severity,
+    });
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = lines[i];
     const trimmedRaw = rawLine.trim();
+    if (!trimmedRaw) continue;
+
     const headingMatch = trimmedRaw.match(/^#{1,6}\s+(.+)$/);
     if (headingMatch) {
-      inCautionSection = isCautionSectionHeading(cleanLineKeepText(headingMatch[1]));
+      const level = trimmedRaw.match(/^(#{1,6})/)?.[1].length ?? 2;
+      const headingText = cleanLineKeepText(headingMatch[1]);
+      if (isCautionSectionHeading(headingText)) {
+        inCautionSection = true;
+        inExcludedProseSection = false;
+        cautionSectionHeadingLevel = level;
+        cautionSectionHeadingText = headingText;
+      } else if (
+        inCautionSection &&
+        level > cautionSectionHeadingLevel &&
+        !/^(?:read[\s_-]*out|event\s+cards?|conclusion|month(?:ly)?\s+summary|answers?)/i.test(headingText)
+      ) {
+        cautionSectionHeadingText = headingText;
+      } else {
+        inCautionSection = false;
+        cautionSectionHeadingText = '';
+        inExcludedProseSection =
+          isOverviewHeading(headingText) ||
+          /\b(?:read[\s_-]*out|month(?:ly)?\s+summary|two[-\s]?months?\s+(?:summary|explanation|outlook)|answers?\b|conclusion)\b/i.test(
+            headingText,
+          );
+      }
       continue;
     }
 
-    const cleaned = cleanPlainSummary(rawLine);
-    if (!cleaned || cleaned.length < 14) continue;
+    // Bold standalone pseudo-headings inside reports (e.g., "**Specific Career Dates to Be Careful:**")
+    const boldHeaderMatch = trimmedRaw.match(/^(?:\*\*|__)([^*\n_]{8,96})(?:\*\*|__)\s*:?\s*$/);
+    if (boldHeaderMatch) {
+      const headingText = cleanLineKeepText(boldHeaderMatch[1]);
+      if (isCautionSectionHeading(headingText)) {
+        inCautionSection = true;
+        inExcludedProseSection = false;
+        cautionSectionHeadingText = headingText;
+        continue;
+      }
+      if (/^(?:read[\s_-]*out|month(?:ly)?\s+summary|summary|answers?|event\s+cards?|overview)/i.test(headingText)) {
+        inCautionSection = false;
+        inExcludedProseSection = true;
+        cautionSectionHeadingText = '';
+        continue;
+      }
+    }
+
+    if (inExcludedProseSection) continue;
     if (/^\|[\s|:-]+\|$/.test(trimmedRaw)) continue;
+
+    // Handle markdown table row cleanly when inside a caution section
+    if (/^\|.*\|$/.test(trimmedRaw)) {
+      const cells = trimmedRaw
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((c) => cleanPlainSummary(c))
+        .filter(Boolean);
+      const joinedCells = cells.join(' — ');
+      const dateMatch = joinedCells.match(DATE_RANGE_REGEX);
+      const hasSignal =
+        inCautionSection ||
+        /\b(careful|caution|avoid|watch|sensitive|tension|friction|delay|risk|stress|conflict|misunderstanding|strain)\b/i.test(
+          joinedCells,
+        );
+      if (dateMatch && hasSignal && !/^(?:date|dates|window|period)$/i.test(cells[0] || '')) {
+        const noteWithoutDate =
+          cells.filter((c) => !DATE_RANGE_REGEX.test(c) || c.length > dateMatch[0].length + 8).join(' — ') ||
+          joinedCells;
+        pushCautionItem(dateMatch[0], noteWithoutDate, joinedCells);
+        if (explicitItems.length >= 16) break;
+      }
+      continue;
+    }
+
+    let cleaned = cleanPlainSummary(rawLine);
+    if (!cleaned) continue;
+
+    const dateMatch = cleaned.match(DATE_RANGE_REGEX);
+    if (!dateMatch) continue;
+
+    // If a line inside Caution section is mostly just a date header (e.g. "- **Nov 14–16, 2026**:"),
+    // look ahead 1–2 lines to capture the accompanying explanation.
+    if (inCautionSection && cleaned.length <= dateMatch[0].length + 14) {
+      const nextLine = lines[i + 1]?.trim();
+      if (
+        nextLine &&
+        !/^#{1,6}\s+/.test(nextLine) &&
+        !DATE_RANGE_REGEX.test(nextLine)
+      ) {
+        const nextCleaned = cleanPlainSummary(nextLine);
+        if (nextCleaned) {
+          cleaned = `${cleaned} — ${nextCleaned}`;
+          i += 1;
+        }
+      }
+    }
+
+    if (cleaned.length < 10) continue;
 
     const hasCautionSignal =
       inCautionSection ||
       /\b(careful|caution|avoid|watch|sensitive|tension|friction|delay|risk|stress|conflict|misunderstanding|strain)\b/i.test(
         cleaned,
       );
-    const dateMatch = cleaned.match(DATE_RANGE_REGEX);
-    if (!hasCautionSignal || !dateMatch) continue;
+    if (!hasCautionSignal) continue;
 
-    const severity: CarefulDateItem['severity'] =
-      /\b(high|avoid|critical|severe|major|conflict|risk)\b/i.test(cleaned)
-        ? 'high'
-        : /\b(watch|minor|mild)\b/i.test(cleaned)
-          ? 'watch'
-          : 'caution';
-
-    const dateText = dateMatch[0].trim();
-    const noteText = truncateText(cleaned, 150);
-    const dedupeKey = `${dateText.toLowerCase()}|${noteText.toLowerCase()}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-
-    items.push({
-      id: `cd-fb-${items.length + 1}`,
-      domain: inferDomainFromLine(cleaned, fallbackDomain),
-      date: dateText,
-      note: noteText,
-      severity,
-    });
-
-    if (items.length >= 16) break;
+    pushCautionItem(dateMatch[0], cleaned, cleaned);
+    if (explicitItems.length >= 16) break;
   }
 
-  return items;
+  return (explicitItems.length > 0 ? explicitItems : heuristicItems).slice(0, 16);
 }
 
 export function extractCarefulDatesFromHtml(
@@ -1120,6 +1459,16 @@ export function extractReadOutSections(rawContent: string): ReadOutSections | nu
 
   if (startLineIdx < 0) return null;
 
+  const summaryNamePattern =
+    '(?:(?:the\\s+)?(?:two|2)[\\s-]*(?:month|months)s?\\s*(?:summary|explanation|outlook|overview|recap)|(?:the\\s+)?month(?:ly)?\\s*(?:&|and)?\\s*(?:next\\s+month\\s+)?(?:summary|explanation|outlook|recap)|(?:executive|overall|brief|monthly)\\s+summary|summary|key\\s+takeaways?|overview)';
+  const answerNamePattern =
+    '(?:direct\\s+answers?|answers?(?:\\s+to\\b.*)?|questions?\\s*(?:&|and)\\s*answers?|questions?\\s+asked(?:\\s+in\\b.*)?|prompt\\s+questions?(?:\\s+answered)?|focus\\s+questions?(?:\\s+answered?)?|your\\s+questions?|q\\s*&\\s*a|response\\s+to\\b.*)';
+
+  const internalReadOutHeadingRegex = new RegExp(
+    `^(?:\\d+[.)]\\s*|[a-z][.)]\\s*)?(?:${summaryNamePattern}|${answerNamePattern})\\b`,
+    'i',
+  );
+
   const sectionLines: string[] = [];
   if (inlineAfterReadOut && !/^[\(\[]/.test(inlineAfterReadOut)) {
     sectionLines.push(inlineAfterReadOut);
@@ -1133,9 +1482,7 @@ export function extractReadOutSections(rawContent: string): ReadOutSections | nu
       const headingText = cleanLineKeepText(headingMatch[2]);
       if (
         level <= readOutHeadingLevel &&
-        !/^(?:\d+[.)]\s*)?(?:summary|executive\s+summary|brief\s+summary|overview|answers?|questions?|q\s*&\s*a|prompt\s+questions?)/i.test(
-          headingText,
-        )
+        !internalReadOutHeadingRegex.test(headingText)
       ) {
         break;
       }
@@ -1143,14 +1490,22 @@ export function extractReadOutSections(rawContent: string): ReadOutSections | nu
     sectionLines.push(line);
   }
 
-  const summaryHeadingRegex =
-    /^\s{0,3}#{1,6}\s*(?:\d+[.)]\s*)?(?:summary|executive\s+summary|overall\s+summary|brief\s+summary|key\s+takeaways?|overview)\b.*$/i;
-  const summaryLabelRegex =
-    /^\s*(?:[-*•+]\s*|\d+[.)]\s*)?(?:\*\*|__)?(?:summary|executive\s+summary|overall\s+summary|brief\s+summary|key\s+takeaways?)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
-  const answerHeadingRegex =
-    /^\s{0,3}#{1,6}\s*(?:\d+[.)]\s*)?(?:answers?(?:\s+to\b.*)?|questions?(?:\s*(?:&|and)\s*answers?|\s+asked\b.*)?|prompt\s+questions?(?:\s+answered)?|focus\s+questions?(?:\s+answer)?|your\s+questions?|direct\s+answers?|q\s*&\s*a|response\s+to\b.*)\b.*$/i;
-  const answerLabelRegex =
-    /^\s*(?:[-*•+]\s*|\d+[.)]\s*)?(?:\*\*|__)?(?:answers?(?:\s+to\s+(?:your\s+|the\s+)?questions?)?|questions?\s*(?:&|and)\s*answers?|questions?\s+asked(?:\s+in\s+.*)?|prompt\s+questions?(?:\s+answered)?|focus\s+questions?(?:\s+answer)?|your\s+questions?|direct\s+answers?|q\s*&\s*a)(?:\*\*|__)?\s*[:\-–—]\s*(.*)$/i;
+  const summaryHeadingRegex = new RegExp(
+    `^\\s{0,3}#{1,6}\\s*(?:\\d+[.)]\\s*|[a-z][.)]\\s*)?${summaryNamePattern}\\b.*$`,
+    'i',
+  );
+  const summaryLabelRegex = new RegExp(
+    `^\\s*(?:[-*•+]\\s*|\\d+[.)]\\s*|[a-z][.)]\\s*)?(?:\\*\\*|__)?${summaryNamePattern}(?:\\*\\*|__)?\\s*[:\\-–—]\\s*(.*)$`,
+    'i',
+  );
+  const answerHeadingRegex = new RegExp(
+    `^\\s{0,3}#{1,6}\\s*(?:\\d+[.)]\\s*|[a-z][.)]\\s*)?${answerNamePattern}\\b.*$`,
+    'i',
+  );
+  const answerLabelRegex = new RegExp(
+    `^\\s*(?:[-*•+]\\s*|\\d+[.)]\\s*|[a-z][.)]\\s*)?(?:\\*\\*|__)?${answerNamePattern}(?:\\*\\*|__)?\\s*[:\\-–—]\\s*(.*)$`,
+    'i',
+  );
 
   const summaryLines: string[] = [];
   const answerLines: string[] = [];
@@ -1192,11 +1547,19 @@ export function extractReadOutSections(rawContent: string): ReadOutSections | nu
       continue;
     }
 
-    // Any secondary subheading after Summary has been started defaults to the Answer subsection
+    // Secondary subheading inside Read Out flips smoothly between whichever bucket isn't populated yet
     const subHeadingMatch = trimmed.match(/^\s{0,3}#{1,6}\s+(.+)$/);
-    if (subHeadingMatch && activeBucket === 'summary') {
-      activeBucket = 'answer';
-      continue;
+    if (subHeadingMatch) {
+      const subText = cleanLineKeepText(subHeadingMatch[1]);
+      if (activeBucket === 'summary' && answerLines.length === 0) {
+        activeBucket = 'answer';
+        if (subText) answerLines.push(subText);
+        continue;
+      }
+      if (activeBucket === 'answer' && summaryLines.length === 0 && /\b(month|summary|outlook|explanation|overview)\b/i.test(subText)) {
+        activeBucket = 'summary';
+        continue;
+      }
     }
 
     if (activeBucket === 'summary') {
@@ -1219,6 +1582,12 @@ export function extractReadOutSections(rawContent: string): ReadOutSections | nu
       answer = paragraphs.slice(1).join('\n\n');
     } else if (paragraphs.length === 1) {
       summary = paragraphs[0];
+    }
+  } else if (unlabeledLines.length > 0) {
+    const extra = cleanReadOutBlockText(unlabeledLines);
+    if (extra) {
+      if (!summary && answer) summary = extra;
+      else if (!answer && summary) answer = extra;
     }
   }
 
@@ -1294,14 +1663,15 @@ function isSynthesisHeading(heading: string): boolean {
 }
 
 function isBreakdownHeading(heading: string): boolean {
-  return /(?:detailed\s+.{0,40}\bevent\s+breakdown|\bevent\s+breakdown\b|^event\s+\d+\b)/i.test(
+  return /(?:detailed\s+.{0,48}\bevent(?:s|\s+breakdown)|\bevent\s+breakdown\b|\bevent\s+cards?\b|^event\s*#?\s*\d+\b)/i.test(
     heading,
   );
 }
 
 function isCautionOrClosingHeading(heading: string): boolean {
-  return /\b(careful\s+dates|caution\s+dates|dates\s+to\s+(?:watch|avoid|be\s+careful)|warning\s+dates|risk\s+windows|sensitivity\s+dates|conclusion|final\s+notes|read[\s_-]*out)\b/i.test(
-    heading,
+  return (
+    isCautionSectionHeading(heading) ||
+    /\b(conclusion|final\s+notes|read[\s_-]*out)\b/i.test(heading)
   );
 }
 

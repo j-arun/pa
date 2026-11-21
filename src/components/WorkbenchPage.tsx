@@ -50,7 +50,7 @@ import {
 const FLASH_DURATION_SECONDS = 25;
 const FLASH_DURATION_MS = FLASH_DURATION_SECONDS * 1000;
 
-function formatProviderErrorDetail(raw?: string): string {
+export function formatProviderErrorDetail(raw?: string): string {
   const trimmed = (raw || '').trim();
   if (!trimmed) return '';
   try {
@@ -78,7 +78,7 @@ function formatProviderErrorDetail(raw?: string): string {
   return trimmed;
 }
 
-function splitProbabilityAndRating(rawValue?: string): {
+export function splitProbabilityAndRating(rawValue?: string): {
   probabilityLine: string;
   ratingLine?: string;
 } {
@@ -119,7 +119,7 @@ function splitProbabilityAndRating(rawValue?: string): {
   return { probabilityLine: cleaned };
 }
 
-function getEventRatingSortScore(evt: EventCardItem): number {
+export function getEventRatingSortScore(evt: EventCardItem): number {
   const raw = (evt.probability || evt.likelihood || '').toLowerCase().trim();
   if (!raw) return -1;
 
@@ -1839,7 +1839,7 @@ export function WorkbenchPage({
                               className="relative z-10 font-display text-xs font-bold tracking-wide mb-2 whitespace-nowrap"
                               style={{ color: '#0369a1' }}
                             >
-                              Summary
+                              Month Summary
                             </h2>
                             <div
                               className="relative z-10 text-[13px] sm:text-sm leading-relaxed text-slate-800 whitespace-pre-line max-h-56 overflow-y-auto fluent-scroll pr-1"
@@ -1980,10 +1980,10 @@ export function WorkbenchPage({
                   <AnimatePresence mode="popLayout" initial={true}>
                     <motion.div
                       key={`${activeExchange.id}-slide-${clampedStart}`}
-                      initial={{ opacity: 0, x: 42 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -32 }}
-                      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                      initial={{ opacity: 0, x: 56, y: 12, scale: 0.94 }}
+                      animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -48, y: -8, scale: 0.94 }}
+                      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
                       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4"
                     >
                       {visibleEvents.map((evt, idx) => {
@@ -2015,13 +2015,14 @@ export function WorkbenchPage({
                         return (
                           <motion.article
                             key={evt.id}
-                            initial={{ opacity: 0, x: 24, y: 6 }}
-                            animate={{ opacity: 1, x: 0, y: 0 }}
-                            whileHover={{ y: -2 }}
+                            initial={{ opacity: 0, x: 36, y: 14, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                            whileHover={{ y: -4, scale: 1.015 }}
                             transition={{
-                              duration: 0.26,
-                              delay: idx * 0.05,
-                              ease: [0.16, 1, 0.3, 1],
+                              type: 'spring',
+                              stiffness: 270,
+                              damping: 22,
+                              delay: idx * 0.06,
                             }}
                             className="group fluent-event-card rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between min-h-[154px]"
                           >
