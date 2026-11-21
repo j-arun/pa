@@ -604,7 +604,7 @@ export function ProductionStage1Three({
       0.1,
       100,
     );
-    camera.position.set(0, 0.05, 13.8);
+    camera.position.set(0, 0.02, 14.9);
 
     // Studio & Atmospheric Lighting (no crossing arch lines/tubes)
     const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.55);
@@ -640,31 +640,33 @@ export function ProductionStage1Three({
     scene.add(stars);
     disposables.push(starGeo, starMat);
 
-    // 6 Larger Spaced 3D Month Buckets lifted higher above the bottom 5 jumping icons
+    // 6 Bigger Medium-Size Spaced 3D Month Buckets lifted cleanly above the bottom 5 jumping icons
     const bucketSlots: Array<{ x: number; y: number; z: number }> = [
-      { x: -5.5, y: 1.55, z: -0.35 },
-      { x: -3.3, y: 2.22, z: -0.18 },
-      { x: -1.1, y: 2.68, z: -0.04 },
-      { x: 1.1, y: 2.68, z: -0.04 },
-      { x: 3.3, y: 2.22, z: -0.18 },
-      { x: 5.5, y: 1.55, z: -0.35 },
+      { x: -6.15, y: 1.38, z: -0.34 },
+      { x: -3.69, y: 2.04, z: -0.18 },
+      { x: -1.23, y: 2.46, z: -0.04 },
+      { x: 1.23, y: 2.46, z: -0.04 },
+      { x: 3.69, y: 2.04, z: -0.18 },
+      { x: 6.15, y: 1.38, z: -0.34 },
     ];
 
-    const bucketTopRadius = 0.90;
-    const bucketBotRadius = 0.66;
-    const bucketHeight = 1.36;
-    const bucketWallGeo = new THREE.CylinderGeometry(bucketTopRadius, bucketBotRadius, bucketHeight, 40, 1, true);
-    const bucketFloorGeo = new THREE.CircleGeometry(bucketBotRadius, 36);
-    const bucketRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.042, 16, 48);
-    const bucketLiquidGeo = new THREE.CircleGeometry(0.74, 32);
-    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.36, 0.86);
-    const lidCapGeo = new THREE.CircleGeometry(bucketTopRadius, 36);
-    const lidRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.034, 12, 44);
-    const miniBallGeo = new THREE.SphereGeometry(0.115, 20, 20);
+    const bucketTopRadius = 1.06;
+    const bucketBotRadius = 0.80;
+    const bucketHeight = 1.54;
+    const bucketWallGeo = new THREE.CylinderGeometry(bucketTopRadius, bucketBotRadius, bucketHeight, 44, 1, true);
+    const bucketFloorGeo = new THREE.CircleGeometry(bucketBotRadius, 40);
+    const bucketRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.048, 16, 52);
+    const bucketFootGeo = new THREE.TorusGeometry(bucketBotRadius, 0.032, 14, 44);
+    const bucketLiquidGeo = new THREE.CircleGeometry(0.86, 36);
+    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.58, 0.98);
+    const lidCapGeo = new THREE.CircleGeometry(bucketTopRadius - 0.02, 40);
+    const lidRimGeo = new THREE.TorusGeometry(bucketTopRadius - 0.01, 0.036, 14, 48);
+    const miniBallGeo = new THREE.SphereGeometry(0.135, 22, 22);
     disposables.push(
       bucketWallGeo,
       bucketFloorGeo,
       bucketRimGeo,
+      bucketFootGeo,
       bucketLiquidGeo,
       bucketInnerTextGeo,
       lidCapGeo,
@@ -673,16 +675,16 @@ export function ProductionStage1Three({
     );
 
     const BALL_LOCAL_OFFSETS: Array<{ x: number; y: number; z: number }> = [
-      { x: -0.38, y: -0.46, z: 0.24 },
-      { x: -0.19, y: -0.46, z: 0.31 },
-      { x: 0.0, y: -0.46, z: 0.34 },
-      { x: 0.19, y: -0.46, z: 0.31 },
-      { x: 0.38, y: -0.46, z: 0.24 },
-      { x: -0.34, y: -0.30, z: -0.02 },
-      { x: -0.17, y: -0.30, z: 0.04 },
-      { x: 0.0, y: -0.30, z: 0.06 },
-      { x: 0.17, y: -0.30, z: 0.04 },
-      { x: 0.34, y: -0.30, z: -0.02 },
+      { x: -0.46, y: -0.54, z: 0.28 },
+      { x: -0.23, y: -0.54, z: 0.36 },
+      { x: 0.0, y: -0.54, z: 0.39 },
+      { x: 0.23, y: -0.54, z: 0.36 },
+      { x: 0.46, y: -0.54, z: 0.28 },
+      { x: -0.40, y: -0.34, z: -0.02 },
+      { x: -0.20, y: -0.34, z: 0.06 },
+      { x: 0.0, y: -0.34, z: 0.09 },
+      { x: 0.20, y: -0.34, z: 0.06 },
+      { x: 0.40, y: -0.34, z: -0.02 },
     ];
 
     interface BucketEntry {
@@ -691,11 +693,14 @@ export function ProductionStage1Three({
       basePos: THREE.Vector3;
       wallMat: THREE.MeshPhysicalMaterial;
       rimMat: THREE.MeshStandardMaterial;
+      footMat: THREE.MeshStandardMaterial;
+      liquidMesh: THREE.Mesh;
       liquidMat: THREE.MeshBasicMaterial;
       badgeMat: THREE.MeshBasicMaterial;
-      lidPivot: THREE.Group;
-      lidMat: THREE.MeshPhysicalMaterial;
-      lidRimMat: THREE.MeshStandardMaterial;
+      sealLidGroup: THREE.Group;
+      sealLidMat: THREE.MeshPhysicalMaterial;
+      sealRimMat: THREE.MeshStandardMaterial;
+      sealBlend: number;
       reportBalls: Array<{
         mesh: THREE.Mesh;
         mat: THREE.MeshPhysicalMaterial;
@@ -707,7 +712,7 @@ export function ProductionStage1Three({
       hoverLerp: number;
     }
 
-    const hitSphereGeo = new THREE.SphereGeometry(1.12, 16, 16);
+    const hitSphereGeo = new THREE.SphereGeometry(1.24, 16, 16);
     const invisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
     disposables.push(hitSphereGeo, invisibleHitMat);
 
@@ -735,9 +740,21 @@ export function ProductionStage1Three({
 
       const floorMesh = new THREE.Mesh(bucketFloorGeo, wallMat);
       floorMesh.rotation.x = -Math.PI / 2 + 0.18;
-      floorMesh.position.y = -0.66;
+      floorMesh.position.y = -0.75;
       floorMesh.renderOrder = 1;
       group.add(floorMesh);
+
+      const footMat = new THREE.MeshStandardMaterial({
+        color: 0x7dd3fc,
+        emissive: 0x0369a1,
+        emissiveIntensity: 0.45,
+        metalness: 0.78,
+        roughness: 0.22,
+      });
+      const footMesh = new THREE.Mesh(bucketFootGeo, footMat);
+      footMesh.rotation.x = Math.PI / 2 + 0.18;
+      footMesh.position.y = -0.75;
+      group.add(footMesh);
 
       const rimMat = new THREE.MeshStandardMaterial({
         color: 0xbae6fd,
@@ -748,7 +765,7 @@ export function ProductionStage1Three({
       });
       const rimMesh = new THREE.Mesh(bucketRimGeo, rimMat);
       rimMesh.rotation.x = Math.PI / 2 + 0.18;
-      rimMesh.position.y = 0.66;
+      rimMesh.position.y = 0.75;
       group.add(rimMesh);
 
       const liquidMat = new THREE.MeshBasicMaterial({
@@ -760,7 +777,7 @@ export function ProductionStage1Three({
       });
       const liquidMesh = new THREE.Mesh(bucketLiquidGeo, liquidMat);
       liquidMesh.rotation.x = -Math.PI / 2 + 0.18;
-      liquidMesh.position.y = -0.22;
+      liquidMesh.position.y = -0.45;
       liquidMesh.renderOrder = 2;
       group.add(liquidMesh);
 
@@ -783,39 +800,39 @@ export function ProductionStage1Three({
         return { mesh, mat, baseOffset: offset };
       });
 
-      // Hinged Folding Bucket Lid (tilted open initially, folds shut when count === 10)
-      const lidPivot = new THREE.Group();
-      lidPivot.position.set(0, 0.68, -bucketTopRadius + 0.05);
-      lidPivot.rotation.x = -Math.PI * 0.66;
+      // Flush crystal seal cap that settles cleanly ON TOP ONLY when bucket hits 10/10 reports
+      // (open buckets have zero clutter/flaps sticking up on top)
+      const sealLidGroup = new THREE.Group();
+      sealLidGroup.position.set(0, 0.75, 0);
+      sealLidGroup.rotation.x = 0.18;
+      sealLidGroup.visible = false;
 
-      const lidMat = new THREE.MeshPhysicalMaterial({
+      const sealLidMat = new THREE.MeshPhysicalMaterial({
         color: 0xfde68a,
         emissive: 0xf59e0b,
-        emissiveIntensity: 0.25,
-        metalness: 0.22,
-        roughness: 0.14,
+        emissiveIntensity: 0.35,
+        metalness: 0.25,
+        roughness: 0.12,
         clearcoat: 1.0,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.45,
         side: THREE.DoubleSide,
       });
-      const lidMesh = new THREE.Mesh(lidCapGeo, lidMat);
-      lidMesh.rotation.x = -Math.PI / 2;
-      lidMesh.position.set(0, 0, bucketTopRadius - 0.05);
+      const sealCapMesh = new THREE.Mesh(lidCapGeo, sealLidMat);
+      sealCapMesh.rotation.x = -Math.PI / 2;
 
-      const lidRimMat = new THREE.MeshStandardMaterial({
+      const sealRimMat = new THREE.MeshStandardMaterial({
         color: 0xfef3c7,
-        emissive: 0x38bdf8,
-        emissiveIntensity: 0.7,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.9,
         metalness: 0.85,
-        roughness: 0.18,
+        roughness: 0.16,
       });
-      const lidRimMesh = new THREE.Mesh(lidRimGeo, lidRimMat);
-      lidRimMesh.rotation.x = Math.PI / 2;
-      lidRimMesh.position.set(0, 0, bucketTopRadius - 0.05);
-      lidPivot.add(lidMesh, lidRimMesh);
-      group.add(lidPivot);
-      disposables.push(lidMat, lidRimMat);
+      const sealRimMesh = new THREE.Mesh(lidRimGeo, sealRimMat);
+      sealRimMesh.rotation.x = Math.PI / 2;
+      sealLidGroup.add(sealCapMesh, sealRimMesh);
+      group.add(sealLidGroup);
+      disposables.push(sealLidMat, sealRimMat);
 
       const initialTex = drawBucketLabelCanvas(
         monthItem.shortMonth,
@@ -832,7 +849,7 @@ export function ProductionStage1Three({
         side: THREE.DoubleSide,
       });
       const badgeMesh = new THREE.Mesh(bucketInnerTextGeo, badgeMat);
-      badgeMesh.position.set(0, 0.10, 0.06);
+      badgeMesh.position.set(0, 0.08, 0.08);
       badgeMesh.rotation.x = 0.12;
       badgeMesh.renderOrder = 5;
       group.add(badgeMesh);
@@ -842,7 +859,7 @@ export function ProductionStage1Three({
       group.add(hitMesh);
 
       scene.add(group);
-      disposables.push(wallMat, rimMat, liquidMat, badgeMat);
+      disposables.push(wallMat, rimMat, footMat, liquidMat, badgeMat);
 
       return {
         monthItem,
@@ -850,11 +867,14 @@ export function ProductionStage1Three({
         basePos,
         wallMat,
         rimMat,
+        footMat,
+        liquidMesh,
         liquidMat,
         badgeMat,
-        lidPivot,
-        lidMat,
-        lidRimMat,
+        sealLidGroup,
+        sealLidMat,
+        sealRimMat,
+        sealBlend: 0,
         reportBalls,
         cachedSignature: '',
         activeTex: initialTex,
@@ -1138,7 +1158,7 @@ export function ProductionStage1Three({
 
       stars.rotation.z = Math.sin(elapsed * 0.18) * 0.02;
 
-      // Animate 6 Larger Spaced Month Buckets + Interior Domain Balls + Folding Lid
+      // Animate 6 Bigger Medium-Size Spaced Month Buckets + Interior Domain Balls + Flush 10/10 Seal
       for (let i = 0; i < bucketEntries.length; i += 1) {
         const b = bucketEntries[i];
         const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
@@ -1157,23 +1177,37 @@ export function ProductionStage1Three({
           b.basePos.y + floatY + b.hoverLerp * 0.16,
           b.basePos.z + b.hoverLerp * 0.28,
         );
-        const s = 1 + b.hoverLerp * 0.12;
+        const s = 1 + b.hoverLerp * 0.11;
         b.group.scale.set(s, s, s);
 
-        b.wallMat.opacity = isHovered ? 0.34 : isFull ? 0.30 : isActive ? 0.26 : 0.19;
+        b.wallMat.opacity = isHovered ? 0.34 : isFull ? 0.30 : isActive ? 0.26 : 0.20;
         b.rimMat.color.setHex(isFull ? 0xfde68a : 0xbae6fd);
         b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
         b.rimMat.emissiveIntensity = isHovered ? 1.8 : isFull ? 1.35 : isActive ? 1.15 : 0.65;
-        b.liquidMat.opacity = isHovered ? 0.40 : isFull ? 0.34 : isActive ? 0.26 : 0.15;
+        b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
+        b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
-        // Fold lid shut at 10/10 reports, open otherwise (leaning slightly forward as bucket fills)
-        const targetLidRotX = isFull
-          ? 0.18
-          : -Math.PI * 0.68 + (Math.min(9, reportCount) / 10) * 0.22;
-        b.lidPivot.rotation.x = THREE.MathUtils.damp(b.lidPivot.rotation.x, targetLidRotX, 8, dt);
-        b.lidMat.opacity = isFull ? 0.44 : 0.18;
-        b.lidRimMat.emissive.setHex(isFull ? 0xf59e0b : 0x38bdf8);
-        b.lidRimMat.emissiveIntensity = isFull ? 1.35 : 0.45;
+        // Dynamic fill surface rising cleanly inside the bucket as reports accumulate
+        const fillRatio = Math.min(1, reportCount / 10);
+        b.liquidMesh.position.y = THREE.MathUtils.damp(
+          b.liquidMesh.position.y,
+          -0.52 + fillRatio * 0.84,
+          7,
+          dt,
+        );
+        const liquidRadiusScale = 0.88 + fillRatio * 0.24;
+        b.liquidMesh.scale.setScalar(liquidRadiusScale);
+        b.liquidMat.opacity = isHovered ? 0.38 : isFull ? 0.34 : isActive ? 0.25 : 0.15;
+
+        // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 10/10
+        b.sealBlend = THREE.MathUtils.damp(b.sealBlend, isFull ? 1 : 0, 9, dt);
+        b.sealLidGroup.visible = b.sealBlend > 0.02;
+        if (b.sealLidGroup.visible) {
+          b.sealLidGroup.position.y = THREE.MathUtils.lerp(0.98, 0.75, b.sealBlend);
+          b.sealLidGroup.scale.setScalar(THREE.MathUtils.lerp(0.84, 1.0, b.sealBlend));
+          b.sealLidMat.opacity = b.sealBlend * 0.48;
+          b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
+        }
 
         // Update interior small domain balls
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {

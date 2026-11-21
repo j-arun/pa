@@ -187,7 +187,7 @@ export default function App() {
   const [isLeftRailOpen, setIsLeftRailOpen] = useState(true);
   const [isContextRailOpen, setIsContextRailOpen] = useState(false);
   const [isProdReportsMenuOpen, setIsProdReportsMenuOpen] = useState(false);
-  const [prodReportsDirDisplay, setProdReportsDirDisplay] = useState('D:/WhatsApp Reports');
+  const [prodReportsDirDisplay, setProdReportsDirDisplay] = useState('D:/whatsup/reports');
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
   const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
   const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
@@ -2226,38 +2226,27 @@ export default function App() {
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {isProductionApp ? (
-          /* Minimal Production Header: Home + Floating Reports Toggle on Left, Watch Out on Right */
+          /* Minimal Production Header: Left Show/Hide Reports Slider Icon + Right Watch Out Toggle */
           <header className="relative h-14 shrink-0 px-4 sm:px-6 border-b border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={handleStartNewThread}
-                title="Home / New Thread"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <WhatsAppSymbol className="w-5 h-5 shrink-0" />
-                <span>What&apos;s up</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setIsProdReportsMenuOpen((prev) => !prev)}
                 aria-expanded={isProdReportsMenuOpen}
-                aria-label="Toggle saved production reports menu"
-                title={`View saved reports (${prodReportsDirDisplay})`}
-                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                aria-pressed={isProdReportsMenuOpen}
+                aria-label={isProdReportsMenuOpen ? 'Hide Reports slider' : 'Show Reports slider'}
+                title={
                   isProdReportsMenuOpen
-                    ? 'border-sky-400/70 bg-sky-500/15 text-sky-200'
-                    : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                    ? `Hide Reports (${prodReportsDirDisplay})`
+                    : `Show Reports (${prodReportsDirDisplay})`
+                }
+                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                  isProdReportsMenuOpen
+                    ? 'bg-slate-800 border-sky-400/70 text-sky-300'
+                    : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
                 }`}
               >
-                <FolderOpen className="w-4 h-4 text-sky-400 shrink-0" />
-                <span>Reports</span>
-                {ratedThreads.length > 0 && (
-                  <span className="rounded-md bg-sky-400/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-sky-200">
-                    {ratedThreads.length}
-                  </span>
-                )}
+                <PanelLeft className="w-4 h-4" />
               </button>
             </div>
 
@@ -2284,16 +2273,6 @@ export default function App() {
                 </button>
               )}
             </div>
-
-            {isProdReportsMenuOpen && (
-              <ProductionReportsMenu
-                reports={ratedThreads}
-                reportsPathDisplay={prodReportsDirDisplay}
-                activeReportId={activeProductionReportId}
-                onSelectReport={handleOpenProductionReport}
-                onClose={() => setIsProdReportsMenuOpen(false)}
-              />
-            )}
           </header>
         ) : (
           /* Dev Mode Top Menu Bar */
@@ -2641,6 +2620,19 @@ export default function App() {
               onDismissMonthSwitchError={() => setMonthSwitchError(null)}
             />
           )}
+
+          {/* Floating Left-Hand Production Reports Slider */}
+          <AnimatePresence>
+            {isProductionApp && isProdReportsMenuOpen && (
+              <ProductionReportsMenu
+                reports={ratedThreads}
+                reportsPathDisplay={prodReportsDirDisplay}
+                activeReportId={activeProductionReportId}
+                onSelectReport={handleOpenProductionReport}
+                onClose={() => setIsProdReportsMenuOpen(false)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Floating Right-Hand Watch-Out Drawer */}
           <AnimatePresence>

@@ -124,9 +124,9 @@ export function resolveProductionReportsDir(): string {
     return path.resolve(process.env.WORKBENCH_PROD_REPORTS_DIR.trim());
   }
   if (process.platform === 'win32') {
-    return path.win32.resolve('D:/WhatsApp Reports');
+    return path.win32.resolve('D:/whatsup/reports');
   }
-  return path.join(resolveConfigDir(), 'WhatsApp Reports');
+  return path.join(resolveConfigDir(), 'whatsup', 'reports');
 }
 
 export function formatProductionReportsDirDisplay(resolvedDir: string): string {

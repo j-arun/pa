@@ -5,6 +5,7 @@ import {
   FolderOpen,
   X,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import type { PromptDomain, RatedThreadRecord } from '../../types/workbench';
 import {
@@ -170,10 +171,13 @@ export function ProductionReportsMenu({
   };
 
   return (
-    <div
-      role="dialog"
+    <motion.aside
       aria-label="Production Reports"
-      className="fixed top-16 left-4 z-40 w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-7.5rem)] flex flex-col rounded-2xl border border-slate-700/80 bg-[#0b1222]/96 backdrop-blur-xl shadow-[0_24px_60px_rgba(2,6,23,0.78)] text-slate-100 overflow-hidden"
+      initial={{ x: -340, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: -340, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+      className="fixed top-14 left-0 bottom-9 z-30 w-80 max-w-[90vw] flex flex-col border-r border-slate-700/75 bg-[#0b1222]/96 backdrop-blur-xl shadow-[0_24px_70px_rgba(2,6,23,0.78)] text-slate-100 overflow-hidden"
     >
       <div className="shrink-0 px-4 py-3 border-b border-slate-800/90 flex items-center justify-between gap-2 bg-[#080d1a]/90">
         <div className="min-w-0">
@@ -340,6 +344,6 @@ export function ProductionReportsMenu({
           })
         )}
       </div>
-    </div>
+    </motion.aside>
   );
 }
