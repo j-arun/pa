@@ -10,6 +10,8 @@ import {
   Settings,
   ShieldAlert,
   Upload,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -686,6 +688,7 @@ export default function App() {
       });
     }
 
+    speech.stopSpeaking();
     setIsSettingsOpen(false);
     setActiveReportExchangeId(null);
     setIsProdReportsMenuOpen(false);
@@ -704,10 +707,11 @@ export default function App() {
         ? 'Previous thread finalized; started a new thread'
         : 'Started new thread; stage cleared',
     );
-  }, [turns, syncReportToDisk, pushContextLog]);
+  }, [turns, syncReportToDisk, pushContextLog, speech]);
 
   const handleOpenProductionReport = useCallback(
     (record: RatedThreadRecord) => {
+      speech.stopSpeaking();
       setMonthSwitchError(null);
       if (activeRequestAbortRef.current) {
         activeRequestAbortRef.current.controller.abort();
@@ -725,7 +729,7 @@ export default function App() {
       setIsChatBarOpen(false);
       setTurns(loadedTurns);
     },
-    [],
+    [speech],
   );
 
   const handleDeleteSidebarReport = useCallback(
@@ -2503,15 +2507,31 @@ export default function App() {
                 questionText={productionStageData.latestUserTurn?.content}
                 periodLabel={activeCarefulPeriodLabel}
                 domain={productionStageData.latestUserTurn?.promptDomain}
-                providerAdapter={
-                  productionStageData.latestUserTurn?.adapterId === 'fable'
-                    ? 'fable'
-                    : productionStageData.latestUserTurn?.adapterId === 'gemini'
-                      ? 'gemini'
-                      : settings.publicLlm.activeAdapter === 'fable'
-                        ? 'fable'
-                        : 'gemini'
-                }
+                providerAdapter={(() => {
+                  const adapter =
+                    productionStageData.latestReplyTurn?.adapterId ??
+                    productionStageData.latestUserTurn?.adapterId;
+                  if (adapter === 'fable') return 'fable';
+                  if (adapter === 'gemini') return 'gemini';
+                  return settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+                })()}
+                isSpeakerEnabled={settings.voice.prodSummarySpeakerEnabled !== false}
+                isSpeakingSummary={Boolean(
+                  productionStageData.latestReplyTurn &&
+                    speech.speakingTurnId ===
+                      `prod-summary-${productionStageData.latestReplyTurn.id}`,
+                )}
+                onToggleSpeakSummary={() => {
+                  const summaryText =
+                    productionStageData.readOutSections?.summary?.trim() ||
+                    productionStageData.readOutSections?.answer?.trim() ||
+                    '';
+                  if (!summaryText || !productionStageData.latestReplyTurn) return;
+                  speech.speakText(
+                    `prod-summary-${productionStageData.latestReplyTurn.id}`,
+                    summaryText,
+                  );
+                }}
                 onCancelRequest={handleCancelRequest}
                 onRetry={() => {
                   if (productionStageData.latestUserTurn) {
@@ -2774,6 +2794,45 @@ export default function App() {
                 <span className="truncate">Reports: {prodReportsDirDisplay}</span>
               </span>
               <span className="hidden sm:inline text-slate-700">|</span>
+              <button
+                type="button"
+                aria-pressed={settings.voice.prodSummarySpeakerEnabled !== false}
+                onClick={() => {
+                  const next = settings.voice.prodSummarySpeakerEnabled === false;
+                  if (!next) {
+                    speech.stopSpeaking();
+                  }
+                  setSettings((previous) => ({
+                    ...previous,
+                    voice: {
+                      ...previous.voice,
+                      prodSummarySpeakerEnabled: next,
+                    },
+                  }));
+                }}
+                title={
+                  settings.voice.prodSummarySpeakerEnabled !== false
+                    ? 'Speaker icon is On — click to turn Off'
+                    : 'Speaker icon is Off — click to turn On'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-semibold leading-none transition-colors shrink-0 cursor-pointer ${
+                  settings.voice.prodSummarySpeakerEnabled !== false
+                    ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                    : 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                {settings.voice.prodSummarySpeakerEnabled !== false ? (
+                  <Volume2 className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                ) : (
+                  <VolumeX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                )}
+                <span>
+                  {settings.voice.prodSummarySpeakerEnabled !== false
+                    ? 'Speaker On'
+                    : 'Speaker Off'}
+                </span>
+              </button>
+              <span className="text-slate-700">|</span>
               <button
                 type="button"
                 disabled={!canCopyPrompt}

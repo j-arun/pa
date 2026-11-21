@@ -11,6 +11,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -20,6 +21,7 @@ import {
   getMonthNumberFromName,
 } from '../../utils/promptTemplates';
 import type { ReadOutSections } from '../../utils/eventParser';
+import { EventCategoryEmblem } from '../DomainEmblem';
 import { WhatsAppSymbol } from '../WhatsAppSymbol';
 
 interface ProductionCards3DProps {
@@ -31,6 +33,9 @@ interface ProductionCards3DProps {
   periodLabel?: string;
   domain?: PromptDomain;
   providerAdapter?: 'gemini' | 'fable';
+  isSpeakerEnabled?: boolean;
+  isSpeakingSummary?: boolean;
+  onToggleSpeakSummary?: () => void;
   onCancelRequest: () => void;
   onRetry: () => void;
   onStartNewThread: () => void;
@@ -875,6 +880,105 @@ function createMicroAdapterSymbolTexture(
   return texture;
 }
 
+const SPARK_BURST_OFFSETS = [
+  { x: -112, y: -58, delay: 0.03, size: 16, gold: true },
+  { x: 118, y: -52, delay: 0.05, size: 14, gold: false },
+  { x: -132, y: 18, delay: 0.07, size: 13, gold: false },
+  { x: 136, y: 24, delay: 0.06, size: 17, gold: true },
+  { x: -84, y: 88, delay: 0.08, size: 15, gold: true },
+  { x: 92, y: 84, delay: 0.04, size: 13, gold: false },
+  { x: 0, y: -116, delay: 0.02, size: 18, gold: true },
+  { x: -46, y: -96, delay: 0.09, size: 11, gold: false },
+  { x: 52, y: -92, delay: 0.07, size: 12, gold: true },
+  { x: 0, y: 112, delay: 0.08, size: 14, gold: false },
+];
+
+function Stage2ProviderCornerIcon({ provider }: { provider: 'gemini' | 'fable' }) {
+  const isFable = provider === 'fable';
+  const label = isFable ? 'Prepared by Fable' : 'Prepared by Gemini';
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border bg-white/94 backdrop-blur-sm shrink-0 ${
+        isFable
+          ? 'border-amber-300/90 shadow-[0_6px_18px_-4px_rgba(217,119,6,0.34)]'
+          : 'border-sky-300/90 shadow-[0_6px_18px_-4px_rgba(14,165,233,0.34)]'
+      }`}
+    >
+      {isFable ? (
+        <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
+          <defs>
+            <linearGradient id="pa-fable-badge-g" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#f59e0b" />
+              <stop offset="55%" stopColor="#ec4899" />
+              <stop offset="100%" stopColor="#8b5cf6" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M12 10.5C9.8 8.3 6.2 8.6 5 10.4V17.6C6.8 16.4 9.7 16.7 12 18.8C14.3 16.7 17.2 16.4 19 17.6V10.4C17.8 8.6 14.2 8.3 12 10.5Z"
+            fill="url(#pa-fable-badge-g)"
+          />
+          <path
+            d="M12 2.4L13.1 5.6L16.3 6.7L13.1 7.8L12 11L10.9 7.8L7.7 6.7L10.9 5.6L12 2.4Z"
+            fill="#f59e0b"
+          />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
+          <defs>
+            <linearGradient id="pa-gemini-badge-g" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="55%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#6366f1" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M11 3C11.9 7.6 14.4 10.1 19 11C14.4 11.9 11.9 14.4 11 19C10.1 14.4 7.6 11.9 3 11C7.6 10.1 10.1 7.6 11 3Z"
+            fill="url(#pa-gemini-badge-g)"
+          />
+          <path
+            d="M18.2 3.2C18.5 4.8 19.3 5.6 20.9 5.9C19.3 6.2 18.5 7 18.2 8.6C17.9 7 17.1 6.2 15.5 5.9C17.1 5.6 17.9 4.8 18.2 3.2Z"
+            fill="#0ea5e9"
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+function WindowsSpeakerIcon({
+  active = false,
+  className = 'w-4 h-4',
+}: {
+  active?: boolean;
+  className?: string;
+}) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      {/* Classic Windows speaker cone & cabinet */}
+      <path
+        d="M3.5 9.5H7.2L12.5 5.2V18.8L7.2 14.5H3.5C2.95 14.5 2.5 14.05 2.5 13.5V10.5C2.5 9.95 2.95 9.5 3.5 9.5Z"
+        fill="currentColor"
+      />
+      {/* Sound wave arcs */}
+      <path
+        d="M15.4 8.8C16.55 9.9 16.55 14.1 15.4 15.2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M18.1 6.2C20.25 8.5 20.25 15.5 18.1 17.8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        opacity={active ? 1 : 0.78}
+      />
+    </svg>
+  );
+}
+
 export function ProductionCards3D({
   cards,
   readOutSections,
@@ -884,6 +988,9 @@ export function ProductionCards3D({
   periodLabel,
   domain,
   providerAdapter = 'gemini',
+  isSpeakerEnabled = true,
+  isSpeakingSummary = false,
+  onToggleSpeakSummary,
   onCancelRequest,
   onRetry,
   onStartNewThread,
@@ -1653,7 +1760,7 @@ export function ProductionCards3D({
             detailGlitterUniforms.uCardSeed.value = detailIdx + 1;
             detailGlitterUniforms.uPriorityBoost.value = detailIdx < 2 ? 1.0 : 0.0;
           }
-          detailArrivalPulse = 1.35;
+          detailArrivalPulse = 2.25;
         }
         if (detailIdx === null) {
           lastActiveDetailTexIdx = -1;
@@ -1662,8 +1769,8 @@ export function ProductionCards3D({
         if (detailGlitterUniforms) {
           detailGlitterUniforms.uGlitterTime.value = elapsed;
           detailGlitterUniforms.uGlitterFocus.value = Math.min(
-            1.5,
-            detailBlend * 0.9 + detailArrivalPulse * 0.65,
+            2.2,
+            detailBlend * 1.0 + detailArrivalPulse * 0.85,
           );
         }
 
@@ -1714,6 +1821,8 @@ export function ProductionCards3D({
 
   const answerText = readOutSections?.answer?.trim() || '';
   const hasAnswer = Boolean(answerText);
+  const monthlySummaryText =
+    readOutSections?.summary?.trim() || readOutSections?.answer?.trim() || '';
 
   const errorUi = useMemo(() => {
     if (!errorDetail) return null;
@@ -1804,6 +1913,34 @@ export function ProductionCards3D({
 
       {/* Error State Overlay */}
       {!isWaitingForReply && errorUi}
+
+      {/* Top-Right Small Round Provider Icon Hint + Optional Windows Speaker Icon Below */}
+      {!isWaitingForReply && !errorDetail && (
+        <div className="pointer-events-none absolute top-3.5 right-4 sm:right-6 z-20 flex flex-col items-center gap-2">
+          <div className="pointer-events-auto">
+            <Stage2ProviderCornerIcon provider={providerAdapter} />
+          </div>
+          {isSpeakerEnabled && Boolean(monthlySummaryText) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSpeakSummary?.();
+              }}
+              aria-label={isSpeakingSummary ? 'Stop reading monthly summary' : 'Read monthly summary'}
+              aria-pressed={isSpeakingSummary}
+              title={isSpeakingSummary ? 'Stop reading monthly summary' : 'Read monthly summary aloud'}
+              className={`pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border transition-all cursor-pointer shrink-0 ${
+                isSpeakingSummary
+                  ? 'border-sky-400 bg-sky-500 text-white shadow-[0_0_20px_rgba(14,165,233,0.65)] animate-pulse'
+                  : 'border-slate-300/90 bg-white/94 text-slate-700 shadow-[0_6px_18px_-4px_rgba(15,23,42,0.22)] hover:border-sky-400 hover:text-sky-600 hover:bg-white'
+              }`}
+            >
+              <WindowsSpeakerIcon active={isSpeakingSummary} className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Gallery Mode Overlays: Top Floating Answer Bubble + Scroll Arrows */}
       {!isWaitingForReply && !errorDetail && selectedIndex === null && (
@@ -1957,18 +2094,86 @@ export function ProductionCards3D({
         </>
       )}
 
-      {/* Expanded 3D Card Overlays + Slide-Up Reasoning */}
+      {/* Expanded 3D Card Category Glitter Spark Flash & Slide-Up Reasoning */}
       {!isWaitingForReply && !errorDetail && selectedCard && (
         <>
-          <div className="pointer-events-none absolute top-4 inset-x-0 z-20 flex items-center justify-end px-5 sm:px-8">
-            <button
-              type="button"
-              onClick={() => setIsReasoningOpen((prev) => !prev)}
-              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-xl border border-sky-400/50 bg-[#0d1424]/95 px-3.5 py-2 text-xs font-semibold text-sky-300 hover:bg-slate-800 cursor-pointer"
-            >
-              <span>{isReasoningOpen ? 'Hide How It Happens' : 'Show How It Happens'}</span>
-            </button>
-          </div>
+          {/* Transient Category Glitter Graphic Spark that flashes up on card open and goes back */}
+          <motion.div
+            key={`card-category-spark-${selectedIndex}`}
+            aria-hidden="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 1, 0] }}
+            transition={{ duration: 1.15, times: [0, 0.16, 0.56, 1], ease: 'easeOut' }}
+            className="pointer-events-none fixed inset-0 z-20 flex items-center justify-center"
+          >
+            <div className="relative flex flex-col items-center justify-center">
+              {/* Radiant flash aura */}
+              <motion.div
+                initial={{ scale: 0.25, opacity: 0 }}
+                animate={{ scale: [0.25, 1.35, 1.85], opacity: [0, 0.95, 0] }}
+                transition={{ duration: 1.05, times: [0, 0.3, 1], ease: 'easeOut' }}
+                className="absolute w-52 h-52 rounded-full"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(253,224,71,0.45) 38%, rgba(56,189,248,0.22) 68%, rgba(255,255,255,0) 100%)',
+                  filter: 'blur(4px)',
+                }}
+              />
+
+              {/* Glittering 4-point spark particles bursting radially */}
+              {SPARK_BURST_OFFSETS.map((sp, sIdx) => (
+                <motion.svg
+                  key={sIdx}
+                  viewBox="0 0 24 24"
+                  initial={{ x: 0, y: 0, scale: 0.2, opacity: 0, rotate: 0 }}
+                  animate={{
+                    x: [0, sp.x * 0.72, sp.x],
+                    y: [0, sp.y * 0.72, sp.y],
+                    scale: [0.2, 1.25, 0.15],
+                    opacity: [0, 1, 0],
+                    rotate: [0, 45, 90],
+                  }}
+                  transition={{
+                    duration: 0.95,
+                    delay: sp.delay,
+                    times: [0, 0.35, 1],
+                    ease: 'easeOut',
+                  }}
+                  className="absolute"
+                  style={{ width: sp.size, height: sp.size }}
+                >
+                  <path
+                    d="M12 1L14.6 9.4L23 12L14.6 14.6L12 23L9.4 14.6L1 12L9.4 9.4L12 1Z"
+                    fill={sp.gold ? '#fef08a' : '#e0f2fe'}
+                  />
+                </motion.svg>
+              ))}
+
+              {/* Category Graphic + Glitter Label popping up and receding back */}
+              <motion.div
+                initial={{ scale: 0.38, y: 12, opacity: 0 }}
+                animate={{
+                  scale: [0.38, 1.22, 1.05, 0.78],
+                  y: [12, -8, -4, 6],
+                  opacity: [0, 1, 1, 0],
+                }}
+                transition={{ duration: 1.1, times: [0, 0.25, 0.62, 1], ease: 'easeOut' }}
+                className="relative flex flex-col items-center gap-2"
+              >
+                <div className="inline-flex h-24 w-24 items-center justify-center rounded-full border border-white/85 bg-white/25 backdrop-blur-md shadow-[0_0_45px_rgba(255,255,255,0.75)]">
+                  <EventCategoryEmblem
+                    icon={selectedCard.icon ?? 'sparkles'}
+                    className="w-14 h-14 drop-shadow-[0_4px_16px_rgba(255,255,255,0.9)]"
+                  />
+                </div>
+                {selectedCard.category && (
+                  <span className="px-3.5 py-1 rounded-full border border-white/75 bg-slate-950/75 text-xs font-extrabold uppercase tracking-[0.22em] text-amber-100 shadow-[0_0_24px_rgba(253,224,71,0.55)]">
+                    {selectedCard.category}
+                  </span>
+                )}
+              </motion.div>
+            </div>
+          </motion.div>
 
           {/* Reasoning Drawer Coming Up from Card & Going Out on Click */}
           <div

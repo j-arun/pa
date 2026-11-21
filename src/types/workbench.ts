@@ -182,6 +182,7 @@ export interface VoiceConfig {
   selectedVoiceURI: string;
   rate: number;
   pitch: number;
+  prodSummarySpeakerEnabled?: boolean;
 }
 
 export type ThemeMode =
