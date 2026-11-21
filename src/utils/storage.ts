@@ -116,8 +116,10 @@ function loadLegacyPromptBuilderSettings(): PromptBuilderSettings {
 
 export const DEFAULT_SETTINGS: WorkbenchSettings = {
   theme: 'arctic-sky',
+  prodTheme: 'dark',
   fontFamily: 'segoe',
   reportsDir: '',
+  prodReportsDir: '',
   profile: {
     displayName: 'Local User',
     avatarDataUrl: '',
@@ -224,9 +226,12 @@ export function loadSettings(): WorkbenchSettings {
 
     return {
       theme,
+      prodTheme: parsed.prodTheme === 'light' ? 'light' : 'dark',
       fontFamily,
       reportsDir:
         typeof parsed.reportsDir === 'string' ? parsed.reportsDir.trim() : '',
+      prodReportsDir:
+        typeof parsed.prodReportsDir === 'string' ? parsed.prodReportsDir.trim() : '',
       profile: {
         ...DEFAULT_SETTINGS.profile,
         ...(parsed.profile || {}),

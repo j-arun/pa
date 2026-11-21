@@ -104,6 +104,7 @@ interface ProductionStage1ThreeProps {
   activeYearNum: number;
   activePromptDomain: PromptDomain;
   activeProvider: 'gemini' | 'fable';
+  isDarkTheme?: boolean;
   ratedThreads: RatedThreadRecord[];
   isSending: boolean;
   switchingMonthKey?: string | null;
@@ -451,6 +452,7 @@ export function ProductionStage1Three({
   activeYearNum,
   activePromptDomain,
   activeProvider,
+  isDarkTheme = true,
   ratedThreads,
   isSending,
   switchingMonthKey,
@@ -620,6 +622,7 @@ export function ProductionStage1Three({
     activeYearNum,
     activePromptDomain,
     activeProvider,
+    isDarkTheme,
     isSending,
     dockedTarget,
     blockedDropNotice,
@@ -629,6 +632,7 @@ export function ProductionStage1Three({
     activeYearNum,
     activePromptDomain,
     activeProvider,
+    isDarkTheme,
     isSending,
     dockedTarget,
     blockedDropNotice,
@@ -1252,6 +1256,13 @@ export function ProductionStage1Three({
       elapsed += dt;
 
       stars.rotation.z = Math.sin(elapsed * 0.18) * 0.02;
+      if (stateRef.current.isDarkTheme) {
+        starMat.color.setHex(0xbae6fd);
+        starMat.opacity = 0.45;
+      } else {
+        starMat.color.setHex(0x0284c7);
+        starMat.opacity = 0.25;
+      }
 
       // Animate 6 Bigger Medium-Size Spaced Month Buckets + Swell Big on Hover + Lingering Larger Interior Reports
       const anyBucketHovered = hoveredBucketKeyLocal !== null;
@@ -1438,14 +1449,26 @@ export function ProductionStage1Three({
   };
 
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-[#060c1a]">
+    <div
+      className={`relative flex-1 min-h-0 overflow-hidden transition-colors duration-300 ${
+        isDarkTheme
+          ? 'bg-[#060c1a]'
+          : 'bg-gradient-to-b from-[#edf5fd] via-[#f6fafe] to-[#ffffff]'
+      }`}
+    >
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
       {/* Subtle Bottom Guidance Text */}
       {!dockedTarget && !blockedDropNotice && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3.5 z-10 flex justify-center px-4">
-          <p className="text-xs font-medium tracking-wide text-sky-200/80 bg-[#081226]/90 border border-sky-400/25 rounded-xl px-3.5 py-1.5">
+          <p
+            className={`text-xs font-medium tracking-wide rounded-xl px-3.5 py-1.5 border ${
+              isDarkTheme
+                ? 'text-sky-200/85 bg-[#081226]/90 border-sky-400/25'
+                : 'fluent-3d-popup-pill text-slate-700'
+            }`}
+          >
             {isDraggingTopic
               ? hoveredBucketLabel
                 ? `Release to drop into ${hoveredBucketLabel}`
@@ -1462,7 +1485,7 @@ export function ProductionStage1Three({
         <div className="absolute top-4 inset-x-0 z-20 flex justify-center px-4">
           <div
             role="alert"
-            className="max-w-md rounded-2xl border border-red-700/80 bg-[#2a0b10] px-4 py-2.5 text-xs font-semibold text-red-200 flex items-center justify-between gap-3"
+            className="fluent-3d-popup max-w-md rounded-2xl border border-rose-300/85 px-4 py-2.5 text-xs font-semibold text-rose-700 flex items-center justify-between gap-3"
           >
             <span>{monthSwitchError}</span>
             {onDismissMonthSwitchError && (
@@ -1470,7 +1493,7 @@ export function ProductionStage1Three({
                 type="button"
                 onClick={onDismissMonthSwitchError}
                 aria-label="Dismiss alert"
-                className="p-1 rounded-lg hover:bg-red-900/60"
+                className="p-1 rounded-lg hover:bg-white/75"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1481,22 +1504,22 @@ export function ProductionStage1Three({
 
       {/* Blocked Duplicate Notice Modal (Max 1 Gemini + 1 Fable per domain per month) */}
       {blockedDropNotice && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#040c1a]/55">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/35 backdrop-blur-xs">
           <div
             role="alertdialog"
             aria-labelledby="blocked-drop-title"
-            className="w-full max-w-md rounded-3xl border border-amber-400/40 bg-[#0d1629]/95 p-6 text-slate-100 shadow-[0_28px_70px_rgba(2,6,23,0.75)] space-y-4"
+            className="fluent-3d-popup w-full max-w-md rounded-[28px] p-6 text-slate-900 space-y-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-400/35 text-amber-300 shrink-0">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-400/45 text-amber-600 shrink-0">
                   <ShieldAlert className="w-4 h-4" />
                 </span>
                 <div>
-                  <h2 id="blocked-drop-title" className="text-sm font-bold text-white">
+                  <h2 id="blocked-drop-title" className="text-sm font-bold text-slate-900">
                     Report Already Exists
                   </h2>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-600">
                     {blockedDropNotice.topic.label} · {blockedDropNotice.month.fullLabel}
                   </p>
                 </div>
@@ -1505,16 +1528,16 @@ export function ProductionStage1Three({
                 type="button"
                 onClick={() => setBlockedDropNotice(null)}
                 aria-label="Dismiss notice"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs leading-relaxed text-slate-300">
-              A <span className="font-semibold text-white">{blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'}</span> report for{' '}
-              <span className="font-semibold text-white">{blockedDropNotice.topic.label}</span> in{' '}
-              <span className="font-semibold text-white">{blockedDropNotice.month.fullLabel}</span> has already been generated.{' '}
+            <p className="text-xs leading-relaxed text-slate-700">
+              A <span className="font-semibold text-slate-900">{blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'}</span> report for{' '}
+              <span className="font-semibold text-slate-900">{blockedDropNotice.topic.label}</span> in{' '}
+              <span className="font-semibold text-slate-900">{blockedDropNotice.month.fullLabel}</span> has already been generated.{' '}
               {blockedDropNotice.otherProviderAvailable
                 ? `Only one ${blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'} report is allowed per domain each month—you can switch to ${blockedDropNotice.provider === 'fable' ? 'Gemini' : 'Fable'} in the bottom bar to add a second report.`
                 : 'Both Gemini and Fable reports (2/2) are already completed for this domain and month.'}
@@ -1524,7 +1547,7 @@ export function ProductionStage1Three({
               <button
                 type="button"
                 onClick={() => setBlockedDropNotice(null)}
-                className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-800/80 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300/80 bg-white/65 text-xs font-semibold text-slate-700 hover:bg-white/95 cursor-pointer"
               >
                 Close
               </button>
@@ -1545,12 +1568,12 @@ export function ProductionStage1Three({
         </div>
       )}
 
-      {/* Translucent Light-White Question Panel after Dropping Icon into Month Bucket */}
+      {/* Translucent Light-White 3D Fluent Question Panel after Dropping Icon into Month Bucket */}
       {dockedTarget && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#040c1a]/38">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/30 backdrop-blur-xs">
           <form
             onSubmit={handleSubmit}
-            className="relative overflow-hidden w-full max-w-md rounded-3xl border border-white/85 bg-white/82 p-6 sm:p-7 shadow-[0_28px_70px_rgba(2,6,23,0.45),inset_0_2px_12px_rgba(255,255,255,0.9)] space-y-4 text-slate-900"
+            className="fluent-3d-popup relative overflow-hidden w-full max-w-md rounded-[28px] p-6 sm:p-7 space-y-4 text-slate-900"
           >
             <div
               aria-hidden="true"

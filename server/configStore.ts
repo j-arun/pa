@@ -119,7 +119,17 @@ export function resolveDefaultReportsDir(): string {
   return path.join(resolveConfigDir(), 'reports');
 }
 
-export function resolveProductionReportsDir(): string {
+export function resolveProductionReportsDir(customDir?: string): string {
+  const trimmed = (customDir || '').trim();
+  if (trimmed) {
+    if (trimmed === '~' || trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+      return path.resolve(path.join(os.homedir(), trimmed.slice(2)));
+    }
+    if (process.platform === 'win32') {
+      return path.win32.resolve(trimmed);
+    }
+    return path.resolve(trimmed);
+  }
   if (process.env.WORKBENCH_PROD_REPORTS_DIR?.trim()) {
     return path.resolve(process.env.WORKBENCH_PROD_REPORTS_DIR.trim());
   }
@@ -149,8 +159,10 @@ export function resolveReportsDir(customDir?: string): string {
 
 export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
   theme: 'arctic-sky',
+  prodTheme: 'dark',
   fontFamily: 'segoe',
   reportsDir: resolveDefaultReportsDir(),
+  prodReportsDir: '',
   profile: {
     displayName: initialProfile.displayName,
     avatarDataUrl: initialProfile.avatarDataUrl,
@@ -247,11 +259,16 @@ export function mergeConfigWithDefaults(
 
   return {
     theme,
+    prodTheme: parsed.prodTheme === 'light' ? 'light' : 'dark',
     fontFamily,
     reportsDir:
       typeof parsed.reportsDir === 'string' && parsed.reportsDir.trim()
         ? parsed.reportsDir.trim()
         : resolveDefaultReportsDir(),
+    prodReportsDir:
+      typeof parsed.prodReportsDir === 'string' && parsed.prodReportsDir.trim()
+        ? parsed.prodReportsDir.trim()
+        : '',
     profile: {
       ...DEFAULT_WORKBENCH_CONFIG.profile,
       ...(parsed.profile || {}),

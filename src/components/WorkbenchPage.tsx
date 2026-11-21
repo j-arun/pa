@@ -2112,7 +2112,7 @@ export function WorkbenchPage({
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-45 transition-colors shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <MessageSquarePlus className="w-3.5 h-3.5" />
-                        <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
+                        <span>{isSending ? 'Thinking…' : 'Ask for Follow-up'}</span>
                       </button>
                     )}
                     {confirmDeleteId === rootExchange.id ? (
@@ -2195,24 +2195,23 @@ export function WorkbenchPage({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 28, scale: 0.9 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              style={{ borderColor: 'var(--pa-bubble-rim)' }}
-              className="pointer-events-auto w-full max-w-[600px] sm:max-w-[640px] rounded-3xl border bg-white/94 dark:bg-slate-900/94 backdrop-blur-2xl shadow-[0_28px_70px_-16px_rgba(15,23,42,0.28)] p-5 sm:p-6 space-y-4"
+              className="fluent-3d-popup pointer-events-auto w-full max-w-[600px] sm:max-w-[640px] rounded-[28px] p-5 sm:p-6 space-y-4 text-slate-900"
             >
               {/* Auto-Populated 2-Line Composer Header (Domain + Topic + Period) */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-0.5">
-                  <div className="inline-flex items-center gap-2 font-display text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  <div className="inline-flex items-center gap-2 font-display text-sm font-semibold text-slate-900 truncate">
                     <span>{`What's up · ${getPromptDomainShortLabel(effectiveComposerDomain)}`}</span>
                     {hasActiveThread && (
                       <span
                         className="text-xs font-medium"
-                        style={{ color: 'var(--pa-accent-text)' }}
+                        style={{ color: '#0369a1' }}
                       >
                         Follow-up
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums">
+                  <div className="text-xs text-slate-600 truncate tabular-nums">
                     {hasActiveThread && rootExchange?.questionTurn?.threadName?.trim()
                       ? `${rootExchange.questionTurn.threadName.trim()}${
                           composerPeriodLabel ? ` · Period: ${composerPeriodLabel}` : ''
@@ -2229,7 +2228,7 @@ export function WorkbenchPage({
                       onClick={onClearConversation}
                       disabled={isSending}
                       title="Start a brand new thread"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-700 hover:bg-white/75 transition-colors cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>New</span>
@@ -2240,7 +2239,7 @@ export function WorkbenchPage({
                     onClick={onToggleChatBar}
                     aria-label="Minimize chat panel"
                     title="Minimize chat panel"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:bg-white/75 hover:text-slate-900 transition-colors cursor-pointer"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
@@ -2347,7 +2346,7 @@ export function WorkbenchPage({
                         : 'Type your question… (Enter to send)'
                     }
                     style={{ fontFamily: 'var(--pa-font-body)' }}
-                    className="flex-1 min-h-[128px] resize-none bg-transparent text-sm sm:text-[15px] leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
+                    className="flex-1 min-h-[128px] resize-none bg-transparent text-sm sm:text-[15px] leading-relaxed text-slate-900 placeholder:text-slate-500 focus:outline-none disabled:opacity-60"
                   />
                   <button
                     type="submit"
@@ -2365,21 +2364,6 @@ export function WorkbenchPage({
                 </form>
               )}
             </motion.section>
-          ) : hasActiveThread && !isThreadFinalized && !(!isWaitingForReply && activeAssistantReply && rootExchange) ? (
-            <motion.button
-              key="chat-panel-minimized"
-              type="button"
-              onClick={onOpenChatBar}
-              initial={{ opacity: 0, y: 16, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.9 }}
-              transition={{ duration: 0.18 }}
-              whileHover={{ y: -2 }}
-              className="pointer-events-auto inline-flex items-center gap-2.5 rounded-full border border-white/90 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-[0_14px_34px_-10px_rgba(15,23,42,0.22)] hover:shadow-[0_18px_40px_-10px_rgba(2,132,199,0.28)] transition-shadow"
-            >
-              <MessageSquarePlus className="w-4 h-4" style={{ color: 'var(--pa-accent)' }} />
-              <span>{isSending ? 'Thinking…' : 'Ask Follow-up'}</span>
-            </motion.button>
           ) : null}
         </AnimatePresence>
       </div>
@@ -2406,16 +2390,16 @@ export function WorkbenchPage({
               exit={{ opacity: 0, scale: 0.72, y: 14 }}
               transition={{ type: 'spring', stiffness: 360, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-lg rounded-[28px] border border-white/95 dark:border-slate-700/85 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl shadow-[0_32px_90px_-18px_rgba(15,23,42,0.45),0_0_0_1px_rgba(255,255,255,0.5)_inset] overflow-hidden"
+              className="fluent-3d-popup relative w-full max-w-lg rounded-[28px] overflow-hidden"
             >
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-28 rounded-full blur-3xl opacity-25 dark:opacity-20"
+                className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-28 rounded-full blur-3xl opacity-25"
                 style={{ backgroundColor: 'var(--pa-accent)' }}
               />
 
               <div
-                className="relative p-6 sm:p-7 text-[15px] sm:text-base leading-relaxed text-slate-800 dark:text-slate-100 max-h-[60vh] overflow-y-auto fluent-scroll whitespace-pre-line"
+                className="relative p-6 sm:p-7 text-[15px] sm:text-base leading-relaxed text-slate-900 max-h-[60vh] overflow-y-auto fluent-scroll whitespace-pre-line"
                 style={{ fontFamily: 'var(--pa-font-body)' }}
               >
                 {flashedEvent.card.how || flashedEvent.card.summary}

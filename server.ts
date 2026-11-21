@@ -49,10 +49,12 @@ async function startServer() {
   app.get('/api/config', (_req, res) => {
     try {
       const result = readLocalConfigFile();
-      const prodDir = resolveProductionReportsDir();
+      const defaultProdDir = resolveProductionReportsDir();
+      const effectiveProdDir = resolveProductionReportsDir(result.config.prodReportsDir);
       return res.json({
         ...result,
-        productionReportsDir: formatProductionReportsDirDisplay(prodDir),
+        defaultProductionReportsDir: formatProductionReportsDirDisplay(defaultProdDir),
+        productionReportsDir: formatProductionReportsDirDisplay(effectiveProdDir),
       });
     } catch (err) {
       return res.status(500).json({
@@ -65,10 +67,12 @@ async function startServer() {
     try {
       const next = (req.body || {}) as Partial<WorkbenchSettings>;
       const result = writeLocalConfigFile(next);
-      const prodDir = resolveProductionReportsDir();
+      const defaultProdDir = resolveProductionReportsDir();
+      const effectiveProdDir = resolveProductionReportsDir(result.config.prodReportsDir);
       return res.json({
         ...result,
-        productionReportsDir: formatProductionReportsDirDisplay(prodDir),
+        defaultProductionReportsDir: formatProductionReportsDirDisplay(defaultProdDir),
+        productionReportsDir: formatProductionReportsDirDisplay(effectiveProdDir),
       });
     } catch (err) {
       return res.status(500).json({
@@ -77,18 +81,28 @@ async function startServer() {
     }
   });
 
+  const resolveEffectiveProdReportsDir = (explicitDir?: string) => {
+    const trimmed = (explicitDir || '').trim();
+    if (trimmed) {
+      return resolveProductionReportsDir(trimmed);
+    }
+    return resolveProductionReportsDir(readLocalConfigFile().config.prodReportsDir);
+  };
+
   app.get('/api/reports', (req, res) => {
     try {
       const isProductionReq = req.query.mode === 'production';
       const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const explicitDir = typeof req.query.dir === 'string' ? req.query.dir.trim() : '';
       const queryDir = isProductionReq
-        ? resolveProductionReportsDir()
-        : typeof req.query.dir === 'string' && req.query.dir.trim()
-          ? req.query.dir.trim()
-          : readLocalConfigFile().config.reportsDir;
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
       const result = listStoredReports(queryDir, layout);
       return res.json({
         ...result,
+        defaultProductionReportsDir: formatProductionReportsDirDisplay(
+          resolveProductionReportsDir(),
+        ),
         displayReportsDir: isProductionReq
           ? formatProductionReportsDirDisplay(result.reportsDir)
           : result.reportsDir,
@@ -107,11 +121,10 @@ async function startServer() {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
       const isProductionReq = req.query.mode === 'production';
+      const explicitDir = typeof req.query.dir === 'string' ? req.query.dir.trim() : '';
       const queryDir = isProductionReq
-        ? resolveProductionReportsDir()
-        : typeof req.query.dir === 'string' && req.query.dir.trim()
-          ? req.query.dir.trim()
-          : readLocalConfigFile().config.reportsDir;
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
       const result = readStoredReportHtml(reportId, queryDir);
       if (!result) {
         return res.status(404).json({ error: 'Report HTML file not found on disk.' });
@@ -141,10 +154,10 @@ async function startServer() {
       }
       const isProductionReq = req.query.mode === 'production' || mode === 'production';
       const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const explicitDir = typeof reportsDir === 'string' ? reportsDir.trim() : '';
       const targetDir = isProductionReq
-        ? resolveProductionReportsDir()
-        : (typeof reportsDir === 'string' && reportsDir.trim()) ||
-          readLocalConfigFile().config.reportsDir;
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
       const saved = saveStoredReport(
         { ...record, id: reportId || record.id },
         targetDir,
@@ -171,11 +184,10 @@ async function startServer() {
     try {
       const reportId = decodeURIComponent(req.params.id || '');
       const isProductionReq = req.query.mode === 'production';
+      const explicitDir = typeof req.query.dir === 'string' ? req.query.dir.trim() : '';
       const queryDir = isProductionReq
-        ? resolveProductionReportsDir()
-        : typeof req.query.dir === 'string' && req.query.dir.trim()
-          ? req.query.dir.trim()
-          : readLocalConfigFile().config.reportsDir;
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
       const result = deleteStoredReport(reportId, queryDir);
       return res.json(result);
     } catch (err) {
@@ -213,10 +225,10 @@ async function startServer() {
           .json({ error: 'Provide a report name, comment, or move target.' });
       }
       const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const explicitDir = typeof reportsDir === 'string' ? reportsDir.trim() : '';
       const targetDir = isProductionReq
-        ? resolveProductionReportsDir()
-        : (typeof reportsDir === 'string' && reportsDir.trim()) ||
-          readLocalConfigFile().config.reportsDir;
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
       const result = updateStoredReportMetadata(
         reportId,
         {

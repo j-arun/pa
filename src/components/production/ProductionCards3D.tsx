@@ -6,8 +6,10 @@ import {
   DollarSign,
   Heart,
   Home,
+  MessageSquarePlus,
   Pause,
   RotateCcw,
+  Send,
   ShieldPlus,
   Sparkles,
   X,
@@ -20,6 +22,7 @@ import type { EventCardIconType, EventCardItem, PromptDomain } from '../../types
 import {
   getMonthNameFromNumber,
   getMonthNumberFromName,
+  getPromptDomainShortLabel,
 } from '../../utils/promptTemplates';
 import type { ReadOutSections } from '../../utils/eventParser';
 import { EventCategoryEmblem } from '../DomainEmblem';
@@ -34,9 +37,12 @@ interface ProductionCards3DProps {
   periodLabel?: string;
   domain?: PromptDomain;
   providerAdapter?: 'gemini' | 'fable';
+  isDarkTheme?: boolean;
+  canAskFollowUp?: boolean;
   isSpeakerEnabled?: boolean;
   isSpeakingSummary?: boolean;
   onToggleSpeakSummary?: () => void;
+  onSendFollowUp?: (question: string) => void;
   onCancelRequest: () => void;
   onRetry: () => void;
   onStartNewThread: () => void;
@@ -1092,9 +1098,12 @@ export function ProductionCards3D({
   periodLabel,
   domain,
   providerAdapter = 'gemini',
+  isDarkTheme = true,
+  canAskFollowUp = false,
   isSpeakerEnabled = true,
   isSpeakingSummary = false,
   onToggleSpeakSummary,
+  onSendFollowUp,
   onCancelRequest,
   onRetry,
   onStartNewThread,
@@ -1106,6 +1115,10 @@ export function ProductionCards3D({
   const [isAnswerShrunk, setIsAnswerShrunk] = useState(false);
   const [shrunkPos, setShrunkPos] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingChip, setIsDraggingChip] = useState(false);
+  const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState('');
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
+  const followUpInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1125,12 +1138,31 @@ export function ProductionCards3D({
     setIsReasoningOpen(false);
     setIsAnswerShrunk(false);
     setShrunkPos(null);
+    setIsFollowUpOpen(false);
+    setFollowUpDraft('');
+    setFollowUpError(null);
   }, [cards]);
+
+  useEffect(() => {
+    if (!canAskFollowUp) {
+      setIsFollowUpOpen(false);
+      setFollowUpError(null);
+    }
+  }, [canAskFollowUp]);
+
+  useEffect(() => {
+    if (!isFollowUpOpen) return;
+    const t = window.setTimeout(() => followUpInputRef.current?.focus(), 60);
+    return () => window.clearTimeout(t);
+  }, [isFollowUpOpen]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isReasoningOpen) {
+        if (isFollowUpOpen) {
+          setIsFollowUpOpen(false);
+          setFollowUpError(null);
+        } else if (isReasoningOpen) {
           setIsReasoningOpen(false);
         } else if (selectedIndex !== null) {
           setSelectedIndex(null);
@@ -1139,12 +1171,13 @@ export function ProductionCards3D({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isReasoningOpen, selectedIndex]);
+  }, [isFollowUpOpen, isReasoningOpen, selectedIndex]);
 
   const interactionRef = useRef({
     selectedIndex,
     isWaitingForReply,
     providerAdapter,
+    isDarkTheme,
     scrollTarget: 0,
     onSelectCard: (idx: number) => {
       setSelectedIndex(idx);
@@ -1161,6 +1194,7 @@ export function ProductionCards3D({
   interactionRef.current.selectedIndex = selectedIndex;
   interactionRef.current.isWaitingForReply = isWaitingForReply;
   interactionRef.current.providerAdapter = providerAdapter;
+  interactionRef.current.isDarkTheme = isDarkTheme;
 
   const shiftScroll = (delta: number) => {
     const maxOffset = Math.max(0, cards.length - 1);
@@ -1204,9 +1238,14 @@ export function ProductionCards3D({
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const galleryBgColor = new THREE.Color('#f2f1ed'); // Warm alabaster studio (Screenshot 1)
-    const detailBgColor = new THREE.Color('#04060b'); // Obsidian stage (Screenshot 2)
-    scene.background = galleryBgColor.clone();
+    const galleryBgLightColor = new THREE.Color('#f2f1ed');
+    const galleryBgDarkColor = new THREE.Color('#091122');
+    const detailBgDarkColor = new THREE.Color('#04060b');
+    const detailBgLightColor = new THREE.Color('#e6eff8');
+    scene.background = (interactionRef.current.isDarkTheme
+      ? galleryBgDarkColor
+      : galleryBgLightColor
+    ).clone();
 
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const roomEnv = new RoomEnvironment();
@@ -1750,9 +1789,16 @@ export function ProductionCards3D({
       detailArrivalPulse = THREE.MathUtils.damp(detailArrivalPulse, 0, 2.2, dt);
       galleryArrivalPulse = THREE.MathUtils.damp(galleryArrivalPulse, 0, 1.15, dt);
 
-      // Background color smoothly blends between studio alabaster and obsidian stage
+      // Background color smoothly blends according to Dark/Light theme and detail focus
       if (scene.background instanceof THREE.Color) {
-        const bgTarget = isWait ? detailBgColor : inDetail ? detailBgColor : galleryBgColor;
+        const darkMode = interactionRef.current.isDarkTheme;
+        const bgTarget = isWait || inDetail
+          ? darkMode
+            ? detailBgDarkColor
+            : detailBgLightColor
+          : darkMode
+            ? galleryBgDarkColor
+            : galleryBgLightColor;
         scene.background.lerp(bgTarget, Math.min(1, dt * 8));
       }
 
@@ -1953,30 +1999,59 @@ export function ProductionCards3D({
     ? (selectedCard.probability || selectedCard.likelihood || '').trim()
     : '';
 
+  const handleFollowUpSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!canAskFollowUp || !onSendFollowUp) return;
+    const trimmed = followUpDraft.trim();
+    if (!trimmed) {
+      setFollowUpError('Please enter a follow-up question.');
+      followUpInputRef.current?.focus();
+      return;
+    }
+    setIsFollowUpOpen(false);
+    setFollowUpDraft('');
+    setFollowUpError(null);
+    onSendFollowUp(trimmed);
+  };
+
+  const handleNewThreadClick = () => {
+    setIsFollowUpOpen(false);
+    setFollowUpDraft('');
+    setFollowUpError(null);
+    setIsReasoningOpen(false);
+    setSelectedIndex(null);
+    onStartNewThread();
+  };
+
+  const domainShortLabel = domain ? getPromptDomainShortLabel(domain) : 'Thread';
+  const formattedPeriodLabel = periodLabel ? formatWaitingPeriodLabel(periodLabel) : '';
+
   const errorUi = useMemo(() => {
     if (!errorDetail) return null;
     return (
-      <div className="absolute inset-0 z-20 flex items-center justify-center p-6 bg-[#040812]/90">
-        <div className="max-w-md w-full rounded-3xl border border-red-800/80 bg-[#1a0b10] p-6 text-red-100 space-y-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-red-200">
+      <div className="absolute inset-0 z-20 flex items-center justify-center p-6 bg-slate-950/45 backdrop-blur-xs">
+        <div className="fluent-3d-popup max-w-md w-full rounded-[28px] border border-rose-300/85 p-6 text-slate-900 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-rose-700">
             <WhatsAppSymbol className="w-5 h-5" />
             <span>What&apos;s up</span>
           </div>
-          <p className="text-sm font-medium">Try &quot;What&apos;s up&quot; little later ..</p>
-          <p className="text-xs text-red-200/80 break-words">{errorDetail}</p>
+          <p className="text-sm font-medium text-slate-900">
+            Try &quot;What&apos;s up&quot; little later ..
+          </p>
+          <p className="text-xs text-rose-700/90 break-words">{errorDetail}</p>
           <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-500 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Retry</span>
             </button>
             <button
               type="button"
-              onClick={onStartNewThread}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-red-700/70 px-4 py-2 text-xs font-semibold text-red-100 hover:bg-red-950/60 cursor-pointer"
+              onClick={handleNewThreadClick}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-white cursor-pointer"
             >
               <span>New Thread</span>
             </button>
@@ -1999,7 +2074,11 @@ export function ProductionCards3D({
               <div className="inline-flex items-center justify-center gap-2.5">
                 {domain && <Stage2DomainEmblem domain={domain} />}
                 {periodLabel && (
-                  <span className="text-xs sm:text-sm font-bold tracking-[0.16em] uppercase text-sky-300 tabular-nums">
+                  <span
+                    className={`text-xs sm:text-sm font-bold tracking-[0.16em] uppercase tabular-nums ${
+                      isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                    }`}
+                  >
                     {formatWaitingPeriodLabel(periodLabel)}
                   </span>
                 )}
@@ -2008,7 +2087,9 @@ export function ProductionCards3D({
             {questionText && (
               <p
                 aria-label={questionText}
-                className="max-w-xl flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-sm sm:text-base font-medium text-slate-100 leading-relaxed"
+                className={`max-w-xl flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-sm sm:text-base font-medium leading-relaxed ${
+                  isDarkTheme ? 'text-slate-100' : 'text-slate-800'
+                }`}
               >
                 {questionText
                   .trim()
@@ -2016,8 +2097,8 @@ export function ProductionCards3D({
                   .map((word, idx) => (
                     <span
                       key={`${idx}-${word}`}
-                      className="pa-question-word-jump"
-                      style={{ animationDelay: `${(idx % 12) * 0.13}s` }}
+                      className={isDarkTheme ? 'pa-question-word-jump' : 'inline-block'}
+                      style={isDarkTheme ? { animationDelay: `${(idx % 12) * 0.13}s` } : undefined}
                     >
                       {word}
                     </span>
@@ -2032,7 +2113,7 @@ export function ProductionCards3D({
               onClick={onCancelRequest}
               aria-label="Pause"
               title="Pause"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-500/45 bg-[#140a12]/90 text-rose-300 shadow-[0_8px_24px_rgba(0,0,0,0.45)] hover:bg-rose-950/80 hover:text-rose-200 transition-colors cursor-pointer"
+              className="fluent-3d-popup-pill inline-flex h-10 w-10 items-center justify-center rounded-full text-rose-600 hover:text-rose-500 transition-colors cursor-pointer"
             >
               <Pause className="w-4 h-4 fill-current" />
             </button>
@@ -2062,7 +2143,7 @@ export function ProductionCards3D({
               className={`pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full border transition-all cursor-pointer shrink-0 ${
                 isSpeakingSummary
                   ? 'border-sky-400 bg-sky-500 text-white shadow-[0_0_20px_rgba(14,165,233,0.65)] animate-pulse'
-                  : 'border-slate-300/90 bg-white/94 text-slate-700 shadow-[0_6px_18px_-4px_rgba(15,23,42,0.22)] hover:border-sky-400 hover:text-sky-600 hover:bg-white'
+                  : 'fluent-3d-popup-pill text-slate-700 hover:text-sky-600'
               }`}
             >
               <WindowsSpeakerIcon active={isSpeakingSummary} className="w-4 h-4" />
@@ -2071,10 +2152,10 @@ export function ProductionCards3D({
         </div>
       )}
 
-      {/* Gallery Mode Overlays: Top Floating Answer Bubble + Scroll Arrows */}
+      {/* Gallery Mode Overlays: Top Floating Answer Bubble + Scroll Arrows + Follow-up */}
       {!isWaitingForReply && !errorDetail && selectedIndex === null && (
         <>
-          {/* Floating Light-Theme Answer Bubble right over the top of the 3D cards */}
+          {/* Floating Fluent Transparent White 3D Answer Bubble */}
           {hasAnswer && (
             <>
               {isAnswerShrunk ? (
@@ -2141,7 +2222,7 @@ export function ProductionCards3D({
                       ? { left: shrunkPos.x, top: shrunkPos.y }
                       : { left: '50%', top: 12, transform: 'translateX(-50%)' }
                   }
-                  className={`absolute z-20 inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-[#f8fbff]/96 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 shadow-[0_12px_28px_-10px_rgba(15,23,42,0.28)] hover:bg-white touch-none select-none ${
+                  className={`fluent-3d-popup-pill absolute z-20 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700 touch-none select-none ${
                     isDraggingChip ? 'cursor-grabbing scale-105' : 'cursor-grab'
                   }`}
                 >
@@ -2151,7 +2232,7 @@ export function ProductionCards3D({
               ) : (
                 <div className="pointer-events-none absolute top-3 inset-x-0 z-10 px-4 sm:px-8">
                   <div className="max-w-2xl mx-auto">
-                    <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
+                    <div className="fluent-3d-popup pointer-events-auto rounded-[28px] px-5 py-4">
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
                           <Sparkles className="w-3.5 h-3.5 text-sky-600" />
@@ -2165,7 +2246,7 @@ export function ProductionCards3D({
                           }}
                           aria-label="Shrink answer pane"
                           title="Shrink answer"
-                          className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full hover:bg-sky-100/80 transition-colors cursor-pointer shrink-0"
+                          className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-full hover:bg-white/75 transition-colors cursor-pointer shrink-0"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
@@ -2181,52 +2262,70 @@ export function ProductionCards3D({
             </>
           )}
 
-          {/* Bottom Card Navigation Strip */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex items-center justify-between px-5 sm:px-8">
+          {/* Bottom Card Navigation & Follow-up Strip */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex items-end justify-between px-5 sm:px-8">
             <div className="pointer-events-auto flex items-center gap-2">
               <button
                 type="button"
-                onClick={onStartNewThread}
+                onClick={handleNewThreadClick}
                 title="Start New Thread"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-800 shadow-xs hover:bg-white cursor-pointer"
+                className="fluent-3d-popup-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-white cursor-pointer"
               >
                 <WhatsAppSymbol className="w-4 h-4" />
                 <span>New Thread</span>
               </button>
             </div>
 
-            {cards.length > 0 && (
-              <div className="pointer-events-auto flex items-center gap-2">
-                <span className="hidden sm:inline text-xs font-medium text-slate-600 bg-white/90 border border-slate-200 rounded-xl px-3 py-1.5">
-                  Scroll or drag · Click any card
-                </span>
-                <button
-                  type="button"
-                  key={`prev-${scrollTick}`}
-                  onClick={() => shiftScroll(-1)}
-                  aria-label="Previous card"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white/95 text-slate-800 shadow-xs hover:bg-white cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => shiftScroll(1)}
-                  aria-label="Next card"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white/95 text-slate-800 shadow-xs hover:bg-white cursor-pointer"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+            {(canAskFollowUp || cards.length > 0) && (
+              <div className="pointer-events-auto flex flex-col items-end gap-2">
+                {canAskFollowUp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFollowUpError(null);
+                      setIsFollowUpOpen(true);
+                    }}
+                    className="fluent-3d-popup-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-sky-800 hover:bg-white hover:text-sky-700 transition-colors cursor-pointer"
+                  >
+                    <MessageSquarePlus className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <span>Ask for Follow-up</span>
+                  </button>
+                )}
+
+                {cards.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="fluent-3d-popup-pill hidden sm:inline text-xs font-medium text-slate-700 rounded-xl px-3 py-1.5">
+                      Scroll or drag · Click any card
+                    </span>
+                    <button
+                      type="button"
+                      key={`prev-${scrollTick}`}
+                      onClick={() => shiftScroll(-1)}
+                      aria-label="Previous card"
+                      className="fluent-3d-popup-pill inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-800 hover:bg-white cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => shiftScroll(1)}
+                      aria-label="Next card"
+                      className="fluent-3d-popup-pill inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-800 hover:bg-white cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </>
       )}
 
-      {/* Expanded 3D Card Category Glitter Spark Flash & Slide-Up Reasoning */}
+      {/* Expanded 3D Card Category Glitter Spark Flash, Reasoning Pop-up & Follow-up Action */}
       {!isWaitingForReply && !errorDetail && selectedCard && (
         <>
-          {/* Transient Category + Time Period + Probability Glitter Flash that pops up on card open and recedes back */}
+          {/* Transient Category + Time Period + Probability Glitter Flash */}
           <motion.div
             key={`card-category-spark-${selectedIndex}`}
             aria-hidden="true"
@@ -2236,7 +2335,6 @@ export function ProductionCards3D({
             className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4"
           >
             <div className="relative flex flex-col items-center justify-center max-w-md text-center">
-              {/* Radiant flash aura */}
               <motion.div
                 initial={{ scale: 0.3, opacity: 0 }}
                 animate={{ scale: [0.3, 1.45, 1.95], opacity: [0, 0.95, 0] }}
@@ -2249,7 +2347,6 @@ export function ProductionCards3D({
                 }}
               />
 
-              {/* Glittering 4-point spark particles bursting radially */}
               {SPARK_BURST_OFFSETS.map((sp, sIdx) => (
                 <motion.svg
                   key={sIdx}
@@ -2278,7 +2375,6 @@ export function ProductionCards3D({
                 </motion.svg>
               ))}
 
-              {/* Crisp Glowing Category Icon + Category Label + Time Period + Most Likely / Probability % */}
               <motion.div
                 initial={{ scale: 0.45, y: 14, opacity: 0 }}
                 animate={{
@@ -2331,9 +2427,51 @@ export function ProductionCards3D({
             </div>
           </motion.div>
 
-          {/* Reasoning Drawer Coming Up from Card & Going Out on Click */}
+          {/* Bottom Controls when Viewing a Card: New Thread + Back + Ask for Follow-up */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex items-center justify-between px-5 sm:px-8">
+            <div className="pointer-events-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleNewThreadClick}
+                title="Start New Thread"
+                className="fluent-3d-popup-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-white cursor-pointer"
+              >
+                <WhatsAppSymbol className="w-4 h-4" />
+                <span>New Thread</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsReasoningOpen(false);
+                  setSelectedIndex(null);
+                }}
+                className="fluent-3d-popup-pill inline-flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Cards</span>
+              </button>
+            </div>
+
+            {canAskFollowUp && (
+              <div className="pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFollowUpError(null);
+                    setIsFollowUpOpen(true);
+                  }}
+                  className="fluent-3d-popup-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-sky-800 hover:bg-white hover:text-sky-700 transition-colors cursor-pointer"
+                >
+                  <MessageSquarePlus className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                  <span>Ask for Follow-up</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Reasoning Drawer Coming Up from Card & Going Out on Click (Fluent Transparent White 3D Glass) */}
           <div
-            className={`pointer-events-none fixed inset-x-0 bottom-10 z-20 flex justify-center px-4 transition-all duration-300 ease-out ${
+            className={`pointer-events-none fixed inset-x-0 bottom-16 z-20 flex justify-center px-4 transition-all duration-300 ease-out ${
               isReasoningOpen
                 ? 'translate-y-0 opacity-100'
                 : 'translate-y-12 opacity-0'
@@ -2342,7 +2480,7 @@ export function ProductionCards3D({
             {isReasoningOpen && (
               <div
                 onClick={() => setIsReasoningOpen(false)}
-                className="pointer-events-auto w-full max-w-xl rounded-3xl border border-slate-200 bg-[#f8fafc] p-6 text-slate-900 shadow-[0_28px_70px_rgba(2,6,23,0.72)] cursor-pointer select-text"
+                className="fluent-3d-popup pointer-events-auto w-full max-w-xl rounded-[28px] p-6 cursor-pointer select-text"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
@@ -2360,18 +2498,115 @@ export function ProductionCards3D({
                       setIsReasoningOpen(false);
                     }}
                     aria-label="Close reasoning"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 cursor-pointer"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line max-h-56 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain">
+                <p className="text-sm leading-relaxed text-slate-800 whitespace-pre-line max-h-56 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain">
                   {selectedCard.how || selectedCard.summary}
                 </p>
               </div>
             )}
           </div>
         </>
+      )}
+
+      {/* Fluent Transparent White 3D Follow-up Question Dialog */}
+      {isFollowUpOpen && canAskFollowUp && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/30 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="prod-followup-title"
+          onClick={() => {
+            setIsFollowUpOpen(false);
+            setFollowUpError(null);
+          }}
+        >
+          <form
+            onSubmit={handleFollowUpSubmit}
+            onClick={(e) => e.stopPropagation()}
+            className="fluent-3d-popup relative w-full max-w-md rounded-[28px] p-6 sm:p-7 space-y-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
+                <MessageSquarePlus className="w-4 h-4 text-sky-600 shrink-0" />
+                <span className="tabular-nums">
+                  {domainShortLabel}
+                  {formattedPeriodLabel ? ` · ${formattedPeriodLabel}` : ''} ·{' '}
+                  {providerAdapter === 'fable' ? 'Fable' : 'Gemini'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFollowUpOpen(false);
+                  setFollowUpError(null);
+                }}
+                aria-label="Close follow-up dialog"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label
+                id="prod-followup-title"
+                htmlFor="prod-followup-input"
+                className="block font-display text-lg font-bold text-slate-900 mb-2"
+              >
+                Ask for Follow-up
+              </label>
+              <textarea
+                id="prod-followup-input"
+                ref={followUpInputRef}
+                rows={4}
+                value={followUpDraft}
+                onChange={(e) => {
+                  setFollowUpDraft(e.target.value);
+                  if (followUpError && e.target.value.trim()) {
+                    setFollowUpError(null);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleFollowUpSubmit();
+                  }
+                }}
+                placeholder="Type your follow-up question..."
+                className="w-full resize-none rounded-2xl border border-sky-200/90 bg-white/70 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white/90 focus:outline-none"
+              />
+              {followUpError && (
+                <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-600">
+                  {followUpError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFollowUpOpen(false);
+                  setFollowUpError(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300/80 bg-white/65 text-xs font-semibold text-slate-700 hover:bg-white/95 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white shadow-sm transition-colors cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send</span>
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

@@ -208,8 +208,10 @@ export interface NotificationConfig {
 
 export interface WorkbenchSettings {
   theme: ThemeMode;
+  prodTheme?: 'light' | 'dark';
   fontFamily: FontOption;
   reportsDir?: string;
+  prodReportsDir?: string;
   profile: UserProfileConfig;
   privateLlm: PrivateLlmConfig;
   contextCache: ContextCacheConfig;

@@ -33,6 +33,7 @@ import {
 } from './components/WorkbenchPage';
 import { ProductionCards3D } from './components/production/ProductionCards3D';
 import { ProductionReportsMenu } from './components/production/ProductionReportsMenu';
+import { ProductionSettingsModal } from './components/production/ProductionSettingsModal';
 import { ProductionStage1Three } from './components/production/ProductionStage1Three';
 import { ProductionTimelinePanel } from './components/production/ProductionTimelinePanel';
 import { useSpeechIO } from './hooks/useSpeechIO';
@@ -156,6 +157,7 @@ export default function App() {
     syncError?: string;
     defaultReportsDir?: string;
     resolvedReportsDir?: string;
+    defaultProductionReportsDir?: string;
     productionReportsDir?: string;
     promptFiles?: Record<PromptDomain, string>;
   }>({
@@ -290,8 +292,16 @@ export default function App() {
   const reloadReportsFromDisk = useCallback(
     async (dirOverride?: string) => {
       try {
+        const effectiveProdDir =
+          dirOverride !== undefined
+            ? dirOverride
+            : settingsRef.current.prodReportsDir;
         const query = isProductionApp
-          ? '?mode=production'
+          ? `?mode=production${
+              effectiveProdDir
+                ? `&dir=${encodeURIComponent(effectiveProdDir)}`
+                : ''
+            }`
           : dirOverride
             ? `?dir=${encodeURIComponent(dirOverride)}`
             : '';
@@ -359,6 +369,7 @@ export default function App() {
       if (record.isExternalFile) return;
       try {
         const query = isProductionApp ? '?mode=production' : '';
+        const prodDir = (settingsRef.current.prodReportsDir || '').trim();
         const res = await fetch(`/api/reports/${encodeURIComponent(record.id)}${query}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -366,7 +377,10 @@ export default function App() {
             record,
             html: explicitHtml,
             ...(isProductionApp
-              ? { mode: 'production' }
+              ? {
+                  mode: 'production',
+                  ...(prodDir ? { reportsDir: prodDir } : {}),
+                }
               : { reportsDir: dirOverride ?? settings.reportsDir }),
           }),
         });
@@ -419,6 +433,7 @@ export default function App() {
         savedAt?: string;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        defaultProductionReportsDir?: string;
         productionReportsDir?: string;
         promptFiles?: Record<PromptDomain, string>;
       };
@@ -431,6 +446,8 @@ export default function App() {
         lastSavedAt: data.savedAt || new Date().toISOString(),
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        defaultProductionReportsDir:
+          data.defaultProductionReportsDir || prev.defaultProductionReportsDir,
         productionReportsDir: data.productionReportsDir || prev.productionReportsDir,
         promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
@@ -448,6 +465,7 @@ export default function App() {
 
   const reloadConfigFromFile = useCallback(async () => {
     let loadedReportsDir = '';
+    let loadedProdReportsDir = '';
     try {
       const res = await fetch('/api/config');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -459,6 +477,7 @@ export default function App() {
         hasCustomPromptTemplates?: boolean;
         defaultReportsDir?: string;
         resolvedReportsDir?: string;
+        defaultProductionReportsDir?: string;
         productionReportsDir?: string;
         promptFiles?: Record<PromptDomain, string>;
       };
@@ -467,6 +486,7 @@ export default function App() {
       }
       if (data.config) {
         loadedReportsDir = data.config.reportsDir || data.resolvedReportsDir || '';
+        loadedProdReportsDir = data.config.prodReportsDir || '';
         const clientHasCustom = hasCustomPromptTemplates(settingsRef.current.promptBuilder.templates);
         const serverHasCustom = Boolean(data.hasCustomPromptTemplates);
         const shouldAdoptServerPrompts =
@@ -479,6 +499,8 @@ export default function App() {
           const next = {
             ...data.config!,
             reportsDir: data.config!.reportsDir || data.resolvedReportsDir || previous.reportsDir || '',
+            prodReportsDir: data.config!.prodReportsDir ?? previous.prodReportsDir ?? '',
+            prodTheme: data.config!.prodTheme ?? previous.prodTheme ?? 'dark',
             promptBuilder: shouldAdoptServerPrompts
               ? data.config!.promptBuilder
               : previous.promptBuilder,
@@ -493,6 +515,8 @@ export default function App() {
         platform: data.platform || prev.platform,
         defaultReportsDir: data.defaultReportsDir || prev.defaultReportsDir,
         resolvedReportsDir: data.resolvedReportsDir || prev.resolvedReportsDir,
+        defaultProductionReportsDir:
+          data.defaultProductionReportsDir || prev.defaultProductionReportsDir,
         productionReportsDir: data.productionReportsDir || prev.productionReportsDir,
         promptFiles: data.promptFiles || prev.promptFiles,
         syncError: undefined,
@@ -505,9 +529,11 @@ export default function App() {
       }));
     } finally {
       configHydratedRef.current = true;
-      await reloadReportsFromDisk(loadedReportsDir || undefined);
+      await reloadReportsFromDisk(
+        (isProductionApp ? loadedProdReportsDir : loadedReportsDir) || undefined,
+      );
     }
-  }, [reloadReportsFromDisk]);
+  }, [isProductionApp, reloadReportsFromDisk]);
 
   useEffect(() => {
     void reloadConfigFromFile();
@@ -753,7 +779,11 @@ export default function App() {
           : previous,
       );
       const query = isProductionApp
-        ? '?mode=production'
+        ? `?mode=production${
+            settings.prodReportsDir
+              ? `&dir=${encodeURIComponent(settings.prodReportsDir)}`
+              : ''
+          }`
         : settings.reportsDir
           ? `?dir=${encodeURIComponent(settings.reportsDir)}`
           : '';
@@ -767,6 +797,7 @@ export default function App() {
       isProductionApp,
       pushContextLog,
       ratedThreads,
+      settings.prodReportsDir,
       settings.reportsDir,
     ],
   );
@@ -1212,17 +1243,21 @@ export default function App() {
     [pushContextLog, ratedThreads, syncReportToDisk],
   );
 
+  const isProdDarkTheme = (settings.prodTheme ?? 'dark') !== 'light';
+
   useEffect(() => {
     const root = document.documentElement;
-    root.removeAttribute('data-pa-theme');
     root.setAttribute('data-pa-scope', displayedScope);
     root.setAttribute('data-pa-font', settings.fontFamily || 'segoe');
-    if (displayedScope === 'public') {
-      root.classList.add('dark');
+    if (isProductionApp) {
+      const prodThemeMode = isProdDarkTheme ? 'dark' : 'light';
+      root.setAttribute('data-pa-theme', prodThemeMode);
+      root.classList.toggle('dark', isProdDarkTheme);
     } else {
-      root.classList.remove('dark');
+      root.removeAttribute('data-pa-theme');
+      root.classList.toggle('dark', displayedScope === 'public');
     }
-  }, [displayedScope, settings.fontFamily]);
+  }, [displayedScope, isProdDarkTheme, isProductionApp, settings.fontFamily]);
 
   const activePublicAdapterLabel =
     settings.publicLlm.activeAdapter === 'gemini'
@@ -1502,7 +1537,7 @@ export default function App() {
     const adapterSystemInstruction =
       targetScope === 'private'
         ? settings.privateLlm.systemInstruction
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].systemInstruction;
+        : settings.publicLlm.adapters[targetPublicAdapter].systemInstruction;
     const baseSystemInstruction =
       isInitialTurn || targetHistory.length > 0
         ? adapterSystemInstruction.trim()
@@ -1936,7 +1971,10 @@ export default function App() {
     const inheritedYear =
       (isFollowUp ? rootUserTurn?.threadYear : undefined) ??
       currentActiveYear;
-    const effectiveDomain: PromptDomain = promptDomain ?? activePromptDomain;
+    const effectiveDomain: PromptDomain =
+      (isFollowUp ? rootUserTurn?.promptDomain : undefined) ??
+      promptDomain ??
+      activePromptDomain;
     const domainQuery = getDomainQueryValue(effectiveDomain);
     let effectiveThreadName =
       isFollowUp && rootUserTurn?.threadName?.trim()
@@ -2247,8 +2285,14 @@ export default function App() {
       {/* Main Content Shell */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {isProductionApp ? (
-          /* Minimal Production Header: Left Show/Hide Reports Slider Icon + Right Watch Out Toggle */
-          <header className="relative h-14 shrink-0 px-4 sm:px-6 border-b border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-4">
+          /* Minimal Production Header: Left Reports Toggle + Settings Icon (after toggle) + Right Watch Out Toggle */
+          <header
+            className={`relative h-14 shrink-0 px-4 sm:px-6 border-b flex items-center justify-between gap-4 transition-colors ${
+              isProdDarkTheme
+                ? 'border-slate-800/80 bg-[#080d1a]/95'
+                : 'border-slate-200/85 bg-white/90 backdrop-blur-xl'
+            }`}
+          >
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
@@ -2263,12 +2307,37 @@ export default function App() {
                     : `Show Reports (${prodReportsDirDisplay})`
                 }
                 className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
-                  isProdReportsMenuOpen
-                    ? 'bg-slate-800 border-sky-400/70 text-sky-300'
-                    : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
+                  isProdDarkTheme
+                    ? isProdReportsMenuOpen
+                      ? 'bg-slate-800 border-sky-400/70 text-sky-300'
+                      : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
+                    : isProdReportsMenuOpen
+                      ? 'bg-sky-50 border-sky-400 text-sky-700'
+                      : 'border-slate-200 bg-white text-sky-600 hover:bg-slate-50 hover:border-slate-300'
                 }`}
               >
                 <PanelLeft className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                data-prod-settings-toggle="true"
+                onClick={() => setIsSettingsOpen((prev) => !prev)}
+                aria-expanded={isSettingsOpen}
+                aria-pressed={isSettingsOpen}
+                aria-label="Settings"
+                title="Settings"
+                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                  isProdDarkTheme
+                    ? isSettingsOpen
+                      ? 'bg-slate-800 border-sky-400/70 text-sky-300'
+                      : 'border-slate-700/80 bg-slate-800/85 text-slate-300 hover:text-sky-300 hover:bg-slate-800 hover:border-slate-600'
+                    : isSettingsOpen
+                      ? 'bg-sky-50 border-sky-400 text-sky-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:text-sky-600 hover:bg-slate-50 hover:border-slate-300'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
               </button>
             </div>
 
@@ -2280,15 +2349,29 @@ export default function App() {
                   aria-label={isContextRailVisible ? 'Hide Watch Out Timeline' : 'Show Watch Out Timeline'}
                   aria-pressed={isContextRailVisible}
                   className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                    isContextRailVisible
-                      ? 'border-amber-400/70 bg-amber-500/15 text-amber-200'
-                      : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                    isProdDarkTheme
+                      ? isContextRailVisible
+                        ? 'border-amber-400/70 bg-amber-500/15 text-amber-200'
+                        : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                      : isContextRailVisible
+                        ? 'border-amber-400 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                  <ShieldAlert
+                    className={`w-4 h-4 shrink-0 ${
+                      isProdDarkTheme ? 'text-amber-400' : 'text-amber-600'
+                    }`}
+                  />
                   <span>Watch Out</span>
                   {activeCarefulDates.length > 0 && (
-                    <span className="rounded-md bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-200">
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                        isProdDarkTheme
+                          ? 'bg-amber-400/20 text-amber-200'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
                       {activeCarefulDates.length}
                     </span>
                   )}
@@ -2470,6 +2553,7 @@ export default function App() {
                 activeProvider={
                   settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini'
                 }
+                isDarkTheme={isProdDarkTheme}
                 ratedThreads={ratedThreads}
                 isSending={isSending}
                 switchingMonthKey={switchingMonthKey}
@@ -2506,7 +2590,10 @@ export default function App() {
                 errorDetail={productionStageData.errorDetail}
                 questionText={productionStageData.latestUserTurn?.content}
                 periodLabel={activeCarefulPeriodLabel}
-                domain={productionStageData.latestUserTurn?.promptDomain}
+                domain={
+                  productionStageData.latestUserTurn?.promptDomain ??
+                  turns.find((t) => t.role === 'user')?.promptDomain
+                }
                 providerAdapter={(() => {
                   const adapter =
                     productionStageData.latestReplyTurn?.adapterId ??
@@ -2515,6 +2602,13 @@ export default function App() {
                   if (adapter === 'gemini') return 'gemini';
                   return settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
                 })()}
+                isDarkTheme={isProdDarkTheme}
+                canAskFollowUp={
+                  !productionStageData.isWaitingForReply &&
+                  !productionStageData.errorDetail &&
+                  Boolean(productionStageData.latestReplyTurn) &&
+                  !turns.some((t) => t.role === 'user' && t.isFinalized)
+                }
                 isSpeakerEnabled={settings.voice.prodSummarySpeakerEnabled !== false}
                 isSpeakingSummary={Boolean(
                   productionStageData.latestReplyTurn &&
@@ -2531,6 +2625,16 @@ export default function App() {
                     `prod-summary-${productionStageData.latestReplyTurn.id}`,
                     summaryText,
                   );
+                }}
+                onSendFollowUp={(question) => {
+                  const rootQ = turns.find((t) => t.role === 'user');
+                  void handleSendMessage({
+                    text: question,
+                    inputMode: 'text',
+                    threadName: rootQ?.threadName || 'Follow-up',
+                    promptDomain: rootQ?.promptDomain ?? activePromptDomain,
+                    isFollowUp: true,
+                  });
                 }}
                 onCancelRequest={handleCancelRequest}
                 onRetry={() => {
@@ -2727,10 +2831,20 @@ export default function App() {
 
         {/* Bottom Panel Status Bar */}
         {isProductionApp ? (
-          <footer className="h-9 shrink-0 px-4 sm:px-6 border-t border-slate-800/80 bg-[#080d1a]/95 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5 min-w-0 text-slate-200">
+          <footer
+            className={`h-9 shrink-0 px-4 sm:px-6 border-t flex items-center justify-between gap-3 text-xs transition-colors ${
+              isProdDarkTheme
+                ? 'border-slate-800/80 bg-[#080d1a]/95'
+                : 'border-slate-200/85 bg-white/90 backdrop-blur-xl'
+            }`}
+          >
+            <div
+              className={`flex items-center gap-2.5 min-w-0 ${
+                isProdDarkTheme ? 'text-slate-200' : 'text-slate-800'
+              }`}
+            >
               <span
-                className="w-2 h-2 rounded-full shrink-0 bg-sky-400"
+                className="w-2 h-2 rounded-full shrink-0 bg-sky-500"
                 aria-hidden="true"
               />
               <span className="truncate font-medium text-xs">
@@ -2745,9 +2859,11 @@ export default function App() {
                     ? 'Switch Public provider between Gemini and Fable'
                     : 'Gemini / Fable switching is only available on Home before starting a report'
                 }
-                className={`inline-flex items-center p-0.5 rounded-md bg-slate-800/95 border border-slate-700/80 shrink-0 transition-opacity ${
-                  canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
-                }`}
+                className={`inline-flex items-center p-0.5 rounded-md border shrink-0 transition-opacity ${
+                  isProdDarkTheme
+                    ? 'bg-slate-800/95 border-slate-700/80'
+                    : 'bg-slate-100 border-slate-200'
+                } ${canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'}`}
               >
                 {(['gemini', 'fable'] as const).map((providerId) => {
                   const activeProdAdapter =
@@ -2774,8 +2890,12 @@ export default function App() {
                         !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
                       } ${
                         isSelected
-                          ? 'bg-slate-950 text-sky-300 shadow-2xs'
-                          : 'text-slate-400 hover:text-slate-200'
+                          ? isProdDarkTheme
+                            ? 'bg-slate-950 text-sky-300 shadow-2xs'
+                            : 'bg-white text-sky-700 shadow-2xs'
+                          : isProdDarkTheme
+                            ? 'text-slate-400 hover:text-slate-200'
+                            : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       {label}
@@ -2788,12 +2908,24 @@ export default function App() {
             <div className="flex items-center gap-2.5 shrink-0 min-w-0">
               <span
                 title={`Production Reports Directory: ${prodReportsDirDisplay}`}
-                className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-400 truncate max-w-[260px]"
+                className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono truncate max-w-[260px] ${
+                  isProdDarkTheme ? 'text-slate-400' : 'text-slate-600'
+                }`}
               >
-                <FolderOpen className="w-3.5 h-3.5 text-sky-400/80 shrink-0" />
+                <FolderOpen
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isProdDarkTheme ? 'text-sky-400/80' : 'text-sky-600'
+                  }`}
+                />
                 <span className="truncate">Reports: {prodReportsDirDisplay}</span>
               </span>
-              <span className="hidden sm:inline text-slate-700">|</span>
+              <span
+                className={`hidden sm:inline ${
+                  isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'
+                }`}
+              >
+                |
+              </span>
               <button
                 type="button"
                 aria-pressed={settings.voice.prodSummarySpeakerEnabled !== false}
@@ -2817,14 +2949,26 @@ export default function App() {
                 }
                 className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-semibold leading-none transition-colors shrink-0 cursor-pointer ${
                   settings.voice.prodSummarySpeakerEnabled !== false
-                    ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
-                    : 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    ? isProdDarkTheme
+                      ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                      : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
+                    : isProdDarkTheme
+                      ? 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                 }`}
               >
                 {settings.voice.prodSummarySpeakerEnabled !== false ? (
-                  <Volume2 className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+                  <Volume2
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isProdDarkTheme ? 'text-sky-300' : 'text-sky-600'
+                    }`}
+                  />
                 ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <VolumeX
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isProdDarkTheme ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  />
                 )}
                 <span>
                   {settings.voice.prodSummarySpeakerEnabled !== false
@@ -2832,7 +2976,7 @@ export default function App() {
                     : 'Speaker Off'}
                 </span>
               </button>
-              <span className="text-slate-700">|</span>
+              <span className={isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'}>|</span>
               <button
                 type="button"
                 disabled={!canCopyPrompt}
@@ -2851,9 +2995,13 @@ export default function App() {
                 className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors shrink-0 ${
                   canCopyPrompt
                     ? promptCopied
-                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 cursor-pointer'
-                      : 'border-slate-700/80 bg-slate-800/90 text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-800 cursor-pointer'
-                    : 'border-slate-800/80 bg-slate-900/60 text-slate-600 opacity-50 cursor-not-allowed'
+                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-500 cursor-pointer'
+                      : isProdDarkTheme
+                        ? 'border-slate-700/80 bg-slate-800/90 text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-800 cursor-pointer'
+                        : 'border-slate-200 bg-white text-slate-700 hover:text-sky-600 hover:border-sky-400 cursor-pointer'
+                    : isProdDarkTheme
+                      ? 'border-slate-800/80 bg-slate-900/60 text-slate-600 opacity-50 cursor-not-allowed'
+                      : 'border-slate-200/70 bg-slate-100 text-slate-400 opacity-55 cursor-not-allowed'
                 }`}
               >
                 {promptCopied ? (
@@ -2865,12 +3013,20 @@ export default function App() {
               <span
                 className={`font-mono text-[11px] tabular-nums ${
                   displayedTelemetry.phase === 'Thinking'
-                    ? 'text-sky-400 font-semibold'
+                    ? isProdDarkTheme
+                      ? 'text-sky-400 font-semibold'
+                      : 'text-sky-600 font-semibold'
                     : displayedTelemetry.phase === 'Error'
-                      ? 'text-red-400 font-semibold'
+                      ? isProdDarkTheme
+                        ? 'text-red-400 font-semibold'
+                        : 'text-rose-600 font-semibold'
                       : displayedTelemetry.phase === 'Ready'
-                        ? 'text-emerald-400 font-semibold'
-                        : 'text-slate-400'
+                        ? isProdDarkTheme
+                          ? 'text-emerald-400 font-semibold'
+                          : 'text-emerald-600 font-semibold'
+                        : isProdDarkTheme
+                          ? 'text-slate-400'
+                          : 'text-slate-500'
                 }`}
               >
                 {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
@@ -3110,6 +3266,31 @@ export default function App() {
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
+      )}
+
+      {/* Production Settings Modal (Strictly 3 Items: Reports Folder, Theme, Adapter Tests) */}
+      {isProductionApp && isSettingsOpen && (
+        <ProductionSettingsModal
+          settings={settings}
+          effectiveReportsDir={prodReportsDirDisplay}
+          defaultReportsDir={
+            configFileInfo.defaultProductionReportsDir || 'D:/whatsup/reports'
+          }
+          onUpdateSettings={(nextSettings, reloadReportsDir) => {
+            settingsRef.current = nextSettings;
+            setSettings(nextSettings);
+            if (reloadReportsDir !== undefined) {
+              const targetDir = reloadReportsDir || '';
+              if (!targetDir && configFileInfo.defaultProductionReportsDir) {
+                setProdReportsDirDisplay(configFileInfo.defaultProductionReportsDir);
+              } else if (targetDir) {
+                setProdReportsDirDisplay(targetDir);
+              }
+              void reloadReportsFromDisk(targetDir);
+            }
+          }}
+          onClose={() => setIsSettingsOpen(false)}
+        />
       )}
     </div>
   );
