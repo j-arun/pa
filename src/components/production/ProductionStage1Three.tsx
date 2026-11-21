@@ -18,7 +18,15 @@ import type {
   PromptDomain,
   RatedThreadRecord,
 } from '../../types/workbench';
-import { getMonthNameFromNumber } from '../../utils/promptTemplates';
+import {
+  getMonthNameFromNumber,
+  getPromptDomainShortLabel,
+} from '../../utils/promptTemplates';
+import {
+  playBucketDropCue,
+  playLaunchTransitionCue,
+  warmAudioContext,
+} from '../../utils/notify';
 
 export interface ProductionTopicDef {
   domain: PromptDomain;
@@ -39,6 +47,8 @@ export interface ProductionMonthItem {
 export interface BucketReportEntry {
   record: RatedThreadRecord;
   domain: PromptDomain;
+  domainLabel: string;
+  shortSummary: string;
   provider: 'gemini' | 'fable';
   accentHex: string;
 }
@@ -297,13 +307,14 @@ function TopicBackdropIcon({
 function drawBucketLabelCanvas(
   shortMonth: string,
   year: number,
-  count: number,
+  reportsInBucket: BucketReportEntry[],
   isActive: boolean,
   isHovered: boolean,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
-  const width = 440;
-  const height = 280;
+  const count = reportsInBucket.length;
+  const width = 640;
+  const height = 420;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -323,35 +334,110 @@ function drawBucketLabelCanvas(
         : 'rgba(14, 165, 233, 0.55)';
   ctx.shadowBlur = isHovered || isFull ? 22 : 14;
 
-  // Month letters
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
-  ctx.font = '800 88px "Plus Jakarta Sans", system-ui, sans-serif';
-  ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 42);
-  ctx.fillStyle = isFull
-    ? '#fef3c7'
-    : isHovered
-      ? '#ffffff'
+  if (isHovered) {
+    // Compact crisp header at top when bucket swells huge on drag hover
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(4, 12, 28, 0.82)';
+    const headerTitle = `${shortMonth.toUpperCase()} ${year} · ${isFull ? 'FULL 10/10' : `${count}/10`}`;
+    ctx.font = '800 44px "Plus Jakarta Sans", system-ui, sans-serif';
+    ctx.strokeText(headerTitle, width / 2, 54);
+    ctx.fillStyle = isFull ? '#fef3c7' : '#ffffff';
+    ctx.fillText(headerTitle, width / 2, 54);
+
+    if (count === 0) {
+      ctx.font = '700 28px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.fillStyle = '#bae6fd';
+      ctx.strokeText('Drop here for first report', width / 2, height / 2 + 24);
+      ctx.fillText('Drop here for first report', width / 2, height / 2 + 24);
+    } else {
+      // Enlarged glowing pills showing whatever existing reports live inside this bucket
+      const visible = reportsInBucket.slice(0, 6);
+      const useTwoCols = visible.length > 3;
+      const cols = useTwoCols ? 2 : 1;
+      const rows = Math.ceil(visible.length / cols);
+      const pillW = useTwoCols ? 278 : 500;
+      const pillH = useTwoCols ? 68 : 74;
+      const gapX = 18;
+      const gapY = 14;
+      const startY = 112;
+
+      for (let i = 0; i < visible.length; i += 1) {
+        const entry = visible[i];
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const totalRowW = cols * pillW + (cols - 1) * gapX;
+        const px = (width - totalRowW) / 2 + col * (pillW + gapX);
+        const py = startY + row * (pillH + gapY);
+
+        ctx.save();
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(2, 6, 23, 0.65)';
+        ctx.fillStyle = 'rgba(8, 18, 38, 0.86)';
+        ctx.strokeStyle = entry.accentHex;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(px, py, pillW, pillH, 16);
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing domain dot
+        ctx.fillStyle = entry.accentHex;
+        ctx.beginPath();
+        ctx.arc(px + 24, py + pillH / 2, 9, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Domain + Report meaning snippet + Provider badge
+        const provTag = entry.provider === 'fable' ? 'F' : 'G';
+        ctx.textAlign = 'left';
+        ctx.font = `700 ${useTwoCols ? 22 : 25}px "Plus Jakarta Sans", system-ui, sans-serif`;
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 0;
+        const textMaxW = pillW - 86;
+        const labelStr = `${entry.domainLabel}: ${entry.shortSummary}`;
+        ctx.fillText(labelStr, px + 44, py + pillH / 2 + 1, textMaxW);
+
+        ctx.textAlign = 'right';
+        ctx.font = '800 20px "JetBrains Mono", monospace';
+        ctx.fillStyle = entry.provider === 'fable' ? '#fde68a' : '#7dd3fc';
+        ctx.fillText(provTag, px + pillW - 14, py + pillH / 2 + 1);
+        ctx.restore();
+      }
+
+      if (count > visible.length) {
+        const extraY = startY + rows * (pillH + gapY) + 14;
+        ctx.font = '700 22px "JetBrains Mono", monospace';
+        ctx.fillStyle = '#bae6fd';
+        ctx.fillText(`+${count - visible.length} more inside`, width / 2, extraY);
+      }
+    }
+  } else {
+    // Clean resting label at standard bucket size
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
+    ctx.font = '800 124px "Plus Jakarta Sans", system-ui, sans-serif';
+    ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 58);
+    ctx.fillStyle = isFull
+      ? '#fef3c7'
       : isActive
         ? '#f0f9ff'
         : '#e0f2fe';
-  ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 42);
+    ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 58);
 
-  // Year
-  ctx.lineWidth = 6;
-  ctx.font = '700 42px "JetBrains Mono", monospace';
-  ctx.strokeText(String(year), width / 2, height / 2 + 24);
-  ctx.fillStyle = isFull ? '#fde68a' : isHovered ? '#e0f2fe' : '#bae6fd';
-  ctx.fillText(String(year), width / 2, height / 2 + 24);
+    ctx.lineWidth = 7;
+    ctx.font = '700 58px "JetBrains Mono", monospace';
+    ctx.strokeText(String(year), width / 2, height / 2 + 34);
+    ctx.fillStyle = isFull ? '#fde68a' : '#bae6fd';
+    ctx.fillText(String(year), width / 2, height / 2 + 34);
 
-  // Reports count badge inside bucket (e.g. 3/10 or FULL 10/10)
-  const countText = isFull ? 'FOLDED · 10/10' : `${count}/10`;
-  ctx.lineWidth = 5;
-  ctx.font = '700 28px "JetBrains Mono", monospace';
-  ctx.strokeText(countText, width / 2, height / 2 + 78);
-  ctx.fillStyle = isFull ? '#fbbf24' : count > 0 ? '#7dd3fc' : 'rgba(186, 230, 253, 0.65)';
-  ctx.fillText(countText, width / 2, height / 2 + 78);
+    const countText = isFull ? 'FOLDED · 10/10' : `${count}/10`;
+    ctx.lineWidth = 6;
+    ctx.font = '700 40px "JetBrains Mono", monospace';
+    ctx.strokeText(countText, width / 2, height / 2 + 114);
+    ctx.fillStyle = isFull ? '#fbbf24' : count > 0 ? '#7dd3fc' : 'rgba(186, 230, 253, 0.65)';
+    ctx.fillText(countText, width / 2, height / 2 + 114);
+  }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -448,9 +534,15 @@ export function ProductionStage1Three({
       if (seen.has(slotKey)) continue;
       seen.add(slotKey);
 
+      const rawQ = (qTurn.content || qTurn.threadName || '').replace(/\s+/g, ' ').trim();
+      const shortSummary =
+        rawQ.length > 22 ? `${rawQ.slice(0, 20).trim()}…` : rawQ || 'Report';
+
       map.get(matchedMonth.key)!.push({
         record: rec,
         domain,
+        domainLabel: getPromptDomainShortLabel(domain),
+        shortSummary,
         provider,
         accentHex: TOPIC_ACCENT_BY_DOMAIN[domain] ?? '#38bdf8',
       });
@@ -477,6 +569,7 @@ export function ProductionStage1Three({
     );
 
     if (existingForProvider) {
+      playBucketDropCue();
       setDockedTarget(null);
       setBlockedDropNotice({
         topic,
@@ -488,6 +581,7 @@ export function ProductionStage1Three({
       return;
     }
 
+    playBucketDropCue();
     setBlockedDropNotice(null);
     callbacksRef.current.onPromptDomainChange(topic.domain);
     callbacksRef.current.onSelectQuickMonth?.(monthItem.month, monthItem.year);
@@ -837,7 +931,7 @@ export function ProductionStage1Three({
       const initialTex = drawBucketLabelCanvas(
         monthItem.shortMonth,
         monthItem.year,
-        0,
+        [],
         false,
         false,
         maxAnisotropy,
@@ -982,7 +1076,7 @@ export function ProductionStage1Three({
 
     const findNearestBucketKey = (orbWorldPos: THREE.Vector3): string | null => {
       let bestKey: string | null = null;
-      let bestDist = 1.65;
+      let bestDist = 1.85;
       for (const b of bucketEntries) {
         const d = Math.hypot(orbWorldPos.x - b.basePos.x, orbWorldPos.y - b.basePos.y);
         if (d < bestDist) {
@@ -994,6 +1088,7 @@ export function ProductionStage1Three({
     };
 
     const onPointerDown = (e: PointerEvent) => {
+      warmAudioContext();
       if (stateRef.current.isSending || stateRef.current.dockedTarget || stateRef.current.blockedDropNotice) {
         return;
       }
@@ -1158,7 +1253,8 @@ export function ProductionStage1Three({
 
       stars.rotation.z = Math.sin(elapsed * 0.18) * 0.02;
 
-      // Animate 6 Bigger Medium-Size Spaced Month Buckets + Interior Domain Balls + Flush 10/10 Seal
+      // Animate 6 Bigger Medium-Size Spaced Month Buckets + Swell Big on Hover + Lingering Larger Interior Reports
+      const anyBucketHovered = hoveredBucketKeyLocal !== null;
       for (let i = 0; i < bucketEntries.length; i += 1) {
         const b = bucketEntries[i];
         const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
@@ -1170,20 +1266,22 @@ export function ProductionStage1Three({
           b.monthItem.year === stateRef.current.activeYearNum;
         const isHovered = hoveredBucketKeyLocal === b.monthItem.key;
 
-        b.hoverLerp = THREE.MathUtils.damp(b.hoverLerp, isHovered ? 1 : 0, 10, dt);
+        b.hoverLerp = THREE.MathUtils.damp(b.hoverLerp, isHovered ? 1 : 0, 8.5, dt);
+        const recedeBlend = anyBucketHovered && !isHovered ? 1 : 0;
         const floatY = Math.sin(elapsed * 1.5 + i * 0.55) * 0.045;
-        b.group.position.set(
-          b.basePos.x,
-          b.basePos.y + floatY + b.hoverLerp * 0.16,
-          b.basePos.z + b.hoverLerp * 0.28,
-        );
-        const s = 1 + b.hoverLerp * 0.11;
+
+        // Swell target bucket dramatically large & bring cleanly forward; gently recede neighbors
+        const pullX = b.basePos.x * (1 - b.hoverLerp * 0.14);
+        const pullY = b.basePos.y + floatY - b.hoverLerp * 0.34;
+        const pullZ = b.basePos.z + b.hoverLerp * 2.15 - recedeBlend * 0.42;
+        b.group.position.set(pullX, pullY, pullZ);
+        const s = 1 + b.hoverLerp * 0.62 - recedeBlend * 0.1;
         b.group.scale.set(s, s, s);
 
-        b.wallMat.opacity = isHovered ? 0.34 : isFull ? 0.30 : isActive ? 0.26 : 0.20;
-        b.rimMat.color.setHex(isFull ? 0xfde68a : 0xbae6fd);
+        b.wallMat.opacity = isHovered ? 0.38 : isFull ? 0.3 : isActive ? 0.26 : 0.2;
+        b.rimMat.color.setHex(isFull ? 0xfde68a : isHovered ? 0xe0f2fe : 0xbae6fd);
         b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
-        b.rimMat.emissiveIntensity = isHovered ? 1.8 : isFull ? 1.35 : isActive ? 1.15 : 0.65;
+        b.rimMat.emissiveIntensity = isHovered ? 2.1 : isFull ? 1.35 : isActive ? 1.15 : 0.65;
         b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
         b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
@@ -1197,7 +1295,7 @@ export function ProductionStage1Three({
         );
         const liquidRadiusScale = 0.88 + fillRatio * 0.24;
         b.liquidMesh.scale.setScalar(liquidRadiusScale);
-        b.liquidMat.opacity = isHovered ? 0.38 : isFull ? 0.34 : isActive ? 0.25 : 0.15;
+        b.liquidMat.opacity = isHovered ? 0.42 : isFull ? 0.34 : isActive ? 0.25 : 0.15;
 
         // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 10/10
         b.sealBlend = THREE.MathUtils.damp(b.sealBlend, isFull ? 1 : 0, 9, dt);
@@ -1209,7 +1307,7 @@ export function ProductionStage1Three({
           b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
         }
 
-        // Update interior small domain balls
+        // Interior domain balls swell bigger and linger/float noticeably inside the hovered bucket
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
           const ball = b.reportBalls[bi];
           if (bi < reportCount) {
@@ -1217,22 +1315,34 @@ export function ProductionStage1Three({
             ball.mesh.visible = true;
             ball.mat.color.set(entry.accentHex);
             ball.mat.emissive.set(entry.accentHex);
-            ball.mat.emissiveIntensity = entry.provider === 'fable' ? 0.85 : 0.55;
-            ball.mesh.position.y =
-              ball.baseOffset.y + Math.sin(elapsed * 2.1 + bi * 0.7) * 0.018;
+            ball.mat.emissiveIntensity =
+              (entry.provider === 'fable' ? 0.85 : 0.55) + b.hoverLerp * 0.45;
+            const lingerWave =
+              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + b.hoverLerp * 0.065);
+            const swayX = Math.cos(elapsed * 1.6 + bi * 1.1) * b.hoverLerp * 0.055;
+            ball.mesh.position.set(
+              ball.baseOffset.x * (1 + b.hoverLerp * 0.22) + swayX,
+              ball.baseOffset.y + b.hoverLerp * 0.3 + lingerWave,
+              ball.baseOffset.z * (1 + b.hoverLerp * 0.22),
+            );
+            const ballScale = 1 + b.hoverLerp * 0.92;
+            ball.mesh.scale.setScalar(ballScale);
           } else {
             ball.mesh.visible = false;
           }
         }
 
-        // Update inner label canvas texture when count / active / hover changes
-        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}`;
+        // Update inner label + enlarged existing-report preview pills when hovered or count changes
+        const summarySig = reportsInBucket
+          .map((r) => `${r.domain}:${r.provider}:${r.shortSummary}`)
+          .join('|');
+        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isHovered ? summarySig : ''}`;
         if (b.cachedSignature !== sig) {
           b.cachedSignature = sig;
           const nextTex = drawBucketLabelCanvas(
             b.monthItem.shortMonth,
             b.monthItem.year,
-            reportCount,
+            reportsInBucket,
             isActive,
             isHovered,
             maxAnisotropy,
@@ -1314,6 +1424,7 @@ export function ProductionStage1Three({
       return;
     }
     const chosen = dockedTarget;
+    playLaunchTransitionCue();
     setDockedTarget(null);
     setQuestionText('');
     setValidationError(null);

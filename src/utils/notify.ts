@@ -15,6 +15,97 @@ function getAudioContext(): AudioContext | null {
   return sharedAudioContext;
 }
 
+export function warmAudioContext(): void {
+  try {
+    getAudioContext();
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
+export function playBucketDropCue(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // Soft bubble-plop drop sound + subtle sparkle overtone
+    const dropOsc = ctx.createOscillator();
+    const dropGain = ctx.createGain();
+    dropOsc.type = 'sine';
+    dropOsc.frequency.setValueAtTime(340, now);
+    dropOsc.frequency.exponentialRampToValueAtTime(620, now + 0.085);
+
+    dropGain.gain.setValueAtTime(0.0001, now);
+    dropGain.gain.linearRampToValueAtTime(0.16, now + 0.012);
+    dropGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
+
+    dropOsc.connect(dropGain);
+    dropGain.connect(ctx.destination);
+    dropOsc.start(now);
+    dropOsc.stop(now + 0.19);
+
+    const pingOsc = ctx.createOscillator();
+    const pingGain = ctx.createGain();
+    pingOsc.type = 'triangle';
+    pingOsc.frequency.setValueAtTime(880, now + 0.055);
+    pingGain.gain.setValueAtTime(0.0001, now + 0.055);
+    pingGain.gain.linearRampToValueAtTime(0.075, now + 0.07);
+    pingGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+
+    pingOsc.connect(pingGain);
+    pingGain.connect(ctx.destination);
+    pingOsc.start(now + 0.055);
+    pingOsc.stop(now + 0.26);
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
+export function playLaunchTransitionCue(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // Popping ascending crystalline sweep as Stage 2 spinning ball launches
+    const notes = [440.0, 587.33, 880.0];
+    notes.forEach((freq, idx) => {
+      const start = now + idx * 0.065;
+      const duration = idx === notes.length - 1 ? 0.34 : 0.18;
+
+      const osc = ctx.createOscillator();
+      const shimmer = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const shimmerGain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.015, start + duration);
+
+      shimmer.type = 'triangle';
+      shimmer.frequency.setValueAtTime(freq * 2, start);
+      shimmerGain.gain.setValueAtTime(0.14, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(0.15, start + 0.014);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      osc.connect(gain);
+      shimmer.connect(shimmerGain);
+      shimmerGain.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      shimmer.start(start);
+      osc.stop(start + duration + 0.02);
+      shimmer.stop(start + duration + 0.02);
+    });
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
 export function playReplyChime(isError = false): void {
   try {
     const ctx = getAudioContext();
