@@ -70,6 +70,7 @@ import {
   extractReadOutSections,
   normalizeEventCardItem,
   parseResponseEventsAndReport,
+  sanitizeCarefulDateItem,
   type ThreadHtmlExchangeInput,
 } from './utils/eventParser';
 import {
@@ -1218,9 +1219,11 @@ export default function App() {
           ? extractCarefulDatesFromHtml(turn.htmlReport, rootQ?.promptDomain)
           : [];
       const combinedList =
-        freshFromMarkdown.length >= stored.length
-          ? [...freshFromMarkdown, ...stored, ...freshFromHtml]
-          : [...stored, ...freshFromMarkdown, ...freshFromHtml];
+        freshFromMarkdown.length > 0
+          ? freshFromMarkdown
+          : stored.length > 0
+            ? stored.map(sanitizeCarefulDateItem)
+            : freshFromHtml.map(sanitizeCarefulDateItem);
 
       for (const cd of combinedList) {
         const dedupeKey = `${cd.domain.toLowerCase()}|${cd.date.toLowerCase()}|${cd.note.toLowerCase()}`;

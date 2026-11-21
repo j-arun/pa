@@ -24,8 +24,8 @@ export const EVENT_EXTRACTION_SYSTEM_DIRECTIVE = [
   '4. STRICTLY NO ASTROLOGICAL INFORMATION IN EVENTS OR CARDS: Do NOT include any astrological terms, planet names (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto, Rahu, Ketu), zodiac signs, houses, transits, aspects, conjunctions, retrogrades, dashas, nakshatras, birth charts, horoscopes, or ascendants in event titles, timing, probability ratings, or "How it will happen" descriptions. Describe every event purely in clear, everyday human and practical terms.',
   '5. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing EVERY event listed in Section 3. Do NOT include Overview, Introduction, or Summary cards in <pa_events>.',
   '6. Schema for each <pa_events> item: {"title":"Turning Point and Communication Breakthrough","when":"Exact date or range","probability":"High · 82%","how":"Full practical everyday explanation of how it will happen, with zero astrological details.","category":"Relationship|Love|Career|Family|Health|General","icon":"heart|shield|briefcase|layers|calendar|compass|sparkles"}. NEVER prefix title with "Event 1:", "Event 2:", or numbers.',
-  '7. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates or short date windows to be careful about across domains.',
-  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range","note":"Brief caution note on what to watch out for, with no astrological terms.","severity":"high|caution|watch"}.',
+  '7. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates (and time windows when specified) to be careful about across domains.',
+  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range, including time window if available","note":"Only what to avoid or watch out for (the practical guidance after Avoid), with ZERO astrological terms or planetary context.","severity":"high|caution|watch"}.',
 ].join('\n');
 
 const VALID_ICONS: readonly EventCardIconType[] = [
@@ -147,13 +147,13 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 const ASTROLOGY_PARENTHETICAL_REGEX =
-  /\b(?:transit(?:ing|s)?|retrograde|conjunction|opposition|sextile|trine|dasha|antardasha|mahadasha|bhukti|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|birth\s+chart|natal\s+chart|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|mars|uranus|neptune|pluto|aries|taurus|gemini|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces)\b/i;
+  /\b(?:transit(?:ing|s)?|retrograde|conjunct(?:ion)?|opposition|sextile|trine|square|quincunx|semi-?square|aspect(?:s|ed|ing)?|dasha|antardasha|mahadasha|bhukti|pratyantardasha|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|bhava|tithi|muhurta|panchang|hora|yoga|karana|amavasya|purnima|eclipse|combust(?:ion)?|debilitated|exalted|malefic|benefic|natal|ephemeris|void[\s-]+of[\s-]+course|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|mars|uranus|neptune|pluto|chandra|mangal|budha|guru|shukra|shani|surya|aries|taurus|gemini|leo|virgo|libra|scorpio|sagittarius|capricorn|aquarius|pisces)\b/i;
 
 const ASTROLOGY_SENTENCE_REGEX =
-  /\b(?:transit(?:ing|s)?|retrograde|conjunction|opposition|sextile|trine|dasha|antardasha|mahadasha|bhukti|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|birth\s+chart|natal\s+chart|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|uranus|neptune|pluto)\b/i;
+  /\b(?:transit(?:ing|s)?|retrograde|conjunct(?:ion)?|opposition|sextile|trine|square|quincunx|semi-?square|aspect(?:s|ed|ing)?|dasha|antardasha|mahadasha|bhukti|pratyantardasha|nakshatra|lagna|ascendant|descendant|midheaven|horoscope|zodiac|rashi|navamsa|bhava|tithi|muhurta|panchang|hora|yoga|karana|amavasya|purnima|eclipse|combust(?:ion)?|debilitated|exalted|malefic|benefic|natal(?:\s+chart)?|ephemeris|void[\s-]+of[\s-]+course|planetary|astrolog(?:y|ical|ically)|house\s+lord|\d+(?:st|nd|rd|th)\s+house|rahu|ketu|saturn|jupiter|venus|mercury|uranus|neptune|pluto|chandra|mangal|budha|guru|shukra|shani|surya)\b/i;
 
 const ASTROLOGY_CAPITALIZED_ZODIAC_OR_MARS_REGEX =
-  /\b(?:Aries|Taurus|Gemini|Leo|Virgo|Libra|Scorpio|Sagittarius|Capricorn|Aquarius|Pisces|Mars)\b/;
+  /\b(?:Sun|Moon|Aries|Taurus|Gemini|Leo|Virgo|Libra|Scorpio|Sagittarius|Capricorn|Aquarius|Pisces|Mars)\b(?!\s*(?:,?\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|\d{1,2}\b|day|light|beam|flower|rise|set|burn|glasses|shine))/;
 
 const ASTROLOGY_CANCER_CONTEXT_REGEX =
   /\bCancer\b(?=[^.!?]{0,40}\b(?:sign|house|moon|sun|rising|ascendant|transit|venus|mars|jupiter|saturn|mercury)\b)|\b(?:in|sign\s+of|house\s+of|transit(?:ing)?\s+in)\s+Cancer\b/;
@@ -288,6 +288,36 @@ const DATE_RANGE_REGEX = new RegExp(
   `)\\b`,
   'i',
 );
+
+const TIME_WINDOW_REGEX =
+  /\b(?:\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AP]\.?M\.?)?(?:\s*(?:IST|EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT|LOCAL))?(?:\s*(?:to|–|-|—|through|thru|~)\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AP]\.?M\.?)?(?:\s*(?:IST|EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT|LOCAL))?)?|\d{1,2}\s*[AP]\.?M\.?(?:\s*(?:to|–|-|—|through|thru|~)\s*\d{1,2}(?::\d{2})?\s*[AP]\.?M\.?)?(?:\s*(?:IST|EST|EDT|CST|CDT|MST|MDT|PST|PDT|UTC|GMT|LOCAL))?)\b/i;
+
+function extractDateAndTimeLabel(text: string): {
+  dateLabel: string;
+  matchedDateRaw: string;
+  matchedTimeRaw: string;
+} {
+  const dateMatch = text.match(DATE_RANGE_REGEX);
+  if (!dateMatch) {
+    return { dateLabel: '', matchedDateRaw: '', matchedTimeRaw: '' };
+  }
+  const matchedDateRaw = dateMatch[0].trim();
+  const dateEndIdx = (dateMatch.index ?? 0) + dateMatch[0].length;
+  const afterDateSlice = text.slice(dateEndIdx, dateEndIdx + 64);
+  const adjacentTimeMatch = afterDateSlice.match(
+    new RegExp(`^[\\s,;|·(\\[\\-–—]*(?:from|at|between)?\\s*(${TIME_WINDOW_REGEX.source})`, 'i'),
+  );
+  const fallbackTimeMatch = !adjacentTimeMatch ? text.match(TIME_WINDOW_REGEX) : null;
+  const matchedTimeRaw = (adjacentTimeMatch?.[1] || fallbackTimeMatch?.[0] || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const dateLabel = matchedTimeRaw
+    ? `${matchedDateRaw} · ${matchedTimeRaw}`
+    : matchedDateRaw;
+
+  return { dateLabel, matchedDateRaw, matchedTimeRaw };
+}
 
 const LIKELIHOOD_REGEX =
   /\b(?:(?:very\s+high|high(?:ly)?\s*likely|mostly\s*likely|moderate[-\s]*(?:to[-\s]*high|high)?|medium|low|strong|probable|likely)\s*(?:likelihood|probability|rating|chance)?(?:\s*[:·(\-–—]\s*(?:\d{1,3}%|rating\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)\)?)?|\d{1,3}%(?:\s*(?:likelihood|probability|rating|chance|confidence))?(?:\s*[·|/-]\s*rating\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)?|rating\s*[:#\-]?\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)(?=$|[\s.,;|•–—])/i;
@@ -986,6 +1016,87 @@ function isCautionSectionHeading(heading: string): boolean {
   );
 }
 
+const ASTRO_CAUTION_LABEL_REGEX =
+  /^\s*(?:[-*•+]\s*)?(?:astrolog(?:y|ical)|planetary|transit|aspect|chart|trigger|factor|reason\s*\(astrolog|nakshatra|dasha|horoscope)(?:\s+(?:context|reason|trigger|factor|basis|influence|cause|detail|summary|note))?\s*[:\-–—]/i;
+
+function extractAvoidGuidanceText(rawText: string): string {
+  const cleaned = cleanPlainSummary(rawText);
+  if (!cleaned) return '';
+
+  // 1. Prefer explicit "Avoid:" / "What to avoid:" / "Things to avoid:" / "Strictly avoid:" text
+  const explicitAvoidMatch = cleaned.match(
+    /(?:^|[\s.;,|•–—(])(?:what\s+to\s+|things\s+to\s+|actions?\s+to\s+|best\s+to\s+|strictly\s+|please\s+)?avoid(?:\s+(?:doing|actions?))?\s*[:\-–—]\s*([^|\n]+)$/i,
+  );
+  if (explicitAvoidMatch?.[1]) {
+    const afterAvoid = explicitAvoidMatch[1].replace(/^[\s:–—-]+/, '').trim();
+    if (afterAvoid) {
+      const stripped = stripAstrologicalInfo(afterAvoid);
+      if (stripped) {
+        return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+      }
+    }
+  }
+
+  // 2. Also support inline verb form: "... <astrological reason>, avoid <action>"
+  const verbAvoidMatch = cleaned.match(
+    /\b(?:what\s+to\s+|things\s+to\s+|strictly\s+|please\s+)?avoid\s+([^.;!\n|]{4,}(?:[.!?][^|\n]*)?)/i,
+  );
+  if (verbAvoidMatch?.[1]) {
+    const candidate = verbAvoidMatch[1].replace(/^[:\-–—\s]+/, '').trim();
+    const stripped = stripAstrologicalInfo(candidate);
+    if (stripped) {
+      return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+    }
+  }
+
+  return '';
+}
+
+function stripLeadingDateAndTime(text: string, matchedDateRaw: string, matchedTimeRaw: string): string {
+  let out = text.trim();
+  if (matchedDateRaw) {
+    out = out.replace(matchedDateRaw, ' ');
+  }
+  if (matchedTimeRaw) {
+    out = out.replace(matchedTimeRaw, ' ');
+  }
+  return out
+    .replace(/^\s*\(\s*\)\s*/, ' ')
+    .replace(/^[\s,:;·|()\[\]–—-]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function sanitizeCarefulDateItem(item: CarefulDateItem): CarefulDateItem {
+  const combinedSource = `${item.date || ''} ${item.note || ''}`;
+  const { dateLabel, matchedDateRaw, matchedTimeRaw } = extractDateAndTimeLabel(combinedSource);
+  const finalDate = truncateText((dateLabel || item.date || 'Upcoming window').trim(), 68);
+
+  const rawNote = cleanPlainSummary(item.note || '');
+  const avoidFirst = extractAvoidGuidanceText(rawNote);
+  let cleanNote = avoidFirst;
+
+  if (!cleanNote) {
+    const withoutDateTime = stripLeadingDateAndTime(rawNote, matchedDateRaw, matchedTimeRaw);
+    cleanNote = stripAstrologicalInfo(withoutDateTime);
+  }
+
+  // Never fall back to raw astrological context
+  if (!cleanNote || containsAstrologicalContent(cleanNote)) {
+    const fallbackStripped = stripAstrologicalInfo(cleanNote);
+    cleanNote =
+      fallbackStripped && !containsAstrologicalContent(fallbackStripped)
+        ? fallbackStripped
+        : `Exercise extra care around ${finalDate}.`;
+  }
+
+  return {
+    ...item,
+    date: finalDate,
+    note: truncateText(cleanNote, 180),
+  };
+}
+
 function extractFallbackCautionDates(
   cleanMarkdown: string,
   fallbackDomain?: PromptDomain,
@@ -999,15 +1110,40 @@ function extractFallbackCautionDates(
   let cautionSectionHeadingLevel = 2;
   let cautionSectionHeadingText = '';
 
-  const pushCautionItem = (rawDate: string, rawNote: string, severitySource: string) => {
-    const cleanedNote = stripAstrologicalInfo(cleanPlainSummary(rawNote)) || cleanPlainSummary(rawNote);
-    const cleanedDate = rawDate.trim();
+  const pushCautionItem = (
+    rawDate: string,
+    rawNote: string,
+    severitySource: string,
+  ) => {
+    const { dateLabel, matchedDateRaw, matchedTimeRaw } = extractDateAndTimeLabel(
+      `${rawDate} ${rawNote}`,
+    );
+    const cleanedDate = truncateText((dateLabel || rawDate).trim(), 68);
     if (!cleanedDate) return;
+
+    const plainNote = cleanPlainSummary(rawNote);
+    let cleanedNote = extractAvoidGuidanceText(plainNote);
+
+    if (!cleanedNote) {
+      const noteWithoutDate = stripLeadingDateAndTime(plainNote, matchedDateRaw, matchedTimeRaw);
+      // Drop leading astrological clause before " — " if present
+      const clauseParts = noteWithoutDate.split(/\s+[–—-]\s+|\s*\|\s*/);
+      const nonAstroClauses = clauseParts
+        .map((part) => stripAstrologicalInfo(part))
+        .filter((part) => part && !containsAstrologicalContent(part));
+      cleanedNote = nonAstroClauses.join(' — ').trim();
+    }
+
+    // Never fall back to raw unstripped astrological text
+    if (!cleanedNote || containsAstrologicalContent(cleanedNote)) {
+      return;
+    }
+
     const finalNote = truncateText(
-      cleanedNote && cleanedNote.toLowerCase() !== cleanedDate.toLowerCase()
+      cleanedNote.toLowerCase() !== cleanedDate.toLowerCase()
         ? cleanedNote
         : `Exercise extra care around ${cleanedDate}.`,
-      170,
+      180,
     );
 
     const severity: CarefulDateItem['severity'] =
@@ -1029,19 +1165,25 @@ function extractFallbackCautionDates(
     targetList.push({
       id: `cd-fb-${targetList.length + 1}`,
       domain,
-      date: truncateText(cleanedDate, 44),
+      date: cleanedDate,
       note: finalNote,
       severity,
     });
   };
 
+  let activeTableHeaders: string[] = [];
+
   for (let i = 0; i < lines.length; i += 1) {
     const rawLine = lines[i];
     const trimmedRaw = rawLine.trim();
-    if (!trimmedRaw) continue;
+    if (!trimmedRaw) {
+      activeTableHeaders = [];
+      continue;
+    }
 
     const headingMatch = trimmedRaw.match(/^#{1,6}\s+(.+)$/);
     if (headingMatch) {
+      activeTableHeaders = [];
       const level = trimmedRaw.match(/^(#{1,6})/)?.[1].length ?? 2;
       const headingText = cleanLineKeepText(headingMatch[1]);
       if (isCautionSectionHeading(headingText)) {
@@ -1054,6 +1196,33 @@ function extractFallbackCautionDates(
         level > cautionSectionHeadingLevel &&
         !/^(?:read[\s_-]*out|event\s+cards?|conclusion|month(?:ly)?\s+summary|answers?)/i.test(headingText)
       ) {
+        // Check if subheading itself is a dated caution item (e.g., "#### Nov 14, 2026 (10:30 AM - 2:15 PM)")
+        const headingDateInfo = extractDateAndTimeLabel(headingText);
+        if (headingDateInfo.dateLabel) {
+          const blockLines: string[] = [];
+          let j = i + 1;
+          while (j < lines.length) {
+            const nextTrimmed = lines[j].trim();
+            if (!nextTrimmed) {
+              if (blockLines.length > 0) break;
+              j += 1;
+              continue;
+            }
+            if (/^#{1,6}\s+/.test(nextTrimmed)) break;
+            if (!ASTRO_CAUTION_LABEL_REGEX.test(nextTrimmed)) {
+              blockLines.push(nextTrimmed);
+            }
+            j += 1;
+          }
+          const combinedSub = cleanPlainSummary(blockLines.join(' '));
+          const avoidTxt = extractAvoidGuidanceText(combinedSub) || combinedSub;
+          if (avoidTxt) {
+            pushCautionItem(headingDateInfo.dateLabel, avoidTxt, `${headingText} ${avoidTxt}`);
+            if (explicitItems.length >= 16) break;
+          }
+          i = j - 1;
+          continue;
+        }
         cautionSectionHeadingText = headingText;
       } else {
         inCautionSection = false;
@@ -1070,6 +1239,7 @@ function extractFallbackCautionDates(
     // Bold standalone pseudo-headings inside reports (e.g., "**Specific Career Dates to Be Careful:**")
     const boldHeaderMatch = trimmedRaw.match(/^(?:\*\*|__)([^*\n_]{8,96})(?:\*\*|__)\s*:?\s*$/);
     if (boldHeaderMatch) {
+      activeTableHeaders = [];
       const headingText = cleanLineKeepText(boldHeaderMatch[1]);
       if (isCautionSectionHeading(headingText)) {
         inCautionSection = true;
@@ -1086,6 +1256,22 @@ function extractFallbackCautionDates(
     }
 
     if (inExcludedProseSection) continue;
+
+    // Detect markdown table header & separator
+    if (
+      /^\|.*\|$/.test(trimmedRaw) &&
+      i + 1 < lines.length &&
+      /^\|[\s|:-]+\|$/.test(lines[i + 1].trim())
+    ) {
+      activeTableHeaders = trimmedRaw
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((c) => cleanPlainSummary(c).toLowerCase());
+      i += 1;
+      continue;
+    }
+
     if (/^\|[\s|:-]+\|$/.test(trimmedRaw)) continue;
 
     // Handle markdown table row cleanly when inside a caution section
@@ -1097,41 +1283,114 @@ function extractFallbackCautionDates(
         .map((c) => cleanPlainSummary(c))
         .filter(Boolean);
       const joinedCells = cells.join(' — ');
-      const dateMatch = joinedCells.match(DATE_RANGE_REGEX);
+      const dateColIdx = activeTableHeaders.findIndex((h) => /\b(date|when|day|window|period)\b/.test(h));
+      const timeColIdx = activeTableHeaders.findIndex((h) => /\b(time|hours?|timing)\b/.test(h) && !/\bdate\b/.test(h));
+      const avoidColIdx = activeTableHeaders.findIndex((h) =>
+        /\b(avoid|precaution|watch\s*out|guidance|action|recommendation|what\s+to)\b/.test(h),
+      );
+      const astroColIdx = activeTableHeaders.findIndex((h) =>
+        /\b(astro|planet|transit|aspect|dasha|chart|yoga|nakshatra|lagna|trigger|factor|reason)\b/.test(h),
+      );
+
+      const dateSource =
+        dateColIdx >= 0 && cells[dateColIdx]
+          ? `${cells[dateColIdx]}${timeColIdx >= 0 && cells[timeColIdx] ? ` · ${cells[timeColIdx]}` : ''}`
+          : joinedCells;
+      const dateInfo = extractDateAndTimeLabel(dateSource);
       const hasSignal =
         inCautionSection ||
         /\b(careful|caution|avoid|watch|sensitive|tension|friction|delay|risk|stress|conflict|misunderstanding|strain)\b/i.test(
           joinedCells,
         );
-      if (dateMatch && hasSignal && !/^(?:date|dates|window|period)$/i.test(cells[0] || '')) {
-        const noteWithoutDate =
-          cells.filter((c) => !DATE_RANGE_REGEX.test(c) || c.length > dateMatch[0].length + 8).join(' — ') ||
-          joinedCells;
-        pushCautionItem(dateMatch[0], noteWithoutDate, joinedCells);
-        if (explicitItems.length >= 16) break;
+
+      if (dateInfo.dateLabel && hasSignal && !/^(?:date|dates|window|period)$/i.test(cells[0] || '')) {
+        let noteCandidate = '';
+        if (avoidColIdx >= 0 && cells[avoidColIdx]) {
+          noteCandidate = extractAvoidGuidanceText(cells[avoidColIdx]) || cells[avoidColIdx];
+        } else {
+          const explicitAvoid = extractAvoidGuidanceText(joinedCells);
+          if (explicitAvoid) {
+            noteCandidate = explicitAvoid;
+          } else {
+            noteCandidate = cells
+              .filter(
+                (c, ci) =>
+                  ci !== dateColIdx &&
+                  ci !== timeColIdx &&
+                  ci !== astroColIdx &&
+                  (!DATE_RANGE_REGEX.test(c) || c.length > dateInfo.matchedDateRaw.length + 8) &&
+                  !containsAstrologicalContent(c),
+              )
+              .join(' — ');
+          }
+        }
+
+        if (noteCandidate) {
+          pushCautionItem(dateInfo.dateLabel, noteCandidate, joinedCells);
+          if (explicitItems.length >= 16) break;
+        }
       }
+      continue;
+    }
+
+    activeTableHeaders = [];
+
+    // Skip lines that are purely an astrological context label (wait for Avoid line next)
+    if (ASTRO_CAUTION_LABEL_REGEX.test(trimmedRaw) && !/\bavoid\b/i.test(trimmedRaw)) {
       continue;
     }
 
     let cleaned = cleanPlainSummary(rawLine);
     if (!cleaned) continue;
 
-    const dateMatch = cleaned.match(DATE_RANGE_REGEX);
-    if (!dateMatch) continue;
+    const dateInfo = extractDateAndTimeLabel(cleaned);
+    if (!dateInfo.dateLabel) continue;
 
-    // If a line inside Caution section is mostly just a date header (e.g. "- **Nov 14–16, 2026**:"),
-    // look ahead 1–2 lines to capture the accompanying explanation.
-    if (inCautionSection && cleaned.length <= dateMatch[0].length + 14) {
-      const nextLine = lines[i + 1]?.trim();
-      if (
-        nextLine &&
-        !/^#{1,6}\s+/.test(nextLine) &&
-        !DATE_RANGE_REGEX.test(nextLine)
-      ) {
-        const nextCleaned = cleanPlainSummary(nextLine);
-        if (nextCleaned) {
-          cleaned = `${cleaned} — ${nextCleaned}`;
-          i += 1;
+    // Collect multi-line sub-bullets under a dated caution item (look ahead past astrological lines to grab "Avoid:" & "Time:")
+    let extraTimeLabel = '';
+    if (inCautionSection) {
+      const subAvoidLines: string[] = [];
+      const subOtherLines: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && subAvoidLines.length + subOtherLines.length < 6) {
+        const nextRaw = lines[j];
+        const nextTrimmed = nextRaw.trim();
+        if (!nextTrimmed) break;
+        if (/^#{1,6}\s+/.test(nextTrimmed)) break;
+        if (/^\|/.test(nextTrimmed)) break;
+        const nextPlain = cleanPlainSummary(nextTrimmed).replace(/^\s*(?:[-*•+]|\d+[.)])\s+/, '');
+        if (!nextPlain) {
+          j += 1;
+          continue;
+        }
+        // Stop if next line introduces a brand new date entry
+        if (DATE_RANGE_REGEX.test(nextPlain)) break;
+
+        if (/^(?:time|hours?|window|timing)\s*[:\-–—]/i.test(nextPlain)) {
+          const tm = nextPlain.match(TIME_WINDOW_REGEX);
+          if (tm && !dateInfo.matchedTimeRaw) {
+            extraTimeLabel = tm[0].trim();
+          }
+          j += 1;
+          continue;
+        }
+
+        const subAvoid = extractAvoidGuidanceText(nextPlain);
+        if (subAvoid) {
+          subAvoidLines.push(subAvoid);
+        } else if (!ASTRO_CAUTION_LABEL_REGEX.test(nextPlain) && !containsAstrologicalContent(nextPlain)) {
+          subOtherLines.push(nextPlain);
+        }
+        j += 1;
+      }
+
+      if (j > i + 1) {
+        if (subAvoidLines.length > 0) {
+          cleaned = `${dateInfo.dateLabel}${extraTimeLabel ? ` · ${extraTimeLabel}` : ''} — Avoid: ${subAvoidLines.join(' ')}`;
+          i = j - 1;
+        } else if (cleaned.length <= dateInfo.dateLabel.length + 18 && subOtherLines.length > 0) {
+          cleaned = `${cleaned}${extraTimeLabel ? ` · ${extraTimeLabel}` : ''} — ${subOtherLines.join(' ')}`;
+          i = j - 1;
         }
       }
     }
@@ -1145,7 +1404,10 @@ function extractFallbackCautionDates(
       );
     if (!hasCautionSignal) continue;
 
-    pushCautionItem(dateMatch[0], cleaned, cleaned);
+    const finalDateInput = extraTimeLabel
+      ? `${dateInfo.dateLabel} · ${extraTimeLabel}`
+      : dateInfo.dateLabel;
+    pushCautionItem(finalDateInput, cleaned, cleaned);
     if (explicitItems.length >= 16) break;
   }
 
@@ -1348,27 +1610,29 @@ export function parseResponseEventsAndReport(
               typeof item.domain === 'string' && item.domain.trim()
                 ? item.domain.trim()
                 : getPromptDomainShortLabel(fallbackDomain);
-            const date =
+            const rawDate =
               typeof item.date === 'string' && item.date.trim()
                 ? item.date.trim()
                 : 'Upcoming window';
+            const rawTime =
+              typeof item.time === 'string' && item.time.trim()
+                ? item.time.trim()
+                : '';
             const rawNote =
               typeof item.note === 'string' && item.note.trim()
-                ? cleanPlainSummary(item.note.trim())
+                ? item.note.trim()
                 : '';
-            const note =
-              stripAstrologicalInfo(rawNote) || 'Exercise extra care and patience.';
             const rawSev =
               typeof item.severity === 'string' ? item.severity.trim().toLowerCase() : '';
             const severity: CarefulDateItem['severity'] =
               rawSev === 'high' || rawSev === 'watch' ? rawSev : 'caution';
-            return {
+            return sanitizeCarefulDateItem({
               id: `cd-${idx + 1}`,
               domain: truncateText(domain, 28),
-              date: truncateText(date, 40),
-              note: truncateText(note, 170),
+              date: rawTime && !rawDate.includes(rawTime) ? `${rawDate} · ${rawTime}` : rawDate,
+              note: rawNote,
               severity,
-            };
+            });
           })
           .slice(0, 16);
       }
@@ -1377,13 +1641,14 @@ export function parseResponseEventsAndReport(
     }
   }
 
+  const markdownCarefulDates = extractFallbackCautionDates(normalizedMarkdown, fallbackDomain);
   return {
     cleanMarkdown: normalizedMarkdown,
     events: finalEvents,
     carefulDates:
-      parsedCarefulDates.length > 0
-        ? parsedCarefulDates
-        : extractFallbackCautionDates(normalizedMarkdown, fallbackDomain),
+      markdownCarefulDates.length > 0
+        ? markdownCarefulDates
+        : parsedCarefulDates,
   };
 }
 

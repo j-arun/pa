@@ -143,6 +143,16 @@
   background: rgba(100, 116, 139, 0.45);
 }
 
+/* Invisible scrollbar preserving smooth mouse-wheel and touchpad scrolling */
+.pa-no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pa-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Creative 3D Fluent Round Speech Bubble (Private: Crisp White Glass · Public: Bold Cyan Constellation) */
 .fluent-3d-bubble {
   border-radius: 9999px;

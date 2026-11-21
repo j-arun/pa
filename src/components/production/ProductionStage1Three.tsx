@@ -1,4 +1,4 @@
-import { Loader2, Send, X } from 'lucide-react';
+import { Briefcase, Heart, Home, Loader2, Send, Shield, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -172,6 +172,22 @@ function drawTopicIconCanvas(
   return texture;
 }
 
+function TopicBackdropIcon({
+  icon,
+  color,
+  className,
+}: {
+  icon: EventCardIconType;
+  color: string;
+  className?: string;
+}) {
+  const style = { color };
+  if (icon === 'briefcase') return <Briefcase className={className} style={style} strokeWidth={1.5} />;
+  if (icon === 'layers') return <Home className={className} style={style} strokeWidth={1.5} />;
+  if (icon === 'heart') return <Heart className={className} style={style} strokeWidth={1.5} />;
+  return <Shield className={className} style={style} strokeWidth={1.5} />;
+}
+
 function drawBucketLabelCanvas(
   shortMonth: string,
   year: number,
@@ -179,40 +195,42 @@ function drawBucketLabelCanvas(
   isHovered: boolean,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
-  const width = 320;
-  const height = 160;
+  const width = 420;
+  const height = 260;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
 
+  // Completely transparent canvas — no outer badge or box, text sits directly inside the bucket
   ctx.clearRect(0, 0, width, height);
-
-  ctx.fillStyle = isHovered
-    ? 'rgba(14, 165, 233, 0.92)'
-    : isActive
-      ? 'rgba(15, 36, 68, 0.92)'
-      : 'rgba(11, 22, 42, 0.84)';
-  ctx.strokeStyle = isHovered
-    ? '#bae6fd'
-    : isActive
-      ? '#38bdf8'
-      : 'rgba(125, 211, 252, 0.45)';
-  ctx.lineWidth = isHovered ? 5 : 3;
-  ctx.beginPath();
-  ctx.roundRect(14, 18, width - 28, height - 36, 26);
-  ctx.fill();
-  ctx.stroke();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 46px "Plus Jakarta Sans", system-ui, sans-serif';
-  ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 18);
 
-  ctx.fillStyle = isHovered ? '#e0f2fe' : '#93c5fd';
-  ctx.font = '600 28px "JetBrains Mono", monospace';
-  ctx.fillText(String(year), width / 2, height / 2 + 28);
+  // Soft luminous halo behind letters so text glows cleanly inside the transparent glass bucket
+  ctx.shadowColor = isHovered
+    ? 'rgba(125, 211, 252, 0.95)'
+    : isActive
+      ? 'rgba(56, 189, 248, 0.85)'
+      : 'rgba(14, 165, 233, 0.55)';
+  ctx.shadowBlur = isHovered ? 24 : 16;
+
+  // Big bold month name inside the bucket
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = 'rgba(4, 12, 28, 0.65)';
+  ctx.font = '800 94px "Plus Jakarta Sans", system-ui, sans-serif';
+  ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 26);
+  ctx.fillStyle = isHovered ? '#ffffff' : isActive ? '#f0f9ff' : '#e0f2fe';
+  ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 26);
+
+  // Clear year numeral right below inside the bucket
+  ctx.lineWidth = 6;
+  ctx.font = '700 48px "JetBrains Mono", monospace';
+  ctx.strokeText(String(year), width / 2, height / 2 + 52);
+  ctx.fillStyle = isHovered ? '#e0f2fe' : isActive ? '#bae6fd' : '#93c5fd';
+  ctx.fillText(String(year), width / 2, height / 2 + 52);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -357,7 +375,7 @@ export function ProductionStage1Three({
       0.1,
       100,
     );
-    camera.position.set(0, 0.35, 11.4);
+    camera.position.set(0, 0.35, 12.1);
 
     // Studio & Atmospheric Lighting
     const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.45);
@@ -435,22 +453,22 @@ export function ProductionStage1Three({
     scene.add(stars);
     disposables.push(starGeo, starMat);
 
-    // Build 6 3D Month Buckets along symmetrical arch
+    // Build 6 Larger Transparent 3D Month Buckets along symmetrical arch (name inside bucket)
     const bucketSlots: Array<{ x: number; y: number; z: number }> = [
-      { x: -4.45, y: 0.85, z: -0.42 },
-      { x: -2.7, y: 1.88, z: -0.22 },
-      { x: -0.92, y: 2.52, z: -0.08 },
-      { x: 0.92, y: 2.52, z: -0.08 },
-      { x: 2.7, y: 1.88, z: -0.22 },
-      { x: 4.45, y: 0.85, z: -0.42 },
+      { x: -4.75, y: 0.78, z: -0.45 },
+      { x: -2.9, y: 1.88, z: -0.24 },
+      { x: -1.02, y: 2.58, z: -0.08 },
+      { x: 1.02, y: 2.58, z: -0.08 },
+      { x: 2.9, y: 1.88, z: -0.24 },
+      { x: 4.75, y: 0.78, z: -0.45 },
     ];
 
-    const bucketWallGeo = new THREE.CylinderGeometry(0.58, 0.41, 0.86, 32, 1, true);
-    const bucketFloorGeo = new THREE.CircleGeometry(0.41, 28);
-    const bucketRimGeo = new THREE.TorusGeometry(0.58, 0.036, 16, 40);
-    const bucketLiquidGeo = new THREE.CircleGeometry(0.48, 28);
-    const bucketBadgeGeo = new THREE.PlaneGeometry(0.95, 0.48);
-    disposables.push(bucketWallGeo, bucketFloorGeo, bucketRimGeo, bucketLiquidGeo, bucketBadgeGeo);
+    const bucketWallGeo = new THREE.CylinderGeometry(0.78, 0.56, 1.14, 36, 1, true);
+    const bucketFloorGeo = new THREE.CircleGeometry(0.56, 32);
+    const bucketRimGeo = new THREE.TorusGeometry(0.78, 0.04, 16, 44);
+    const bucketLiquidGeo = new THREE.CircleGeometry(0.64, 32);
+    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.12, 0.70);
+    disposables.push(bucketWallGeo, bucketFloorGeo, bucketRimGeo, bucketLiquidGeo, bucketInnerTextGeo);
 
     interface BucketEntry {
       monthItem: ProductionMonthItem;
@@ -467,7 +485,7 @@ export function ProductionStage1Three({
       hoverLerp: number;
     }
 
-    const hitSphereGeo = new THREE.SphereGeometry(0.75, 16, 16);
+    const hitSphereGeo = new THREE.SphereGeometry(0.95, 16, 16);
     const invisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
     disposables.push(hitSphereGeo, invisibleHitMat);
 
@@ -478,45 +496,50 @@ export function ProductionStage1Three({
       group.position.copy(basePos);
 
       const wallMat = new THREE.MeshPhysicalMaterial({
-        color: 0x38bdf8,
-        metalness: 0.15,
-        roughness: 0.16,
-        transmission: 0.42,
-        transparent: true,
-        opacity: 0.42,
+        color: 0x7dd3fc,
+        metalness: 0.08,
+        roughness: 0.12,
         clearcoat: 1.0,
+        clearcoatRoughness: 0.06,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
         side: THREE.DoubleSide,
       });
       const wallMesh = new THREE.Mesh(bucketWallGeo, wallMat);
       wallMesh.rotation.x = 0.18;
+      wallMesh.renderOrder = 4;
       group.add(wallMesh);
 
       const floorMesh = new THREE.Mesh(bucketFloorGeo, wallMat);
       floorMesh.rotation.x = -Math.PI / 2 + 0.18;
-      floorMesh.position.y = -0.42;
+      floorMesh.position.y = -0.56;
+      floorMesh.renderOrder = 1;
       group.add(floorMesh);
 
       const rimMat = new THREE.MeshStandardMaterial({
-        color: 0x7dd3fc,
+        color: 0xbae6fd,
         emissive: 0x0284c7,
-        emissiveIntensity: 0.75,
-        metalness: 0.85,
-        roughness: 0.18,
+        emissiveIntensity: 0.85,
+        metalness: 0.82,
+        roughness: 0.16,
       });
       const rimMesh = new THREE.Mesh(bucketRimGeo, rimMat);
       rimMesh.rotation.x = Math.PI / 2 + 0.18;
-      rimMesh.position.y = 0.43;
+      rimMesh.position.y = 0.56;
       group.add(rimMesh);
 
       const liquidMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.2,
+        depthWrite: false,
         side: THREE.DoubleSide,
       });
       const liquidMesh = new THREE.Mesh(bucketLiquidGeo, liquidMat);
       liquidMesh.rotation.x = -Math.PI / 2 + 0.18;
-      liquidMesh.position.y = -0.05;
+      liquidMesh.position.y = -0.18;
+      liquidMesh.renderOrder = 2;
       group.add(liquidMesh);
 
       const badgeTexIdle = drawBucketLabelCanvas(
@@ -542,12 +565,17 @@ export function ProductionStage1Three({
       );
       disposables.push(badgeTexIdle, badgeTexActive, badgeTexHover);
 
+      // Month & Year written directly inside the hollow transparent bucket
       const badgeMat = new THREE.MeshBasicMaterial({
         map: badgeTexIdle,
         transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
       });
-      const badgeMesh = new THREE.Mesh(bucketBadgeGeo, badgeMat);
-      badgeMesh.position.set(0, -0.06, 0.56);
+      const badgeMesh = new THREE.Mesh(bucketInnerTextGeo, badgeMat);
+      badgeMesh.position.set(0, -0.02, 0.04);
+      badgeMesh.rotation.x = 0.12;
+      badgeMesh.renderOrder = 3;
       group.add(badgeMesh);
 
       const hitMesh = new THREE.Mesh(hitSphereGeo, invisibleHitMat);
@@ -699,7 +727,7 @@ export function ProductionStage1Three({
 
     const findNearestBucketKey = (orbWorldPos: THREE.Vector3): string | null => {
       let bestKey: string | null = null;
-      let bestDist = 1.25;
+      let bestDist = 1.45;
       for (const b of bucketEntries) {
         const d = Math.hypot(orbWorldPos.x - b.basePos.x, orbWorldPos.y - b.basePos.y);
         if (d < bestDist) {
@@ -911,9 +939,9 @@ export function ProductionStage1Three({
         const s = 1 + b.hoverLerp * 0.14;
         b.group.scale.set(s, s, s);
 
-        b.wallMat.opacity = isHovered ? 0.65 : isActive ? 0.52 : 0.36;
-        b.rimMat.emissiveIntensity = isHovered ? 1.85 : isActive ? 1.15 : 0.6;
-        b.liquidMat.opacity = isHovered ? 0.62 : isActive ? 0.42 : 0.22;
+        b.wallMat.opacity = isHovered ? 0.36 : isActive ? 0.28 : 0.2;
+        b.rimMat.emissiveIntensity = isHovered ? 1.85 : isActive ? 1.15 : 0.65;
+        b.liquidMat.opacity = isHovered ? 0.42 : isActive ? 0.28 : 0.16;
 
         const desiredTex = isHovered
           ? b.badgeTexHover
@@ -1047,19 +1075,37 @@ export function ProductionStage1Three({
         </div>
       )}
 
-      {/* Question Overlay after Dropping Icon into Month Bucket (NO backdrop-blur over WebGL) */}
+      {/* Translucent Light-White Question Panel after Dropping Icon into Month Bucket (Domain icon visible on backside) */}
       {dockedTarget && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#030712]/72">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-[#040c1a]/38">
           <form
             onSubmit={handleSubmit}
-            className="w-full max-w-md rounded-3xl border border-sky-400/45 bg-[#0a1528] p-6 sm:p-7 shadow-[0_28px_70px_rgba(2,6,23,0.85)] space-y-4 text-slate-100"
+            className="relative overflow-hidden w-full max-w-md rounded-3xl border border-white/85 bg-white/82 p-6 sm:p-7 shadow-[0_28px_70px_rgba(2,6,23,0.45),inset_0_2px_12px_rgba(255,255,255,0.9)] space-y-4 text-slate-900"
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-sky-300">
+            {/* Large Domain Icon sitting cleanly on the backside of the translucent light-white panel */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            >
+              <TopicBackdropIcon
+                icon={dockedTarget.topic.icon}
+                color={dockedTarget.topic.glowHex}
+                className="w-52 h-52 opacity-[0.13] -rotate-6"
+              />
+            </div>
+
+            <div className="relative z-10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
                 <span
-                  className="inline-block w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: dockedTarget.topic.accentHex }}
-                />
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full"
+                  style={{ backgroundColor: `${dockedTarget.topic.accentHex}33` }}
+                >
+                  <TopicBackdropIcon
+                    icon={dockedTarget.topic.icon}
+                    color={dockedTarget.topic.glowHex}
+                    className="w-3.5 h-3.5"
+                  />
+                </span>
                 <span className="tabular-nums">{dockedTarget.month.fullLabel}</span>
               </div>
               <button
@@ -1069,16 +1115,16 @@ export function ProductionStage1Three({
                   setValidationError(null);
                 }}
                 aria-label="Close question prompt"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-900/10 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div>
+            <div className="relative z-10">
               <label
                 htmlFor="prod-stage1-question"
-                className="block font-display text-lg font-semibold text-white mb-2"
+                className="block font-display text-lg font-bold text-slate-900 mb-2"
               >
                 What&apos;s on your mind?
               </label>
@@ -1101,30 +1147,30 @@ export function ProductionStage1Three({
                   }
                 }}
                 placeholder="Ask your question for this month..."
-                className="w-full resize-none rounded-2xl border border-sky-400/35 bg-[#060d1c] px-4 py-3 text-sm text-white placeholder:text-slate-400 focus:border-sky-400 focus:outline-none"
+                className="w-full resize-none rounded-2xl border border-sky-200/90 bg-white/70 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white/85 focus:outline-none"
               />
               {validationError && (
-                <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-400">
+                <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-600">
                   {validationError}
                 </p>
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="relative z-10 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setDockedTarget(null);
                   setValidationError(null);
                 }}
-                className="px-4 py-2 rounded-xl border border-slate-700 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300/80 bg-white/60 text-xs font-semibold text-slate-700 hover:bg-white/90 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSending}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-xs font-bold text-slate-950 transition-colors cursor-pointer disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white shadow-sm transition-colors cursor-pointer disabled:opacity-60"
               >
                 {isSending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

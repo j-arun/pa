@@ -208,18 +208,100 @@ function drawDomainArtwork(
   ctx.restore();
 }
 
+interface RenderedCardTextures {
+  colorTexture: THREE.CanvasTexture;
+  textMaskTexture: THREE.CanvasTexture;
+}
+
+interface CardGlitterUniforms {
+  uGlitterTime: { value: number };
+  uGlitterFocus: { value: number };
+  uCardSeed: { value: number };
+  tTextMask: { value: THREE.Texture | null };
+}
+
+function attachCardTextGlitterShader(
+  material: THREE.MeshStandardMaterial,
+  initialMask: THREE.Texture | null,
+  cardSeed: number,
+): CardGlitterUniforms {
+  const glitterUniforms: CardGlitterUniforms = {
+    uGlitterTime: { value: 0 },
+    uGlitterFocus: { value: 0 },
+    uCardSeed: { value: cardSeed },
+    tTextMask: { value: initialMask },
+  };
+  material.userData.glitterUniforms = glitterUniforms;
+  material.customProgramCacheKey = () => 'pa-card-text-glitter-v1';
+
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uGlitterTime = glitterUniforms.uGlitterTime;
+    shader.uniforms.uGlitterFocus = glitterUniforms.uGlitterFocus;
+    shader.uniforms.uCardSeed = glitterUniforms.uCardSeed;
+    shader.uniforms.tTextMask = glitterUniforms.tTextMask;
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec2 vCardTextUv;`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+vCardTextUv = uv;`,
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+uniform float uGlitterTime;
+uniform float uGlitterFocus;
+uniform float uCardSeed;
+uniform sampler2D tTextMask;
+varying vec2 vCardTextUv;`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+float txtMask = texture2D(tTextMask, vCardTextUv).r;
+float sweepCenter = fract(uGlitterTime * 0.36 + uCardSeed * 0.17) * 2.4 - 0.7;
+float sweepCoord = vCardTextUv.x * 0.72 + (1.0 - vCardTextUv.y) * 0.55;
+float sweepBand = exp(-pow((sweepCoord - sweepCenter) * 7.2, 2.0));
+vec2 sparkGrid = floor(vCardTextUv * vec2(220.0, 290.0));
+float sparkHash = fract(sin(dot(sparkGrid, vec2(127.1, 311.7)) + uCardSeed * 19.3) * 43758.5453);
+float sparkTwinkle = pow(max(0.0, sin(uGlitterTime * 4.4 + sparkHash * 31.4159)), 11.0);
+float dust = sparkTwinkle * step(0.83, sparkHash);
+float focusLift = 0.08 + 0.24 * clamp(uGlitterFocus, 0.0, 1.5);
+float glitterAmp = (sweepBand * 0.82 + dust * 1.4) * (0.35 + 0.95 * clamp(uGlitterFocus, 0.0, 1.5));
+vec3 glitterTint = mix(vec3(0.84, 0.94, 1.0), vec3(1.0, 0.97, 0.88), sparkHash);
+totalEmissiveRadiance += glitterTint * txtMask * (focusLift + glitterAmp);`,
+      );
+  };
+
+  return glitterUniforms;
+}
+
 function renderCardFaceTexture(
   card: EventCardItem,
   index: number,
   maxAnisotropy: number,
   isDetailMode: boolean,
-): THREE.CanvasTexture {
-  const width = isDetailMode ? 1024 : 768;
+): RenderedCardTextures {
+  const width = isDetailMode ? 1056 : 768;
   const height = isDetailMode ? 1408 : 1024;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
+
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = width;
+  maskCanvas.height = height;
+  const maskCtx = maskCanvas.getContext('2d')!;
+  maskCtx.fillStyle = '#000000';
+  maskCtx.fillRect(0, 0, width, height);
 
   const palette = CARD_PALETTES[index % CARD_PALETTES.length];
   const grad = ctx.createLinearGradient(0, 0, 0, height);
@@ -228,76 +310,230 @@ function renderCardFaceTexture(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle top sheen & vignette
-  const sheen = ctx.createRadialGradient(width * 0.25, height * 0.14, 20, width * 0.35, height * 0.25, width * 0.85);
+  // Top & lower editorial focal scrim so text always stays razor-sharp with rich contrast
+  const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.44);
+  topScrim.addColorStop(0, 'rgba(15, 23, 42, 0.36)');
+  topScrim.addColorStop(0.65, 'rgba(15, 23, 42, 0.14)');
+  topScrim.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  ctx.fillStyle = topScrim;
+  ctx.fillRect(0, 0, width, height * 0.44);
+
+  const sheen = ctx.createRadialGradient(
+    width * 0.25,
+    height * 0.14,
+    20,
+    width * 0.35,
+    height * 0.25,
+    width * 0.85,
+  );
   sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
   sheen.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = sheen;
   ctx.fillRect(0, 0, width, height);
 
   const scale = width / 768;
-  const padX = 56 * scale;
-  let cursorY = 76 * scale;
+  const padX = 54 * scale;
+  let cursorY = 56 * scale;
 
-  // Title (editorial bold top-left matching Screenshot 1)
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = palette.titleColor;
-  ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
-  ctx.shadowBlur = 14 * scale;
-  ctx.font = `700 ${Math.round(52 * scale)}px "Plus Jakarta Sans", system-ui, sans-serif`;
-  const titleLines = wrapLines(ctx, card.title, width - padX * 2, isDetailMode ? 4 : 3);
-  for (const line of titleLines) {
-    ctx.fillText(line, padX, cursorY);
-    cursorY += 62 * scale;
+  const drawMaskedText = (
+    text: string,
+    x: number,
+    y: number,
+    font: string,
+    fillStyle: string,
+    align: CanvasTextAlign,
+    baseline: CanvasTextBaseline,
+    maxW?: number,
+    maskIntensity = '#ffffff',
+  ) => {
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    ctx.fillStyle = fillStyle;
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.34)';
+    ctx.shadowBlur = 12 * scale;
+    if (maxW !== undefined) ctx.fillText(text, x, y, maxW);
+    else ctx.fillText(text, x, y);
+    ctx.restore();
+
+    maskCtx.save();
+    maskCtx.font = font;
+    maskCtx.textAlign = align;
+    maskCtx.textBaseline = baseline;
+    maskCtx.fillStyle = maskIntensity;
+    maskCtx.shadowColor = '#ffffff';
+    maskCtx.shadowBlur = 5 * scale;
+    if (maxW !== undefined) maskCtx.fillText(text, x, y, maxW);
+    else maskCtx.fillText(text, x, y);
+    maskCtx.restore();
+  };
+
+  // Category eyebrow
+  if (card.category) {
+    const catLabel = card.category.toUpperCase();
+    drawMaskedText(
+      catLabel,
+      padX,
+      cursorY,
+      `700 ${Math.round(18 * scale)}px "DM Sans", system-ui, sans-serif`,
+      'rgba(255, 255, 255, 0.86)',
+      'left',
+      'top',
+      width - padX * 2,
+      '#b8b8b8',
+    );
+    cursorY += 32 * scale;
   }
-  ctx.shadowBlur = 0;
 
-  // Timing & Probability Badges cleanly integrated below title
-  cursorY += 16 * scale;
+  // Title (editorial bold top-left with strong readability & glitter mask)
+  const titleFont = `700 ${Math.round((isDetailMode ? 48 : 46) * scale)}px "Plus Jakarta Sans", system-ui, sans-serif`;
+  ctx.font = titleFont;
+  const titleLines = wrapLines(ctx, card.title, width - padX * 2, 3);
+  for (const line of titleLines) {
+    drawMaskedText(line, padX, cursorY, titleFont, '#ffffff', 'left', 'top');
+    cursorY += 56 * scale;
+  }
+
+  // Timing & Probability pill
+  cursorY += 12 * scale;
   const whenStr = card.when || card.dateRange || card.timeframe || 'Upcoming window';
   const probStr = card.probability || card.likelihood || '';
-
-  ctx.font = `600 ${Math.round(24 * scale)}px "DM Sans", system-ui, sans-serif`;
+  const pillFont = `600 ${Math.round(22 * scale)}px "DM Sans", system-ui, sans-serif`;
+  ctx.font = pillFont;
   const pillText = probStr ? `${whenStr}  ·  ${probStr}` : whenStr;
-  const pillW = Math.min(width - padX * 2, ctx.measureText(pillText).width + 44 * scale);
-  ctx.fillStyle = palette.chipBg;
+  const pillW = Math.min(width - padX * 2, ctx.measureText(pillText).width + 42 * scale);
+
+  ctx.fillStyle = 'rgba(10, 18, 34, 0.34)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+  ctx.lineWidth = 1.5 * scale;
   ctx.beginPath();
-  ctx.roundRect(padX, cursorY, pillW, 46 * scale, 14 * scale);
+  ctx.roundRect(padX, cursorY, pillW, 44 * scale, 14 * scale);
   ctx.fill();
+  ctx.stroke();
 
-  ctx.fillStyle = palette.titleColor;
-  ctx.textBaseline = 'middle';
-  ctx.fillText(pillText, padX + 22 * scale, cursorY + 23 * scale, width - padX * 2 - 44 * scale);
+  drawMaskedText(
+    pillText,
+    padX + 21 * scale,
+    cursorY + 22 * scale,
+    pillFont,
+    '#ffffff',
+    'left',
+    'middle',
+    width - padX * 2 - 42 * scale,
+    '#d8d8d8',
+  );
 
-  // Center emblem illustration (Screenshot 1 focal art area)
+  // Center emblem illustration cleanly framed above the focal summary plaque
   ctx.save();
-  ctx.translate(width / 2, height * 0.56);
-  ctx.scale(scale * (isDetailMode ? 1.15 : 1.0), scale * (isDetailMode ? 1.15 : 1.0));
+  ctx.translate(width / 2, isDetailMode ? height * 0.44 : height * 0.51);
+  ctx.scale(scale * (isDetailMode ? 0.92 : 0.88), scale * (isDetailMode ? 0.92 : 0.88));
   drawDomainArtwork(ctx, card.icon, palette.accent, 0, 0);
   ctx.restore();
 
-  if (isDetailMode) {
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    ctx.font = `600 ${Math.round(24 * scale)}px "DM Sans", system-ui, sans-serif`;
-    ctx.fillText('Tap screen to view how it unfolds', width / 2, height - 125 * scale);
+  // Focused Text Plaque inside the Card (Summary highlight for clear reading focus)
+  const rawSummary = (card.summary || card.how || '').trim();
+  if (rawSummary) {
+    const summaryFont = `500 ${Math.round((isDetailMode ? 24 : 21) * scale)}px "DM Sans", system-ui, sans-serif`;
+    ctx.font = summaryFont;
+    const plaqueX = padX;
+    const plaqueW = width - padX * 2;
+    const innerPad = 24 * scale;
+    const maxLines = isDetailMode ? 5 : 2;
+    const summaryLines = wrapLines(ctx, rawSummary, plaqueW - innerPad * 2, maxLines);
+
+    if (summaryLines.length > 0) {
+      const lineStep = (isDetailMode ? 34 : 29) * scale;
+      const headerHeight = isDetailMode ? 28 * scale : 0;
+      const plaqueH = innerPad * 1.85 + headerHeight + summaryLines.length * lineStep;
+      const plaqueY = (isDetailMode ? height - 154 * scale : height - 110 * scale) - plaqueH;
+
+      // Frosted dark focal panel behind text so inside-card text has crisp visual focus
+      const plaqueGrad = ctx.createLinearGradient(0, plaqueY, 0, plaqueY + plaqueH);
+      plaqueGrad.addColorStop(0, isDetailMode ? 'rgba(10, 18, 34, 0.52)' : 'rgba(10, 18, 34, 0.36)');
+      plaqueGrad.addColorStop(1, isDetailMode ? 'rgba(10, 18, 34, 0.64)' : 'rgba(10, 18, 34, 0.46)');
+      ctx.save();
+      ctx.fillStyle = plaqueGrad;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+      ctx.lineWidth = 1.75 * scale;
+      ctx.shadowColor = 'rgba(2, 6, 23, 0.28)';
+      ctx.shadowBlur = 18 * scale;
+      ctx.beginPath();
+      ctx.roundRect(plaqueX, plaqueY, plaqueW, plaqueH, 20 * scale);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+      ctx.restore();
+
+      let textY = plaqueY + innerPad * 0.9;
+      if (isDetailMode) {
+        drawMaskedText(
+          'KEY FOCUS',
+          plaqueX + innerPad,
+          textY,
+          `700 ${Math.round(16 * scale)}px "DM Sans", system-ui, sans-serif`,
+          'rgba(186, 230, 253, 0.95)',
+          'left',
+          'top',
+          undefined,
+          '#c8c8c8',
+        );
+        textY += headerHeight;
+      }
+
+      for (const line of summaryLines) {
+        drawMaskedText(
+          line,
+          plaqueX + innerPad,
+          textY,
+          summaryFont,
+          'rgba(255, 255, 255, 0.96)',
+          'left',
+          'top',
+          plaqueW - innerPad * 2,
+          '#e8e8e8',
+        );
+        textY += lineStep;
+      }
+    }
   }
 
-  // Bottom-right signature index marker "/01", "/02", "/03" (exact Screenshot 1 motif)
-  const indexLabel = `/${String(index + 1).padStart(2, '0')}`;
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
-  ctx.font = `700 ${Math.round(44 * scale)}px "JetBrains Mono", monospace`;
-  ctx.fillText(indexLabel, width - padX, height - 44 * scale);
+  if (isDetailMode) {
+    drawMaskedText(
+      'Tap card to view how it unfolds',
+      width / 2,
+      height - 102 * scale,
+      `600 ${Math.round(22 * scale)}px "DM Sans", system-ui, sans-serif`,
+      'rgba(255, 255, 255, 0.90)',
+      'center',
+      'middle',
+      undefined,
+      '#cccccc',
+    );
+  }
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = maxAnisotropy;
-  texture.needsUpdate = true;
-  return texture;
+  // Bottom-right signature index marker "/01", "/02", "/03"
+  const indexLabel = `/${String(index + 1).padStart(2, '0')}`;
+  drawMaskedText(
+    indexLabel,
+    width - padX,
+    height - 38 * scale,
+    `700 ${Math.round(42 * scale)}px "JetBrains Mono", monospace`,
+    'rgba(255, 255, 255, 0.96)',
+    'right',
+    'bottom',
+  );
+
+  const colorTexture = new THREE.CanvasTexture(canvas);
+  colorTexture.colorSpace = THREE.SRGBColorSpace;
+  colorTexture.anisotropy = maxAnisotropy;
+  colorTexture.needsUpdate = true;
+
+  const textMaskTexture = new THREE.CanvasTexture(maskCanvas);
+  textMaskTexture.anisotropy = maxAnisotropy;
+  textMaskTexture.needsUpdate = true;
+
+  return { colorTexture, textMaskTexture };
 }
 
 export function ProductionCards3D({
@@ -499,6 +735,7 @@ export function ProductionCards3D({
       index: number;
       group: THREE.Group;
       hitMesh: THREE.Mesh;
+      glitterUniforms: CardGlitterUniforms;
       hoverLerp: number;
     }
 
@@ -507,114 +744,101 @@ export function ProductionCards3D({
       const slabMesh = new THREE.Mesh(slabGeo, rimMetalMat);
       group.add(slabMesh);
 
-      const faceTex = renderCardFaceTexture(card, idx, maxAnisotropy, false);
+      const { colorTexture, textMaskTexture } = renderCardFaceTexture(card, idx, maxAnisotropy, false);
       const faceMat = new THREE.MeshStandardMaterial({
-        map: faceTex,
+        map: colorTexture,
         roughness: 0.34,
         metalness: 0.06,
       });
+      const glitterUniforms = attachCardTextGlitterShader(faceMat, textMaskTexture, idx + 1);
       const faceMesh = new THREE.Mesh(facePlaneGeo, faceMat);
       faceMesh.position.z = 0.056;
       faceMesh.userData = { cardIndex: idx };
       group.add(faceMesh);
 
       galleryGroup.add(group);
-      disposables.push(faceTex, faceMat);
+      disposables.push(colorTexture, textMaskTexture, faceMat);
 
       return {
         index: idx,
         group,
         hitMesh: faceMesh,
+        glitterUniforms,
         hoverLerp: 0,
       };
     });
 
-    // 3. Full-Screen 3D Metallic Bezel Showcase Group (Screenshot 2)
-    const deviceGroup = new THREE.Group();
-    const devW = 3.05;
-    const devH = 4.28;
-    const chassisShape = createRoundedRectShape(devW, devH, 0.38);
-    const chassisGeo = new THREE.ExtrudeGeometry(chassisShape, {
-      depth: 0.22,
+    // 3. Full-Screen Expanded 3D Card Group (same card opened large, no phone silhouette)
+    const detailCardGroup = new THREE.Group();
+    const detailCardW = 3.12;
+    const detailCardH = 4.16;
+    const detailSlabShape = createRoundedRectShape(detailCardW, detailCardH, 0.24);
+    const detailSlabGeo = new THREE.ExtrudeGeometry(detailSlabShape, {
+      depth: 0.075,
       bevelEnabled: true,
-      bevelThickness: 0.055,
-      bevelSize: 0.048,
-      bevelSegments: 6,
+      bevelThickness: 0.032,
+      bevelSize: 0.032,
+      bevelSegments: 5,
     });
-    chassisGeo.center();
+    detailSlabGeo.center();
 
-    // Brushed Titanium / Chrome Stainless Bezel (Screenshot 2 specular rim)
+    // Brushed metallic chamfered card perimeter edge
     const chromeBezelMat = new THREE.MeshPhysicalMaterial({
-      color: 0xd4d8df,
-      metalness: 0.94,
-      roughness: 0.14,
-      clearcoat: 1.0,
+      color: 0xdce2ea,
+      metalness: 0.88,
+      roughness: 0.16,
+      clearcoat: 0.9,
       clearcoatRoughness: 0.08,
-      envMapIntensity: 1.65,
+      envMapIntensity: 1.5,
     });
-    const chassisMesh = new THREE.Mesh(chassisGeo, chromeBezelMat);
-    deviceGroup.add(chassisMesh);
+    const detailSlabMesh = new THREE.Mesh(detailSlabGeo, chromeBezelMat);
+    detailCardGroup.add(detailSlabMesh);
 
-    const innerGlassGeo = new THREE.ShapeGeometry(createRoundedRectShape(devW - 0.16, devH - 0.16, 0.31));
-    const innerGlassMat = new THREE.MeshPhysicalMaterial({
-      color: 0x0b0e14,
-      metalness: 0.15,
-      roughness: 0.08,
-      clearcoat: 1.0,
-    });
-    const innerGlassMesh = new THREE.Mesh(innerGlassGeo, innerGlassMat);
-    innerGlassMesh.position.z = 0.166;
-    deviceGroup.add(innerGlassMesh);
-
-    const screenW = devW - 0.26;
-    const screenH = devH - 0.28;
-    const screenGeo = new THREE.ShapeGeometry(createRoundedRectShape(screenW, screenH, 0.25));
-    const sUv = screenGeo.attributes.uv;
-    const sPos = screenGeo.attributes.position;
-    for (let i = 0; i < sUv.count; i += 1) {
-      sUv.setXY(
+    const detailFaceW = detailCardW - 0.024;
+    const detailFaceH = detailCardH - 0.024;
+    const detailFaceGeo = new THREE.ShapeGeometry(
+      createRoundedRectShape(detailFaceW, detailFaceH, 0.22),
+    );
+    const dUv = detailFaceGeo.attributes.uv;
+    const dPos = detailFaceGeo.attributes.position;
+    for (let i = 0; i < dUv.count; i += 1) {
+      dUv.setXY(
         i,
-        (sPos.getX(i) + screenW / 2) / screenW,
-        (sPos.getY(i) + screenH / 2) / screenH,
+        (dPos.getX(i) + detailFaceW / 2) / detailFaceW,
+        (dPos.getY(i) + detailFaceH / 2) / detailFaceH,
       );
     }
-    sUv.needsUpdate = true;
+    dUv.needsUpdate = true;
 
-    const screenMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const screenMesh = new THREE.Mesh(screenGeo, screenMat);
-    screenMesh.position.z = 0.172;
-    screenMesh.userData = { isDetailScreen: true };
-    deviceGroup.add(screenMesh);
-
-    // Subtle brushed antenna bands on side of metallic bezel (Screenshot 2)
-    const bandGeo = new THREE.BoxGeometry(devW + 0.11, 0.035, 0.26);
-    const bandMat = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
-      metalness: 0.65,
-      roughness: 0.4,
+    const detailEntries = cards.map((card, idx) => {
+      const rendered = renderCardFaceTexture(card, idx, maxAnisotropy, true);
+      disposables.push(rendered.colorTexture, rendered.textMaskTexture);
+      return rendered;
     });
-    const topAntennaBand = new THREE.Mesh(bandGeo, bandMat);
-    topAntennaBand.position.y = devH * 0.34;
-    deviceGroup.add(topAntennaBand);
 
-    deviceGroup.visible = false;
-    scene.add(deviceGroup);
+    const detailFaceMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: detailEntries[0]?.colorTexture ?? null,
+      roughness: 0.34,
+      metalness: 0.06,
+    });
+    const detailGlitterUniforms =
+      detailEntries.length > 0
+        ? attachCardTextGlitterShader(detailFaceMat, detailEntries[0].textMaskTexture, 1)
+        : null;
+    const detailFaceMesh = new THREE.Mesh(detailFaceGeo, detailFaceMat);
+    detailFaceMesh.position.z = 0.071;
+    detailFaceMesh.userData = { isDetailCard: true };
+    detailCardGroup.add(detailFaceMesh);
+
+    detailCardGroup.visible = false;
+    scene.add(detailCardGroup);
     disposables.push(
-      chassisGeo,
+      detailSlabGeo,
       chromeBezelMat,
-      innerGlassGeo,
-      innerGlassMat,
-      screenGeo,
-      screenMat,
-      bandGeo,
-      bandMat,
+      detailFaceGeo,
+      detailFaceMat,
     );
-
-    const detailTextures = cards.map((card, idx) => {
-      const tex = renderCardFaceTexture(card, idx, maxAnisotropy, true);
-      disposables.push(tex);
-      return tex;
-    });
 
     // Pointer & Scroll Controls
     const raycaster = new THREE.Raycaster();
@@ -682,7 +906,7 @@ export function ProductionCards3D({
 
       raycaster.setFromCamera(pointerNdc, camera);
       if (interactionRef.current.selectedIndex !== null) {
-        const hits = raycaster.intersectObject(screenMesh, false);
+        const hits = raycaster.intersectObject(detailFaceMesh, false);
         renderer.domElement.style.cursor = hits.length > 0 ? 'pointer' : 'default';
         return;
       }
@@ -705,7 +929,7 @@ export function ProductionCards3D({
       raycaster.setFromCamera(pointerNdc, camera);
 
       if (interactionRef.current.selectedIndex !== null) {
-        const hits = raycaster.intersectObject(screenMesh, false);
+        const hits = raycaster.intersectObject(detailFaceMesh, false);
         if (hits.length > 0) {
           interactionRef.current.onToggleReasoning();
         }
@@ -745,6 +969,7 @@ export function ProductionCards3D({
     let lastTime = performance.now();
     let currentScroll = 0;
     let detailBlend = 0;
+    let detailArrivalPulse = 0;
     let lastActiveDetailTexIdx = -1;
     let frameInterval = isSoftwareGl ? 1000 / 30 : 0;
     let lastRenderMs = 0;
@@ -770,11 +995,12 @@ export function ProductionCards3D({
 
       thinkingGroup.visible = isWait;
       galleryGroup.visible = !isWait && detailBlend < 0.96;
-      deviceGroup.visible = !isWait && detailBlend > 0.04;
+      detailCardGroup.visible = !isWait && detailBlend > 0.04;
 
       detailBlend = THREE.MathUtils.damp(detailBlend, inDetail ? 1 : 0, 7.5, dt);
+      detailArrivalPulse = THREE.MathUtils.damp(detailArrivalPulse, 0, 2.2, dt);
 
-      // Background color smoothly blends between Screenshot 1 studio alabaster and Screenshot 2 obsidian
+      // Background color smoothly blends between studio alabaster and obsidian stage
       if (scene.background instanceof THREE.Color) {
         const bgTarget = isWait ? detailBgColor : inDetail ? detailBgColor : galleryBgColor;
         scene.background.lerp(bgTarget, Math.min(1, dt * 8));
@@ -788,7 +1014,7 @@ export function ProductionCards3D({
         const s = 1 + Math.sin(elapsed * 3.1) * 0.08;
         pulseCore.scale.setScalar(s);
       } else {
-        // Flying bubble scroll physics on perspective rail (Screenshot 1)
+        // Flying bubble scroll physics on perspective rail
         const prevScroll = currentScroll;
         currentScroll = THREE.MathUtils.damp(
           currentScroll,
@@ -798,7 +1024,7 @@ export function ProductionCards3D({
         );
         const scrollVel = (currentScroll - prevScroll) / Math.max(0.001, dt);
 
-        // Shift fan slightly downward when Read Out bubbles appear on top so nothing overlaps awkwardly
+        // Shift fan slightly downward when Answer bubble appears on top
         galleryGroup.position.y = -0.58 - detailBlend * 1.8;
 
         for (let i = 0; i < galleryCards.length; i += 1) {
@@ -807,7 +1033,7 @@ export function ProductionCards3D({
           const isHovered = hoveredCardIdx === i && !inDetail;
           entry.hoverLerp = THREE.MathUtils.damp(entry.hoverLerp, isHovered ? 1 : 0, 10, dt);
 
-          // Perspective diagonal spacing matching Screenshot 1 (front-right -> receding left-back)
+          // Perspective diagonal spacing (front-right -> receding left-back)
           const posX = 2.05 - rel * 2.22;
           const posZ = 0.55 - rel * 1.38 + entry.hoverLerp * 0.35;
           const floatWave = Math.sin(elapsed * 1.55 + i * 0.9) * 0.11;
@@ -822,28 +1048,56 @@ export function ProductionCards3D({
             entry.hoverLerp * 0.06;
           entry.group.scale.setScalar(scaleFactor);
           entry.group.visible = posZ > -10 && posX > -9 && posX < 9;
+
+          // Animate glittering focus on front/hovered gallery cards
+          const frontFocus = Math.max(0, 1 - Math.abs(rel) * 0.85);
+          entry.glitterUniforms.uGlitterTime.value = elapsed;
+          entry.glitterUniforms.uGlitterFocus.value = Math.min(
+            1.4,
+            frontFocus * 0.55 + entry.hoverLerp * 0.85,
+          );
         }
 
-        // Full-Screen 3D Metallic Bezel Showcase (Screenshot 2)
-        if (detailIdx !== null && detailTextures[detailIdx] && lastActiveDetailTexIdx !== detailIdx) {
+        // Expanded 3D Card Showcase
+        if (detailIdx !== null && detailEntries[detailIdx] && lastActiveDetailTexIdx !== detailIdx) {
           lastActiveDetailTexIdx = detailIdx;
-          screenMat.map = detailTextures[detailIdx];
-          screenMat.needsUpdate = true;
+          detailFaceMat.map = detailEntries[detailIdx].colorTexture;
+          detailFaceMat.needsUpdate = true;
+          if (detailGlitterUniforms) {
+            detailGlitterUniforms.tTextMask.value = detailEntries[detailIdx].textMaskTexture;
+            detailGlitterUniforms.uCardSeed.value = detailIdx + 1;
+          }
+          detailArrivalPulse = 1.35;
+        }
+        if (detailIdx === null) {
+          lastActiveDetailTexIdx = -1;
+        }
+
+        if (detailGlitterUniforms) {
+          detailGlitterUniforms.uGlitterTime.value = elapsed;
+          detailGlitterUniforms.uGlitterFocus.value = Math.min(
+            1.5,
+            detailBlend * 0.9 + detailArrivalPulse * 0.65,
+          );
         }
 
         const scaleIn = THREE.MathUtils.lerp(0.68, 1.0, detailBlend);
-        deviceGroup.scale.setScalar(scaleIn);
-        deviceGroup.position.set(0, THREE.MathUtils.lerp(-1.4, -0.05, detailBlend), THREE.MathUtils.lerp(-3, 2.4, detailBlend));
-        // Subtle tactile 3D hardware tilt tracking pointer
-        deviceGroup.rotation.y = THREE.MathUtils.damp(
-          deviceGroup.rotation.y,
-          pointerNormX * 0.16,
+        detailCardGroup.scale.setScalar(scaleIn);
+        detailCardGroup.position.set(
+          0,
+          THREE.MathUtils.lerp(-1.4, -0.05, detailBlend),
+          THREE.MathUtils.lerp(-3, 2.25, detailBlend),
+        );
+        // Subtle tactile 3D card tilt tracking pointer
+        detailCardGroup.rotation.y = THREE.MathUtils.damp(
+          detailCardGroup.rotation.y,
+          pointerNormX * 0.14,
           6,
           dt,
         );
-        deviceGroup.rotation.x = THREE.MathUtils.damp(
-          deviceGroup.rotation.x,
-          -pointerNormY * 0.11 + 0.04,
+        detailCardGroup.rotation.x = THREE.MathUtils.damp(
+          detailCardGroup.rotation.x,
+          -pointerNormY * 0.1 + 0.03,
           6,
           dt,
         );
@@ -872,8 +1126,8 @@ export function ProductionCards3D({
     };
   }, [cards]);
 
-  const hasReadOut =
-    Boolean(readOutSections?.summary) || Boolean(readOutSections?.answer);
+  const answerText = readOutSections?.answer?.trim() || '';
+  const hasAnswer = Boolean(answerText);
 
   const errorUi = useMemo(() => {
     if (!errorDetail) return null;
@@ -944,45 +1198,23 @@ export function ProductionCards3D({
       {/* Error State Overlay */}
       {!isWaitingForReply && errorUi}
 
-      {/* Gallery Mode Overlays: Top Floating Read Out Bubbles (Summary + Answer) + Scroll Arrows */}
+      {/* Gallery Mode Overlays: Top Floating Answer Bubble + Scroll Arrows */}
       {!isWaitingForReply && !errorDetail && selectedIndex === null && (
         <>
-          {/* Floating Light-Theme Read Out Bubbles right over the top of the 3D cards */}
-          {hasReadOut && showReadOut && (
+          {/* Floating Light-Theme Answer Bubble right over the top of the 3D cards */}
+          {hasAnswer && showReadOut && (
             <div className="pointer-events-none absolute top-3 inset-x-0 z-10 px-4 sm:px-8">
-              <div className="max-w-5xl mx-auto">
-                <div
-                  className={`grid grid-cols-1 ${
-                    readOutSections?.summary && readOutSections?.answer ? 'md:grid-cols-2' : ''
-                  } gap-3.5 items-start`}
-                >
-                  {readOutSections?.summary && (
-                    <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
-                          <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                          <span>Month Summary</span>
-                        </span>
-                      </div>
-                      <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-28 overflow-y-auto fluent-scroll whitespace-pre-line pr-1 select-text">
-                        {readOutSections.summary}
-                      </div>
-                    </div>
-                  )}
-
-                  {readOutSections?.answer && (
-                    <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
-                          <Sparkles className="w-3.5 h-3.5 text-sky-600" />
-                          <span>Answer</span>
-                        </span>
-                      </div>
-                      <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-28 overflow-y-auto fluent-scroll whitespace-pre-line pr-1 select-text">
-                        {readOutSections.answer}
-                      </div>
-                    </div>
-                  )}
+              <div className="max-w-2xl mx-auto">
+                <div className="pointer-events-auto rounded-[28px] border border-sky-200 bg-[#f8fbff]/96 px-5 py-4 text-slate-900 shadow-[0_18px_38px_-14px_rgba(15,23,42,0.22)]">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-700">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Answer</span>
+                    </span>
+                  </div>
+                  <div className="text-xs sm:text-[13px] leading-relaxed text-slate-800 max-h-36 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain whitespace-pre-line select-text">
+                    {answerText}
+                  </div>
                 </div>
               </div>
             </div>
@@ -991,13 +1223,13 @@ export function ProductionCards3D({
           {/* Bottom Card Navigation Strip */}
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex items-center justify-between px-5 sm:px-8">
             <div className="pointer-events-auto flex items-center gap-2">
-              {hasReadOut && (
+              {hasAnswer && (
                 <button
                   type="button"
                   onClick={() => setShowReadOut((prev) => !prev)}
                   className="rounded-xl border border-slate-300 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-white cursor-pointer"
                 >
-                  {showReadOut ? 'Hide Read Out' : 'Show Read Out'}
+                  {showReadOut ? 'Hide Answer' : 'Show Answer'}
                 </button>
               )}
               <button
@@ -1039,7 +1271,7 @@ export function ProductionCards3D({
         </>
       )}
 
-      {/* Full-Screen Metallic Bezel Detail Overlays (Screenshot 2 + Slide-Up Reasoning) */}
+      {/* Expanded 3D Card Overlays + Slide-Up Reasoning */}
       {!isWaitingForReply && !errorDetail && selectedCard && (
         <>
           <div className="pointer-events-none absolute top-4 inset-x-0 z-20 flex items-center justify-between px-5 sm:px-8">
@@ -1049,10 +1281,11 @@ export function ProductionCards3D({
                 setIsReasoningOpen(false);
                 setSelectedIndex(null);
               }}
-              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-[#0d1424]/95 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 cursor-pointer"
+              aria-label="Back"
+              title="Back"
+              className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700/90 bg-[#0d1424]/95 text-white hover:bg-slate-800 cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Cards</span>
+              <ArrowLeft className="w-5 h-5" />
             </button>
 
             <button
@@ -1098,7 +1331,7 @@ export function ProductionCards3D({
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line max-h-56 overflow-y-auto fluent-scroll pr-1">
+                <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-line max-h-56 overflow-y-auto scroll-smooth pa-no-scrollbar overscroll-contain">
                   {selectedCard.how || selectedCard.summary}
                 </p>
               </div>

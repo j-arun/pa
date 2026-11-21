@@ -254,11 +254,11 @@ export function ProductionTimelinePanel({
                         <DomainNodeGlyph domain={item.domain} />
                       </div>
                       <div className="flex-1 bg-[#f1f2f4] text-slate-900 rounded-[4px] border border-white px-3.5 py-3 shadow-md">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
                           <h3 className="text-[11px] font-extrabold tracking-wide text-slate-900 uppercase">
                             {headingText}
                           </h3>
-                          <span className="text-[10px] font-bold uppercase tabular-nums text-slate-700 shrink-0">
+                          <span className="text-[10px] font-bold uppercase tabular-nums text-slate-700">
                             {item.date}
                           </span>
                         </div>
