@@ -667,6 +667,12 @@ function formatWaitingPeriodLabel(rawPeriod?: string): string {
     const fullMonth = getMonthNameFromNumber(monthNum);
     if (fullMonth) return `${ym[1]} ${fullMonth}`;
   }
+  const my = trimmed.match(/^([a-zA-Z]{3,9})\s*[-/]?\s*(\d{4})$/);
+  if (my) {
+    const monthNum = getMonthNumberFromName(my[1]);
+    const fullMonth = getMonthNameFromNumber(monthNum);
+    if (fullMonth) return `${my[2]} ${fullMonth}`;
+  }
   return trimmed;
 }
 
@@ -1751,14 +1757,14 @@ export function ProductionCards3D({
       {isWaitingForReply && (
         <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-between py-10 px-4">
           <div className="text-center space-y-3 flex flex-col items-center">
-            {(periodLabel || domain) && (
+            {(domain || periodLabel) && (
               <div className="inline-flex items-center justify-center gap-2.5">
+                {domain && <Stage2DomainEmblem domain={domain} />}
                 {periodLabel && (
                   <span className="text-xs sm:text-sm font-bold tracking-[0.16em] uppercase text-sky-300 tabular-nums">
                     {formatWaitingPeriodLabel(periodLabel)}
                   </span>
                 )}
-                {domain && <Stage2DomainEmblem domain={domain} />}
               </div>
             )}
             {questionText && (
