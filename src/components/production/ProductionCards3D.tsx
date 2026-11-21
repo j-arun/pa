@@ -1,5 +1,6 @@
 import {
   Briefcase,
+  Calendar,
   ChevronLeft,
   ChevronRight,
   DollarSign,
@@ -138,101 +139,114 @@ function drawDomainArtwork(
   accent: string,
   cx: number,
   cy: number,
+  maskCtx?: CanvasRenderingContext2D,
 ) {
-  ctx.save();
-  ctx.translate(cx, cy);
+  const paintShape = (target: CanvasRenderingContext2D, isMask: boolean) => {
+    target.save();
+    target.translate(cx, cy);
 
-  // Soft studio shadow platter
-  const glow = ctx.createRadialGradient(0, 14, 16, 0, 14, 175);
-  glow.addColorStop(0, 'rgba(255,255,255,0.42)');
-  glow.addColorStop(0.55, `${accent}44`);
-  glow.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(0, 14, 175, 0, Math.PI * 2);
-  ctx.fill();
+    if (!isMask) {
+      // Soft studio shadow platter
+      const glow = target.createRadialGradient(0, 14, 16, 0, 14, 175);
+      glow.addColorStop(0, 'rgba(255,255,255,0.48)');
+      glow.addColorStop(0.55, `${accent}44`);
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      target.fillStyle = glow;
+      target.beginPath();
+      target.arc(0, 14, 175, 0, Math.PI * 2);
+      target.fill();
 
-  // Subtle architectural pedestal
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  ctx.beginPath();
-  ctx.ellipse(0, 88, 128, 30, 0, 0, Math.PI * 2);
-  ctx.fill();
+      // Subtle architectural pedestal
+      target.fillStyle = 'rgba(255,255,255,0.22)';
+      target.beginPath();
+      target.ellipse(0, 88, 128, 30, 0, 0, Math.PI * 2);
+      target.fill();
+    } else {
+      target.shadowColor = '#ffffff';
+      target.shadowBlur = 14;
+    }
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.lineWidth = 10;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+    target.strokeStyle = isMask ? '#f0f0f0' : 'rgba(255,255,255,0.96)';
+    target.fillStyle = isMask ? '#f0f0f0' : 'rgba(255,255,255,0.96)';
+    target.lineWidth = 10;
+    target.lineCap = 'round';
+    target.lineJoin = 'round';
 
-  if (icon === 'heart') {
-    ctx.beginPath();
-    ctx.moveTo(0, 58);
-    ctx.bezierCurveTo(-84, 10, -84, -58, -36, -64);
-    ctx.bezierCurveTo(-10, -68, 0, -38, 0, -32);
-    ctx.bezierCurveTo(0, -38, 10, -68, 36, -64);
-    ctx.bezierCurveTo(84, -58, 84, 10, 0, 58);
-    ctx.closePath();
-    ctx.fill();
-  } else if (icon === 'shield') {
-    ctx.beginPath();
-    ctx.moveTo(0, -68);
-    ctx.lineTo(62, -44);
-    ctx.lineTo(62, 6);
-    ctx.bezierCurveTo(62, 48, 0, 74, 0, 74);
-    ctx.bezierCurveTo(0, 74, -62, 48, -62, 6);
-    ctx.lineTo(-62, -44);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -24);
-    ctx.lineTo(0, 30);
-    ctx.moveTo(-26, 3);
-    ctx.lineTo(26, 3);
-    ctx.stroke();
-  } else if (icon === 'coins') {
-    ctx.beginPath();
-    ctx.moveTo(0, -68);
-    ctx.lineTo(0, 68);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(34, -36);
-    ctx.bezierCurveTo(34, -54, -34, -54, -34, -26);
-    ctx.bezierCurveTo(-34, -4, 34, -4, 34, 24);
-    ctx.bezierCurveTo(34, 54, -34, 54, -34, 34);
-    ctx.stroke();
-  } else if (icon === 'layers') {
-    ctx.beginPath();
-    ctx.moveTo(0, -64);
-    ctx.lineTo(68, -14);
-    ctx.lineTo(50, -14);
-    ctx.lineTo(50, 54);
-    ctx.lineTo(-50, 54);
-    ctx.lineTo(-50, -14);
-    ctx.lineTo(-68, -14);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.roundRect(-18, 10, 36, 44, 6);
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.roundRect(-64, -32, 128, 86, 18);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-26, -32);
-    ctx.lineTo(-26, -54);
-    ctx.arcTo(-26, -64, -16, -64, 10);
-    ctx.lineTo(16, -64);
-    ctx.arcTo(26, -64, 26, -54, 10);
-    ctx.lineTo(26, -32);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-64, 8);
-    ctx.lineTo(64, 8);
-    ctx.stroke();
+    if (icon === 'heart') {
+      target.beginPath();
+      target.moveTo(0, 58);
+      target.bezierCurveTo(-84, 10, -84, -58, -36, -64);
+      target.bezierCurveTo(-10, -68, 0, -38, 0, -32);
+      target.bezierCurveTo(0, -38, 10, -68, 36, -64);
+      target.bezierCurveTo(84, -58, 84, 10, 0, 58);
+      target.closePath();
+      target.fill();
+    } else if (icon === 'shield') {
+      target.beginPath();
+      target.moveTo(0, -68);
+      target.lineTo(62, -44);
+      target.lineTo(62, 6);
+      target.bezierCurveTo(62, 48, 0, 74, 0, 74);
+      target.bezierCurveTo(0, 74, -62, 48, -62, 6);
+      target.lineTo(-62, -44);
+      target.closePath();
+      target.stroke();
+      target.beginPath();
+      target.moveTo(0, -24);
+      target.lineTo(0, 30);
+      target.moveTo(-26, 3);
+      target.lineTo(26, 3);
+      target.stroke();
+    } else if (icon === 'coins') {
+      target.beginPath();
+      target.moveTo(0, -68);
+      target.lineTo(0, 68);
+      target.stroke();
+      target.beginPath();
+      target.moveTo(34, -36);
+      target.bezierCurveTo(34, -54, -34, -54, -34, -26);
+      target.bezierCurveTo(-34, -4, 34, -4, 34, 24);
+      target.bezierCurveTo(34, 54, -34, 54, -34, 34);
+      target.stroke();
+    } else if (icon === 'layers') {
+      target.beginPath();
+      target.moveTo(0, -64);
+      target.lineTo(68, -14);
+      target.lineTo(50, -14);
+      target.lineTo(50, 54);
+      target.lineTo(-50, 54);
+      target.lineTo(-50, -14);
+      target.lineTo(-68, -14);
+      target.closePath();
+      target.stroke();
+      target.beginPath();
+      target.roundRect(-18, 10, 36, 44, 6);
+      target.stroke();
+    } else {
+      target.beginPath();
+      target.roundRect(-64, -32, 128, 86, 18);
+      target.stroke();
+      target.beginPath();
+      target.moveTo(-26, -32);
+      target.lineTo(-26, -54);
+      target.arcTo(-26, -64, -16, -64, 10);
+      target.lineTo(16, -64);
+      target.arcTo(26, -64, 26, -54, 10);
+      target.lineTo(26, -32);
+      target.stroke();
+      target.beginPath();
+      target.moveTo(-64, 8);
+      target.lineTo(64, 8);
+      target.stroke();
+    }
+
+    target.restore();
+  };
+
+  paintShape(ctx, false);
+  if (maskCtx) {
+    paintShape(maskCtx, true);
   }
-
-  ctx.restore();
 }
 
 interface RenderedCardTextures {
@@ -328,11 +342,28 @@ totalEmissiveRadiance += glitterTint * txtMask * (focusLift + glitterAmp) * (1.0
   return glitterUniforms;
 }
 
+function inferCardCategoryLabel(
+  card: EventCardItem,
+  fallbackDomain?: PromptDomain,
+): string {
+  const direct = (card.category || '').trim();
+  if (direct) return direct;
+  if (card.icon === 'heart') return 'Love';
+  if (card.icon === 'shield') return 'Health';
+  if (card.icon === 'coins') return 'Finance';
+  if (card.icon === 'layers') return 'Family';
+  if (card.icon === 'briefcase') return 'Career';
+  if (fallbackDomain) return WAITING_DOMAIN_META[fallbackDomain].label;
+  return 'Highlight';
+}
+
 function renderCardFaceTexture(
   card: EventCardItem,
   index: number,
   maxAnisotropy: number,
   isDetailMode: boolean,
+  fallbackPeriodLabel?: string,
+  fallbackDomain?: PromptDomain,
 ): RenderedCardTextures {
   const isTopPriority = index < 2;
   const width = isDetailMode ? 1056 : 768;
@@ -391,12 +422,12 @@ function renderCardFaceTexture(
   }
 
   // Top & lower editorial focal scrim so text & glitter always stay razor-sharp with rich contrast
-  const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.46);
-  topScrim.addColorStop(0, isTopPriority ? 'rgba(15, 23, 42, 0.62)' : 'rgba(10, 16, 30, 0.54)');
+  const topScrim = ctx.createLinearGradient(0, 0, 0, height * 0.48);
+  topScrim.addColorStop(0, isTopPriority ? 'rgba(15, 23, 42, 0.64)' : 'rgba(10, 16, 30, 0.56)');
   topScrim.addColorStop(0.65, isTopPriority ? 'rgba(15, 23, 42, 0.28)' : 'rgba(10, 16, 30, 0.24)');
   topScrim.addColorStop(1, 'rgba(10, 16, 30, 0)');
   ctx.fillStyle = topScrim;
-  ctx.fillRect(0, 0, width, height * 0.46);
+  ctx.fillRect(0, 0, width, height * 0.48);
 
   const sheen = ctx.createRadialGradient(
     width * 0.25,
@@ -413,7 +444,7 @@ function renderCardFaceTexture(
 
   const scale = width / 768;
   const padX = 54 * scale;
-  let cursorY = 56 * scale;
+  let cursorY = 54 * scale;
 
   const drawMaskedText = (
     text: string,
@@ -431,7 +462,7 @@ function renderCardFaceTexture(
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
     ctx.fillStyle = fillStyle;
-    ctx.shadowColor = 'rgba(8, 15, 30, 0.56)';
+    ctx.shadowColor = 'rgba(8, 15, 30, 0.58)';
     ctx.shadowBlur = 14 * scale;
     if (maxW !== undefined) ctx.fillText(text, x, y, maxW);
     else ctx.fillText(text, x, y);
@@ -443,81 +474,154 @@ function renderCardFaceTexture(
     maskCtx.textBaseline = baseline;
     maskCtx.fillStyle = maskIntensity;
     maskCtx.shadowColor = '#ffffff';
-    maskCtx.shadowBlur = 7 * scale;
+    maskCtx.shadowBlur = 9 * scale;
     if (maxW !== undefined) maskCtx.fillText(text, x, y, maxW);
     else maskCtx.fillText(text, x, y);
     maskCtx.restore();
   };
 
-  // Category eyebrow (Health, Career, Family, Finance, Love)
-  if (card.category) {
-    const catLabel = card.category.toUpperCase();
-    drawMaskedText(
-      catLabel,
-      padX,
-      cursorY,
-      `800 ${Math.round(19 * scale)}px "DM Sans", system-ui, sans-serif`,
-      '#ffffff',
-      'left',
-      'top',
-      width - padX * 2,
-      '#ffffff',
-    );
-    cursorY += 32 * scale;
-  }
+  // Category eyebrow (Love, Health, Career, Family, Finance) with crisp glow
+  const catLabel = inferCardCategoryLabel(card, fallbackDomain).toUpperCase();
+  drawMaskedText(
+    catLabel,
+    padX,
+    cursorY,
+    `800 ${Math.round(20 * scale)}px "DM Sans", system-ui, sans-serif`,
+    '#fef3c7',
+    'left',
+    'top',
+    width - padX * 2,
+    '#ffffff',
+  );
+  cursorY += 32 * scale;
 
   // Title (editorial bold top-left with strong readability & full glitter mask)
-  const titleFont = `700 ${Math.round((isDetailMode ? 48 : 46) * scale)}px "Plus Jakarta Sans", system-ui, sans-serif`;
+  const titleFont = `700 ${Math.round((isDetailMode ? 45 : 44) * scale)}px "Plus Jakarta Sans", system-ui, sans-serif`;
   ctx.font = titleFont;
   const titleLines = wrapLines(ctx, card.title, width - padX * 2, 3);
   for (const line of titleLines) {
     drawMaskedText(line, padX, cursorY, titleFont, '#ffffff', 'left', 'top', undefined, '#ffffff');
-    cursorY += 56 * scale;
+    cursorY += 52 * scale;
   }
 
-  // Timing & Probability pill
+  // Timing Period & Probability badges (glowing cleanly without horizontal squishing)
   cursorY += 12 * scale;
-  const whenStr = card.when || card.dateRange || card.timeframe || 'Upcoming window';
-  const probStr = card.probability || card.likelihood || '';
-  const pillFont = `700 ${Math.round(22 * scale)}px "DM Sans", system-ui, sans-serif`;
-  ctx.font = pillFont;
-  const pillText = probStr ? `${whenStr}  ·  ${probStr}` : whenStr;
-  const pillW = Math.min(width - padX * 2, ctx.measureText(pillText).width + 42 * scale);
+  const formattedFallbackPeriod = formatWaitingPeriodLabel(fallbackPeriodLabel);
+  const whenStr =
+    (card.when || card.dateRange || card.timeframe || '').trim() ||
+    formattedFallbackPeriod ||
+    'Upcoming window';
+  const probStr = (card.probability || card.likelihood || '').trim();
+  const maxContentW = width - padX * 2;
+  const badgeFont = `700 ${Math.round((isDetailMode ? 21 : 20) * scale)}px "DM Sans", system-ui, sans-serif`;
+  ctx.font = badgeFont;
 
-  ctx.fillStyle = 'rgba(8, 15, 30, 0.56)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
-  ctx.lineWidth = 1.75 * scale;
-  ctx.beginPath();
-  ctx.roundRect(padX, cursorY, pillW, 44 * scale, 14 * scale);
-  ctx.fill();
-  ctx.stroke();
+  const padBadgeX = 18 * scale;
+  const pillHeight = 42 * scale;
+  const pillGap = 10 * scale;
 
-  // Glitter border highlight around the period & probability pill
-  maskCtx.save();
-  maskCtx.strokeStyle = '#cfcfcf';
-  maskCtx.lineWidth = 2 * scale;
-  maskCtx.beginPath();
-  maskCtx.roundRect(padX, cursorY, pillW, 44 * scale, 14 * scale);
-  maskCtx.stroke();
-  maskCtx.restore();
+  const drawGlowingBadge = (
+    text: string,
+    bx: number,
+    by: number,
+    bw: number,
+    bgColor: string,
+    borderColor: string,
+    glowColor: string,
+    textColor: string,
+  ) => {
+    ctx.save();
+    ctx.fillStyle = bgColor;
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2 * scale;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 18 * scale;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, pillHeight, 14 * scale);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
 
-  drawMaskedText(
-    pillText,
-    padX + 21 * scale,
-    cursorY + 22 * scale,
-    pillFont,
-    '#ffffff',
-    'left',
-    'middle',
-    width - padX * 2 - 42 * scale,
-    '#ffffff',
+    maskCtx.save();
+    maskCtx.strokeStyle = '#ffffff';
+    maskCtx.lineWidth = 2.4 * scale;
+    maskCtx.shadowColor = '#ffffff';
+    maskCtx.shadowBlur = 8 * scale;
+    maskCtx.beginPath();
+    maskCtx.roundRect(bx, by, bw, pillHeight, 14 * scale);
+    maskCtx.stroke();
+    maskCtx.restore();
+
+    drawMaskedText(
+      text,
+      bx + padBadgeX,
+      by + pillHeight / 2,
+      badgeFont,
+      textColor,
+      'left',
+      'middle',
+      bw - padBadgeX * 2,
+      '#ffffff',
+    );
+  };
+
+  const whenW = Math.min(maxContentW, ctx.measureText(whenStr).width + padBadgeX * 2);
+  const probW = probStr ? Math.min(maxContentW, ctx.measureText(probStr).width + padBadgeX * 2) : 0;
+  const fitSideBySide = probStr && whenW + pillGap + probW <= maxContentW;
+  let badgeRowsUsed = 1;
+
+  drawGlowingBadge(
+    whenStr,
+    padX,
+    cursorY,
+    whenW,
+    'rgba(12, 20, 38, 0.72)',
+    'rgba(253, 224, 71, 0.90)',
+    'rgba(253, 224, 71, 0.78)',
+    '#fef9c3',
   );
 
-  // Center emblem illustration cleanly framed above the focal summary plaque
+  if (probStr) {
+    if (fitSideBySide) {
+      drawGlowingBadge(
+        probStr,
+        padX + whenW + pillGap,
+        cursorY,
+        probW,
+        'rgba(10, 22, 44, 0.72)',
+        'rgba(125, 211, 252, 0.92)',
+        'rgba(125, 211, 252, 0.80)',
+        '#e0f2fe',
+      );
+    } else {
+      badgeRowsUsed = 2;
+      drawGlowingBadge(
+        probStr,
+        padX,
+        cursorY + pillHeight + 8 * scale,
+        probW,
+        'rgba(10, 22, 44, 0.72)',
+        'rgba(125, 211, 252, 0.92)',
+        'rgba(125, 211, 252, 0.80)',
+        '#e0f2fe',
+      );
+    }
+  }
+
+  // Center emblem illustration cleanly framed above the focal summary plaque (with glitter glow mask)
+  const artworkCenterY =
+    isDetailMode
+      ? height * (titleLines.length >= 3 && badgeRowsUsed === 2 ? 0.485 : 0.455)
+      : height * (titleLines.length >= 3 && badgeRowsUsed === 2 ? 0.545 : 0.52);
+  const artworkScale = scale * (isDetailMode ? 0.88 : 0.85);
   ctx.save();
-  ctx.translate(width / 2, isDetailMode ? height * 0.44 : height * 0.51);
-  ctx.scale(scale * (isDetailMode ? 0.92 : 0.88), scale * (isDetailMode ? 0.92 : 0.88));
-  drawDomainArtwork(ctx, card.icon, palette.accent, 0, 0);
+  ctx.translate(width / 2, artworkCenterY);
+  ctx.scale(artworkScale, artworkScale);
+  maskCtx.save();
+  maskCtx.translate(width / 2, artworkCenterY);
+  maskCtx.scale(artworkScale, artworkScale);
+  drawDomainArtwork(ctx, card.icon, palette.accent, 0, 0, maskCtx);
+  maskCtx.restore();
   ctx.restore();
 
   // Focused Text Plaque inside the Card (Summary card reading highlight with full glitter)
@@ -1361,7 +1465,14 @@ export function ProductionCards3D({
       const slabMesh = new THREE.Mesh(slabGeo, isTopPriority ? priorityRimMetalMat : rimMetalMat);
       group.add(slabMesh);
 
-      const { colorTexture, textMaskTexture } = renderCardFaceTexture(card, idx, maxAnisotropy, false);
+      const { colorTexture, textMaskTexture } = renderCardFaceTexture(
+        card,
+        idx,
+        maxAnisotropy,
+        false,
+        periodLabel,
+        domain,
+      );
       const faceMat = new THREE.MeshStandardMaterial({
         map: colorTexture,
         roughness: isTopPriority ? 0.22 : 0.36,
@@ -1433,7 +1544,14 @@ export function ProductionCards3D({
     dUv.needsUpdate = true;
 
     const detailEntries = cards.map((card, idx) => {
-      const rendered = renderCardFaceTexture(card, idx, maxAnisotropy, true);
+      const rendered = renderCardFaceTexture(
+        card,
+        idx,
+        maxAnisotropy,
+        true,
+        periodLabel,
+        domain,
+      );
       disposables.push(rendered.colorTexture, rendered.textMaskTexture);
       return rendered;
     });
@@ -1817,12 +1935,23 @@ export function ProductionCards3D({
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [cards]);
+  }, [cards, domain, periodLabel]);
 
   const answerText = readOutSections?.answer?.trim() || '';
   const hasAnswer = Boolean(answerText);
   const monthlySummaryText =
     readOutSections?.summary?.trim() || readOutSections?.answer?.trim() || '';
+
+  const selectedFlashCategory = selectedCard
+    ? inferCardCategoryLabel(selectedCard, domain)
+    : '';
+  const selectedFlashPeriod = selectedCard
+    ? (selectedCard.when || selectedCard.dateRange || selectedCard.timeframe || '').trim() ||
+      formatWaitingPeriodLabel(periodLabel)
+    : '';
+  const selectedFlashProbability = selectedCard
+    ? (selectedCard.probability || selectedCard.likelihood || '').trim()
+    : '';
 
   const errorUi = useMemo(() => {
     if (!errorDetail) return null;
@@ -2097,26 +2226,26 @@ export function ProductionCards3D({
       {/* Expanded 3D Card Category Glitter Spark Flash & Slide-Up Reasoning */}
       {!isWaitingForReply && !errorDetail && selectedCard && (
         <>
-          {/* Transient Category Glitter Graphic Spark that flashes up on card open and goes back */}
+          {/* Transient Category + Time Period + Probability Glitter Flash that pops up on card open and recedes back */}
           <motion.div
             key={`card-category-spark-${selectedIndex}`}
             aria-hidden="true"
             initial={{ opacity: 0 }}
             animate={{ opacity: [0, 1, 1, 0] }}
-            transition={{ duration: 1.15, times: [0, 0.16, 0.56, 1], ease: 'easeOut' }}
-            className="pointer-events-none fixed inset-0 z-20 flex items-center justify-center"
+            transition={{ duration: 1.6, times: [0, 0.14, 0.68, 1], ease: 'easeOut' }}
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4"
           >
-            <div className="relative flex flex-col items-center justify-center">
+            <div className="relative flex flex-col items-center justify-center max-w-md text-center">
               {/* Radiant flash aura */}
               <motion.div
-                initial={{ scale: 0.25, opacity: 0 }}
-                animate={{ scale: [0.25, 1.35, 1.85], opacity: [0, 0.95, 0] }}
-                transition={{ duration: 1.05, times: [0, 0.3, 1], ease: 'easeOut' }}
-                className="absolute w-52 h-52 rounded-full"
+                initial={{ scale: 0.3, opacity: 0 }}
+                animate={{ scale: [0.3, 1.45, 1.95], opacity: [0, 0.95, 0] }}
+                transition={{ duration: 1.5, times: [0, 0.28, 1], ease: 'easeOut' }}
+                className="absolute w-72 h-72 rounded-full"
                 style={{
                   background:
-                    'radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(253,224,71,0.45) 38%, rgba(56,189,248,0.22) 68%, rgba(255,255,255,0) 100%)',
-                  filter: 'blur(4px)',
+                    'radial-gradient(circle, rgba(255,255,255,0.92) 0%, rgba(253,224,71,0.52) 38%, rgba(56,189,248,0.28) 68%, rgba(255,255,255,0) 100%)',
+                  filter: 'blur(6px)',
                 }}
               />
 
@@ -2127,14 +2256,14 @@ export function ProductionCards3D({
                   viewBox="0 0 24 24"
                   initial={{ x: 0, y: 0, scale: 0.2, opacity: 0, rotate: 0 }}
                   animate={{
-                    x: [0, sp.x * 0.72, sp.x],
-                    y: [0, sp.y * 0.72, sp.y],
-                    scale: [0.2, 1.25, 0.15],
+                    x: [0, sp.x * 0.82, sp.x * 1.15],
+                    y: [0, sp.y * 0.82, sp.y * 1.15],
+                    scale: [0.2, 1.3, 0.15],
                     opacity: [0, 1, 0],
                     rotate: [0, 45, 90],
                   }}
                   transition={{
-                    duration: 0.95,
+                    duration: 1.25,
                     delay: sp.delay,
                     times: [0, 0.35, 1],
                     ease: 'easeOut',
@@ -2149,27 +2278,54 @@ export function ProductionCards3D({
                 </motion.svg>
               ))}
 
-              {/* Category Graphic + Glitter Label popping up and receding back */}
+              {/* Crisp Glowing Category Icon + Category Label + Time Period + Most Likely / Probability % */}
               <motion.div
-                initial={{ scale: 0.38, y: 12, opacity: 0 }}
+                initial={{ scale: 0.45, y: 14, opacity: 0 }}
                 animate={{
-                  scale: [0.38, 1.22, 1.05, 0.78],
-                  y: [12, -8, -4, 6],
+                  scale: [0.45, 1.12, 1.03, 0.84],
+                  y: [14, -6, -2, 6],
                   opacity: [0, 1, 1, 0],
                 }}
-                transition={{ duration: 1.1, times: [0, 0.25, 0.62, 1], ease: 'easeOut' }}
-                className="relative flex flex-col items-center gap-2"
+                transition={{ duration: 1.55, times: [0, 0.2, 0.68, 1], ease: 'easeOut' }}
+                className="relative flex flex-col items-center gap-3"
               >
-                <div className="inline-flex h-24 w-24 items-center justify-center rounded-full border border-white/85 bg-white/25 backdrop-blur-md shadow-[0_0_45px_rgba(255,255,255,0.75)]">
+                <div className="inline-flex h-24 w-24 items-center justify-center rounded-full border-2 border-amber-200/95 bg-slate-950/88 backdrop-blur-md shadow-[0_0_52px_rgba(253,224,71,0.82),0_0_22px_rgba(255,255,255,0.7)]">
                   <EventCategoryEmblem
                     icon={selectedCard.icon ?? 'sparkles'}
-                    className="w-14 h-14 drop-shadow-[0_4px_16px_rgba(255,255,255,0.9)]"
+                    className="w-14 h-14 drop-shadow-[0_0_18px_rgba(255,255,255,0.95)]"
                   />
                 </div>
-                {selectedCard.category && (
-                  <span className="px-3.5 py-1 rounded-full border border-white/75 bg-slate-950/75 text-xs font-extrabold uppercase tracking-[0.22em] text-amber-100 shadow-[0_0_24px_rgba(253,224,71,0.55)]">
-                    {selectedCard.category}
+
+                {selectedFlashCategory && (
+                  <span
+                    className="pa-rainbow-node-glitter px-4 py-1 rounded-full border border-amber-200/85 bg-slate-950/92 text-xs sm:text-sm font-extrabold uppercase tracking-[0.22em] text-amber-100 shadow-[0_0_28px_rgba(253,224,71,0.7)]"
+                    style={{ textShadow: '0 0 12px rgba(253, 224, 71, 0.9)' }}
+                  >
+                    {selectedFlashCategory}
                   </span>
+                )}
+
+                {(selectedFlashPeriod || selectedFlashProbability) && (
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {selectedFlashPeriod && (
+                      <span
+                        className="pa-rainbow-node-glitter inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-amber-200/95 bg-slate-950/92 text-sm sm:text-base font-extrabold tracking-wide text-amber-50 shadow-[0_0_32px_rgba(253,224,71,0.78),inset_0_0_12px_rgba(253,224,71,0.28)]"
+                        style={{ textShadow: '0 0 12px rgba(253, 224, 71, 0.92)' }}
+                      >
+                        <Calendar className="w-4 h-4 text-amber-200 shrink-0 drop-shadow-[0_0_8px_rgba(253,224,71,0.95)]" />
+                        <span>{selectedFlashPeriod}</span>
+                      </span>
+                    )}
+                    {selectedFlashProbability && (
+                      <span
+                        className="pa-rainbow-node-glitter inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border border-sky-200/95 bg-slate-950/92 text-sm sm:text-base font-extrabold tracking-wide text-sky-50 shadow-[0_0_32px_rgba(125,211,252,0.82),inset_0_0_12px_rgba(125,211,252,0.28)]"
+                        style={{ textShadow: '0 0 12px rgba(125, 211, 252, 0.95)' }}
+                      >
+                        <Sparkles className="w-4 h-4 text-sky-200 shrink-0 drop-shadow-[0_0_8px_rgba(125,211,252,0.95)]" />
+                        <span>{selectedFlashProbability}</span>
+                      </span>
+                    )}
+                  </div>
                 )}
               </motion.div>
             </div>
