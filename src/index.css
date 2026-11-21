@@ -359,10 +359,31 @@
   pointer-events: none;
 }
 
+@keyframes paQuestionWordJump {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0) scale(1);
+    color: rgba(226, 232, 240, 0.92);
+  }
+  22% {
+    transform: translateY(-7px) scale(1.04);
+    color: #ffffff;
+    text-shadow: 0 6px 18px rgba(56, 189, 248, 0.6);
+  }
+}
+
+.pa-question-word-jump {
+  display: inline-block;
+  animation: paQuestionWordJump 1.85s ease-in-out infinite;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pa-glimmer-btn,
   .pa-glimmer-btn::after,
-  .pa-rainbow-node-glitter::after {
+  .pa-rainbow-node-glitter::after,
+  .pa-question-word-jump {
     animation: none !important;
   }
 }

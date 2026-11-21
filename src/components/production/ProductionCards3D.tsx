@@ -1,8 +1,12 @@
 import {
   ArrowLeft,
+  Briefcase,
   ChevronLeft,
   ChevronRight,
+  Heart,
+  Home,
   RotateCcw,
+  ShieldPlus,
   Sparkles,
   Square,
   X,
@@ -11,6 +15,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { EventCardIconType, EventCardItem, PromptDomain } from '../../types/workbench';
+import {
+  getMonthNameFromNumber,
+  getMonthNumberFromName,
+} from '../../utils/promptTemplates';
 import type { ReadOutSections } from '../../utils/eventParser';
 import { WhatsAppSymbol } from '../WhatsAppSymbol';
 
@@ -536,6 +544,53 @@ function renderCardFaceTexture(
   return { colorTexture, textMaskTexture };
 }
 
+const WAITING_DOMAIN_META: Record<
+  PromptDomain,
+  { label: string; accentHex: string; glowHex: string }
+> = {
+  astrology: { label: 'Career', accentHex: '#38bdf8', glowHex: '#0284c7' },
+  finance: { label: 'Family', accentHex: '#34d399', glowHex: '#059669' },
+  general: { label: 'Love', accentHex: '#fb7185', glowHex: '#e11d48' },
+  health: { label: 'Health', accentHex: '#a78bfa', glowHex: '#7c3aed' },
+};
+
+function Stage2DomainEmblem({ domain }: { domain: PromptDomain }) {
+  const meta = WAITING_DOMAIN_META[domain];
+  return (
+    <span
+      title={meta.label}
+      aria-label={meta.label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/40 shadow-sm shrink-0"
+      style={{
+        background: `radial-gradient(circle at 35% 30%, #ffffff 0%, ${meta.accentHex} 55%, ${meta.glowHex} 100%)`,
+        boxShadow: `0 0 16px ${meta.accentHex}66`,
+      }}
+    >
+      {domain === 'astrology' ? (
+        <Briefcase className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
+      ) : domain === 'finance' ? (
+        <Home className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
+      ) : domain === 'general' ? (
+        <Heart className="w-3.5 h-3.5 text-white fill-white/90 drop-shadow" strokeWidth={2.2} />
+      ) : (
+        <ShieldPlus className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
+      )}
+    </span>
+  );
+}
+
+function formatWaitingPeriodLabel(rawPeriod?: string): string {
+  const trimmed = (rawPeriod || '').trim();
+  if (!trimmed) return '';
+  const ym = trimmed.match(/^(\d{4})\s*[-/]?\s*([a-zA-Z]{3,9})$/);
+  if (ym) {
+    const monthNum = getMonthNumberFromName(ym[2]);
+    const fullMonth = getMonthNameFromNumber(monthNum);
+    if (fullMonth) return `${ym[1]} ${fullMonth}`;
+  }
+  return trimmed;
+}
+
 export function ProductionCards3D({
   cards,
   readOutSections,
@@ -543,6 +598,7 @@ export function ProductionCards3D({
   errorDetail,
   questionText,
   periodLabel,
+  domain,
   onCancelRequest,
   onRetry,
   onStartNewThread,
@@ -1013,6 +1069,7 @@ export function ProductionCards3D({
         orbitRing2.rotation.x = elapsed * 1.1;
         const s = 1 + Math.sin(elapsed * 3.1) * 0.08;
         pulseCore.scale.setScalar(s);
+        thinkingGroup.position.y = Math.sin(elapsed * 2.0) * 0.05;
       } else {
         // Flying bubble scroll physics on perspective rail
         const prevScroll = currentScroll;
@@ -1167,22 +1224,42 @@ export function ProductionCards3D({
       {/* Real Three.js 3D Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Stage 2: Waiting / Thinking Overlay */}
+      {/* Stage 2: Waiting / Rounding Globe Overlay */}
       {isWaitingForReply && (
         <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-between py-10 px-4">
-          <div className="text-center space-y-1.5">
-            {periodLabel && (
-              <div className="text-xs font-semibold tracking-widest uppercase text-sky-300 tabular-nums">
-                {periodLabel}
+          <div className="text-center space-y-3 flex flex-col items-center">
+            {(periodLabel || domain) && (
+              <div className="inline-flex items-center justify-center gap-2.5">
+                {periodLabel && (
+                  <span className="text-xs sm:text-sm font-bold tracking-[0.16em] uppercase text-sky-300 tabular-nums">
+                    {formatWaitingPeriodLabel(periodLabel)}
+                  </span>
+                )}
+                {domain && <Stage2DomainEmblem domain={domain} />}
               </div>
             )}
             {questionText && (
-              <p className="max-w-lg text-sm text-slate-200 line-clamp-2">{questionText}</p>
+              <p
+                aria-label={questionText}
+                className="max-w-xl flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-sm sm:text-base font-medium text-slate-100 leading-relaxed"
+              >
+                {questionText
+                  .trim()
+                  .split(/\s+/)
+                  .map((word, idx) => (
+                    <span
+                      key={`${idx}-${word}`}
+                      className="pa-question-word-jump"
+                      style={{ animationDelay: `${(idx % 12) * 0.13}s` }}
+                    >
+                      {word}
+                    </span>
+                  ))}
+              </p>
             )}
           </div>
 
-          <div className="pointer-events-auto flex flex-col items-center gap-3">
-            <span className="text-xs font-medium text-sky-200/85">Thinking…</span>
+          <div className="pointer-events-auto flex flex-col items-center">
             <button
               type="button"
               onClick={onCancelRequest}
