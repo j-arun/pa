@@ -164,6 +164,10 @@ export default function App() {
   const mdFileInputRef = useRef<HTMLInputElement | null>(null);
   const promptCopiedTimerRef = useRef<number | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [lastSentPrompt, setLastSentPrompt] = useState<{
+    exchangeId: string;
+    text: string;
+  } | null>(null);
   const activeRequestAbortRef = useRef<{
     exchangeId: string;
     controller: AbortController;
@@ -917,26 +921,34 @@ export default function App() {
     }
   }, [hasReportForRightPane, isContextRailOpen]);
 
-  const completedReportTurns = useMemo<ConversationTurn[] | null>(() => {
-    if (isSettingsOpen || isSending) return null;
-    if (activeReportRecord && activeReportRecord.turns.some((t) => t.role === 'assistant')) {
+  const reportTurnsForCopy = useMemo<ConversationTurn[] | null>(() => {
+    if (activeReportRecord && activeReportRecord.turns.some((t) => t.role === 'user')) {
       return activeReportRecord.turns;
     }
-    if (turns.some((t) => t.role === 'assistant')) {
+    if (turns.some((t) => t.role === 'user')) {
       return turns;
     }
     return null;
-  }, [activeReportRecord, isSending, isSettingsOpen, turns]);
+  }, [activeReportRecord, turns]);
 
-  const hasCompletedReport = Boolean(completedReportTurns);
+  const copyPromptText = useMemo(() => {
+    const viewingDifferentSavedReport =
+      Boolean(activeReportRecord) &&
+      activeReportRecord?.id !== lastSentPrompt?.exchangeId;
 
-  const handleCopyReportPrompt = useCallback(async () => {
-    if (!completedReportTurns) return;
-    const userTurns = completedReportTurns.filter((t) => t.role === 'user');
+    if (!viewingDifferentSavedReport && lastSentPrompt?.text) {
+      return lastSentPrompt.text;
+    }
+
+    if (!reportTurnsForCopy) {
+      return lastSentPrompt?.text ?? '';
+    }
+
+    const userTurns = reportTurnsForCopy.filter((t) => t.role === 'user');
     const rootUser = userTurns[0];
-    if (!rootUser) return;
+    if (!rootUser) return lastSentPrompt?.text ?? '';
 
-    const assistantReply = [...completedReportTurns]
+    const assistantReply = [...reportTurnsForCopy]
       .reverse()
       .find((t) => t.role === 'assistant');
     const targetScope = rootUser.scope ?? assistantReply?.scope ?? scope;
@@ -978,14 +990,19 @@ export default function App() {
           : `Follow-up #${idx}:\n${u.content.trim()}`,
     );
 
-    const fullPrompt = [
+    return [
       systemInstructionText ? `System Instruction:\n${systemInstructionText}` : '',
-      referenceContextText ? `Reference Context:\n${referenceContextText}` : '',
+      `Reference Context (${referenceContextText.length} chars):\n${referenceContextText || '(EMPTY)'}`,
       ...questionBlocks,
     ]
       .filter(Boolean)
       .join('\n\n');
+  }, [activeReportRecord, lastSentPrompt, reportTurnsForCopy, scope, settings]);
 
+  const canCopyPrompt = Boolean(copyPromptText.trim());
+
+  const handleCopyReportPrompt = useCallback(async () => {
+    const fullPrompt = copyPromptText;
     if (!fullPrompt) return;
 
     let copied = false;
@@ -1021,12 +1038,12 @@ export default function App() {
       promptCopiedTimerRef.current = window.setTimeout(() => setPromptCopied(false), 2000);
       pushContextLog(
         'success',
-        'Copied System Instruction + Reference Context + Question to clipboard',
+        'Copied captured prompt payload to clipboard',
       );
     } else {
       pushContextLog('error', 'Failed to copy prompt to clipboard');
     }
-  }, [completedReportTurns, pushContextLog, scope, settings]);
+  }, [copyPromptText, pushContextLog]);
 
   const handleImportMarkdownFiles = useCallback(
     async (fileList: FileList | null) => {
@@ -1407,6 +1424,25 @@ export default function App() {
       systemInstruction: targetSystemInstruction,
       cachedContext: targetCachedContext || userTurn.cachedContext,
     };
+
+    const sentPromptSnapshot = [
+      `[Target: ${targetScope}:${targetAdapterId}/${targetModel} · Domain: ${effectiveDomain} (${getDomainQueryValue(effectiveDomain)}) · Ref Context: ${targetCachedContext.length} chars · Outgoing Message: ${outgoingMessage.length} chars · History: ${targetHistory.length} turns]`,
+      `System Instruction:\n${targetSystemInstruction || '(EMPTY)'}`,
+      `Reference Context (${targetCachedContext.length} chars):\n${targetCachedContext || '(EMPTY)'}`,
+      targetHistory.length > 0
+        ? `History (${targetHistory.length}):\n${targetHistory
+            .map((h, i) => `[${i + 1}] ${h.role}:\n${h.content}`)
+            .join('\n\n')}`
+        : '',
+      `Outgoing Message:\n${outgoingMessage}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    setLastSentPrompt({
+      exchangeId: userTurn.id,
+      text: sentPromptSnapshot,
+    });
 
     setTurns((prev) =>
       prev.map((t) =>
@@ -2587,21 +2623,52 @@ export default function App() {
               </div>
             </div>
 
-            <span
-              className={`font-mono text-[11px] tabular-nums ${
-                displayedTelemetry.phase === 'Thinking'
-                  ? 'text-sky-400 font-semibold'
-                  : displayedTelemetry.phase === 'Error'
-                    ? 'text-red-400 font-semibold'
-                    : displayedTelemetry.phase === 'Ready'
-                      ? 'text-emerald-400 font-semibold'
-                      : 'text-slate-400'
-              }`}
-            >
-              {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
-                ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
-                : displayedTelemetry.phase}
-            </span>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                disabled={!canCopyPrompt}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCopyReportPrompt();
+                }}
+                aria-label={promptCopied ? 'Prompt copied' : 'Copy prompt'}
+                title={
+                  !canCopyPrompt
+                    ? 'Trigger a report first to copy the outgoing prompt'
+                    : promptCopied
+                      ? 'Copied outgoing prompt to clipboard'
+                      : 'Copy captured prompt sent to LLM'
+                }
+                className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors shrink-0 ${
+                  canCopyPrompt
+                    ? promptCopied
+                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 cursor-pointer'
+                      : 'border-slate-700/80 bg-slate-800/90 text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-800 cursor-pointer'
+                    : 'border-slate-800/80 bg-slate-900/60 text-slate-600 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                {promptCopied ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <span
+                className={`font-mono text-[11px] tabular-nums ${
+                  displayedTelemetry.phase === 'Thinking'
+                    ? 'text-sky-400 font-semibold'
+                    : displayedTelemetry.phase === 'Error'
+                      ? 'text-red-400 font-semibold'
+                      : displayedTelemetry.phase === 'Ready'
+                        ? 'text-emerald-400 font-semibold'
+                        : 'text-slate-400'
+                }`}
+              >
+                {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
+                  ? `Thinking ${((Math.max(0, nowMs - displayedTelemetry.startedAtMs)) / 1000).toFixed(1)}s`
+                  : displayedTelemetry.phase}
+              </span>
+            </div>
           </footer>
         ) : (
           <footer
@@ -2670,24 +2737,36 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 font-mono text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
-                {hasCompletedReport && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyReportPrompt()}
-                      title="Copy System Instruction, Reference Context, and Question"
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 dark:border-slate-700/85 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 font-sans text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
-                    >
-                      {promptCopied ? (
-                        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      ) : (
-                        <Copy className="w-3 h-3 shrink-0" style={{ color: 'var(--pa-accent)' }} />
-                      )}
-                      <span>{promptCopied ? 'Copied' : 'Copy Prompt'}</span>
-                    </button>
-                    <span className="text-slate-300 dark:text-slate-700">|</span>
-                  </>
-                )}
+                <button
+                  type="button"
+                  disabled={!canCopyPrompt}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleCopyReportPrompt();
+                  }}
+                  aria-label={promptCopied ? 'Prompt copied' : 'Copy prompt'}
+                  title={
+                    !canCopyPrompt
+                      ? 'Send a prompt first to copy the outgoing payload'
+                      : promptCopied
+                        ? 'Copied captured prompt to clipboard'
+                        : 'Copy System Instruction, Reference Context, and Outgoing Message'
+                  }
+                  className={`inline-flex items-center justify-center w-6 h-6 rounded-md border transition-colors shrink-0 ${
+                    canCopyPrompt
+                      ? promptCopied
+                        ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 cursor-pointer shadow-2xs'
+                        : 'border-slate-200/90 dark:border-slate-700/85 bg-white/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-800 cursor-pointer shadow-2xs'
+                      : 'border-slate-200/60 dark:border-slate-800/70 bg-slate-100/60 dark:bg-slate-900/50 text-slate-400 dark:text-slate-600 opacity-55 cursor-not-allowed'
+                  }`}
+                >
+                  {promptCopied ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 shrink-0" style={canCopyPrompt ? { color: 'var(--pa-accent)' } : undefined} />
+                  )}
+                </button>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
                 <span
                   className={
                     displayedTelemetry.phase === 'Thinking'
