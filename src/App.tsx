@@ -730,24 +730,41 @@ export default function App() {
 
   const handleDeleteSidebarReport = useCallback(
     (recordId: string) => {
+      const targetRecord = ratedThreads.find((item) => item.id === recordId);
+      const targetTurnIds = new Set(
+        (targetRecord?.turns ?? []).map((t) => t.id).filter(Boolean),
+      );
       setRatedThreads((previous) => previous.filter((item) => item.id !== recordId));
       if (activeReportExchangeId === recordId) {
         setActiveReportExchangeId(null);
       }
       setTurns((previous) =>
-        previous.some((t) => t.id === recordId || t.exchangeId === recordId)
+        previous.some(
+          (t) =>
+            t.id === recordId ||
+            t.exchangeId === recordId ||
+            targetTurnIds.has(t.id),
+        )
           ? []
           : previous,
       );
-      const query = settings.reportsDir
-        ? `?dir=${encodeURIComponent(settings.reportsDir)}`
-        : '';
+      const query = isProductionApp
+        ? '?mode=production'
+        : settings.reportsDir
+          ? `?dir=${encodeURIComponent(settings.reportsDir)}`
+          : '';
       void fetch(`/api/reports/${encodeURIComponent(recordId)}${query}`, {
         method: 'DELETE',
       }).catch(() => undefined);
       pushContextLog('info', 'Report deleted from session and local folder');
     },
-    [activeReportExchangeId, pushContextLog, settings.reportsDir],
+    [
+      activeReportExchangeId,
+      isProductionApp,
+      pushContextLog,
+      ratedThreads,
+      settings.reportsDir,
+    ],
   );
 
   const handleRenameReportCommit = useCallback(
@@ -2638,6 +2655,7 @@ export default function App() {
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
                 onSelectReport={handleOpenProductionReport}
+                onDeleteReport={handleDeleteSidebarReport}
                 onClose={() => setIsProdReportsMenuOpen(false)}
               />
             )}

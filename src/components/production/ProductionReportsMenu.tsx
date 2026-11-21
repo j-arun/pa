@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Folder,
   FolderOpen,
+  Trash2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +20,7 @@ interface ProductionReportsMenuProps {
   reports: RatedThreadRecord[];
   activeReportId?: string | null;
   onSelectReport: (record: RatedThreadRecord) => void;
+  onDeleteReport: (recordId: string) => void;
   onClose: () => void;
 }
 
@@ -68,6 +70,7 @@ export function ProductionReportsMenu({
   reports,
   activeReportId,
   onSelectReport,
+  onDeleteReport,
   onClose,
 }: ProductionReportsMenuProps) {
   const asideRef = useRef<HTMLElement | null>(null);
@@ -301,25 +304,41 @@ export function ProductionReportsMenu({
                                           prov.rows.map((entry) => {
                                             const isSelected = activeReportId === entry.record.id;
                                             return (
-                                              <button
+                                              <div
                                                 key={entry.record.id}
-                                                type="button"
-                                                title={entry.timeTooltip}
-                                                onClick={() => onSelectReport(entry.record)}
-                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                                                className={`group flex items-center gap-1 rounded-lg transition-colors ${
                                                   isSelected
                                                     ? 'bg-sky-600/12 text-sky-950 border border-sky-500/45 shadow-2xs'
                                                     : 'text-slate-800 hover:bg-white/80 border border-transparent'
                                                 }`}
                                               >
-                                                <EventCategoryEmblem
-                                                  icon={getDomainEmblemIcon(entry.domain)}
-                                                  className="w-4 h-4 shrink-0"
-                                                />
-                                                <span className="truncate font-medium">
-                                                  {entry.shortLabel}
-                                                </span>
-                                              </button>
+                                                <button
+                                                  type="button"
+                                                  title={entry.timeTooltip}
+                                                  onClick={() => onSelectReport(entry.record)}
+                                                  className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 text-left text-xs cursor-pointer"
+                                                >
+                                                  <EventCategoryEmblem
+                                                    icon={getDomainEmblemIcon(entry.domain)}
+                                                    className="w-4 h-4 shrink-0"
+                                                  />
+                                                  <span className="truncate font-medium">
+                                                    {entry.shortLabel}
+                                                  </span>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDeleteReport(entry.record.id);
+                                                  }}
+                                                  aria-label="Delete report"
+                                                  title="Delete report"
+                                                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 inline-flex h-6 w-6 mr-1 items-center justify-center rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-500/12 transition-all shrink-0 cursor-pointer"
+                                                >
+                                                  <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
                                             );
                                           })
                                         )}
