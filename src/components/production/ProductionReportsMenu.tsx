@@ -5,7 +5,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PromptDomain, RatedThreadRecord } from '../../types/workbench';
 import {
   getMonthNameFromNumber,
@@ -70,14 +70,27 @@ export function ProductionReportsMenu({
   onSelectReport,
   onClose,
 }: ProductionReportsMenuProps) {
+  const asideRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
       }
     };
+    const onPointerDownOutside = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (asideRef.current?.contains(target)) return;
+      if (target.closest('[data-prod-reports-toggle="true"]')) return;
+      onClose();
+    };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDownOutside, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDownOutside, true);
+    };
   }, [onClose]);
 
   const items = useMemo<FloatingReportItem[]>(() => {
@@ -179,6 +192,7 @@ export function ProductionReportsMenu({
 
   return (
     <motion.aside
+      ref={asideRef}
       aria-label="Production Reports"
       initial={{ x: -24, opacity: 0, scale: 0.98 }}
       animate={{ x: 0, opacity: 1, scale: 1 }}

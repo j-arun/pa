@@ -2231,6 +2231,7 @@ export default function App() {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                data-prod-reports-toggle="true"
                 onClick={() => setIsProdReportsMenuOpen((prev) => !prev)}
                 aria-expanded={isProdReportsMenuOpen}
                 aria-pressed={isProdReportsMenuOpen}
