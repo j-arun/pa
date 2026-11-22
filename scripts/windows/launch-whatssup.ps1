@@ -132,45 +132,74 @@ function Ensure-AppHomes {
     }
 }
 
-function Resolve-NpmScript {
+function Resolve-NpmPlan {
     param(
         [string]$AppDir,
         [string]$TargetMode,
         [string]$OverrideEnvVar = ''
     )
+    $selected = $TargetMode
+    $overrideUsed = $false
+
     if (-not [string]::IsNullOrWhiteSpace($OverrideEnvVar)) {
         $overrideVal = [Environment]::GetEnvironmentVariable($OverrideEnvVar, 'User')
         if ([string]::IsNullOrWhiteSpace($overrideVal)) {
             $overrideVal = [Environment]::GetEnvironmentVariable($OverrideEnvVar, 'Process')
         }
         if (-not [string]::IsNullOrWhiteSpace($overrideVal)) {
-            return $overrideVal.Trim()
+            $selected = $overrideVal.Trim()
+            $overrideUsed = $true
         }
     }
 
     $pkgPath = Join-Path $AppDir 'package.json'
     if (-not (Test-Path $pkgPath)) {
-        return $TargetMode
+        return @{ Script = $selected; PreBuild = $false }
     }
+
     try {
         $pkg = Get-Content -Path $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $scriptNames = @()
         if ($pkg -and $pkg.scripts) {
             $scriptNames = $pkg.scripts.PSObject.Properties | ForEach-Object { $_.Name }
         }
-        if ($TargetMode -eq 'prod') {
-            foreach ($candidate in @('prod', 'start', 'dev')) {
-                if ($scriptNames -contains $candidate) { return $candidate }
-            }
-        } else {
-            foreach ($candidate in @('dev', 'start', 'prod')) {
-                if ($scriptNames -contains $candidate) { return $candidate }
+
+        if (-not $overrideUsed) {
+            if ($TargetMode -eq 'prod') {
+                foreach ($candidate in @('prod', 'start', 'dev')) {
+                    if ($scriptNames -contains $candidate) {
+                        $selected = $candidate
+                        break
+                    }
+                }
+            } else {
+                foreach ($candidate in @('dev', 'start', 'prod')) {
+                    if ($scriptNames -contains $candidate) {
+                        $selected = $candidate
+                        break
+                    }
+                }
             }
         }
+
+        $preBuild = $false
+        if ($TargetMode -eq 'prod' -and ($selected -eq 'prod' -or $selected -eq 'start') -and ($scriptNames -contains 'build')) {
+            $scriptCmd = ''
+            try { $scriptCmd = [string]($pkg.scripts.$selected) } catch {}
+            $alreadyBuilds = ($scriptCmd -match '\bbuild\b')
+            $isDevCommand  = ($scriptCmd -match 'react-scripts\s+start') -or ($scriptCmd -match '^\s*vite(\s|$)')
+            $hasDist  = Test-Path (Join-Path $AppDir 'dist\index.html')
+            $hasBuild = Test-Path (Join-Path $AppDir 'build\index.html')
+
+            if (-not $alreadyBuilds -and -not $isDevCommand -and -not $hasDist -and -not $hasBuild) {
+                $preBuild = $true
+            }
+        }
+
+        return @{ Script = $selected; PreBuild = $preBuild }
     } catch {
-        # Fallback cleanly
+        return @{ Script = $selected; PreBuild = $false }
     }
-    return $TargetMode
 }
 
 function Test-LocalPort {
@@ -273,13 +302,19 @@ function Start-HiddenNpmApp {
         [string]$AppDir,
         [string]$NpmScript,
         [string]$OutLog,
-        [string]$ErrLog
+        [string]$ErrLog,
+        [bool]$PreBuild = $false
     )
     if (Test-Path $OutLog) { Remove-Item $OutLog -Force -ErrorAction SilentlyContinue }
     if (Test-Path $ErrLog) { Remove-Item $ErrLog -Force -ErrorAction SilentlyContinue }
 
-    # Unset PORT inside cmd session so dev=4000 and prod=5000 work cleanly
-    $cmdLine = "/c set PORT=& npm.cmd run $NpmScript"
+    # Unset PORT inside cmd session so dev=4000, prod=5000, and reference=3000 use their own defaults
+    $cmdBody = if ($PreBuild) {
+        "set PORT=& npm.cmd run build && npm.cmd run $NpmScript"
+    } else {
+        "set PORT=& npm.cmd run $NpmScript"
+    }
+    $cmdLine = "/c $cmdBody"
     $proc = Start-Process -FilePath 'cmd.exe' `
         -ArgumentList $cmdLine `
         -WorkingDirectory $AppDir `
@@ -477,8 +512,8 @@ function Start-BothApps {
     $State.WbPort = if ($TargetMode -eq 'dev') { 4000 } else { 5000 }
     $State.BrowserOpened = $false
 
-    $refScript = Resolve-NpmScript -AppDir $homes.RefHome -TargetMode $TargetMode -OverrideEnvVar 'REF_APP_SCRIPT'
-    $wbScript  = if ($TargetMode -eq 'dev') { 'dev' } else { 'prod' }
+    $refPlan = Resolve-NpmPlan -AppDir $homes.RefHome -TargetMode $TargetMode -OverrideEnvVar 'REF_APP_SCRIPT'
+    $wbPlan  = Resolve-NpmPlan -AppDir $homes.WbHome  -TargetMode $TargetMode
 
     $refOut = Join-Path $LogsDir 'reference.out.log'
     $refErr = Join-Path $LogsDir 'reference.err.log'
@@ -486,10 +521,10 @@ function Start-BothApps {
     $wbErr  = Join-Path $LogsDir 'workbench.err.log'
 
     if (-not (Test-LocalPort -Port $State.RefPort)) {
-        $State.RefProc = Start-HiddenNpmApp -AppDir $homes.RefHome -NpmScript $refScript -OutLog $refOut -ErrLog $refErr
+        $State.RefProc = Start-HiddenNpmApp -AppDir $homes.RefHome -NpmScript $refPlan.Script -OutLog $refOut -ErrLog $refErr -PreBuild $refPlan.PreBuild
     }
     if (-not (Test-LocalPort -Port $State.WbPort)) {
-        $State.WbProc = Start-HiddenNpmApp -AppDir $homes.WbHome -NpmScript $wbScript -OutLog $wbOut -ErrLog $wbErr
+        $State.WbProc = Start-HiddenNpmApp -AppDir $homes.WbHome -NpmScript $wbPlan.Script -OutLog $wbOut -ErrLog $wbErr -PreBuild $wbPlan.PreBuild
     }
 
     $State.Status = 'Starting'

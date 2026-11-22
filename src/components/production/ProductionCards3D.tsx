@@ -2087,22 +2087,30 @@ export function ProductionCards3D({
             {questionText && (
               <p
                 aria-label={questionText}
-                className={`max-w-xl flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-sm sm:text-base font-medium leading-relaxed ${
+                className={`pa-question-float max-w-xl flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-sm sm:text-base font-medium leading-relaxed pt-1 ${
                   isDarkTheme ? 'text-slate-100' : 'text-slate-800'
                 }`}
               >
                 {questionText
                   .trim()
                   .split(/\s+/)
-                  .map((word, idx) => (
-                    <span
-                      key={`${idx}-${word}`}
-                      className={isDarkTheme ? 'pa-question-word-jump' : 'inline-block'}
-                      style={isDarkTheme ? { animationDelay: `${(idx % 12) * 0.13}s` } : undefined}
-                    >
-                      {word}
-                    </span>
-                  ))}
+                  .map((word, idx) => {
+                    const jiggleClass =
+                      idx % 3 === 0
+                        ? 'pa-question-word-jiggle-a'
+                        : idx % 3 === 1
+                          ? 'pa-question-word-jiggle-b'
+                          : 'pa-question-word-jiggle-c';
+                    return (
+                      <span
+                        key={`${idx}-${word}`}
+                        className={jiggleClass}
+                        style={{ animationDelay: `${((idx * 0.14) % 1.68).toFixed(2)}s` }}
+                      >
+                        {word}
+                      </span>
+                    );
+                  })}
               </p>
             )}
           </div>
