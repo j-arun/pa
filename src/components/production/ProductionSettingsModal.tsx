@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   FolderCheck,
   FolderOpen,
+  Globe,
   Loader2,
   Moon,
   RotateCcw,
@@ -12,6 +13,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdapterHealthResult, WorkbenchSettings } from '../../types/workbench';
+import {
+  buildReferenceContextUrl,
+  fetchReferenceContextFromApi,
+} from '../../utils/referenceContextFetch';
 
 interface ProductionSettingsModalProps {
   settings: WorkbenchSettings;
@@ -41,6 +46,19 @@ export function ProductionSettingsModal({
   const [healthByAdapter, setHealthByAdapter] = useState<
     Partial<Record<'gemini' | 'fable', AdapterHealthResult>>
   >({});
+
+  const [portDraft, setPortDraft] = useState(
+    String(settings.referenceContextApi.port || 3000),
+  );
+  const [portStatus, setPortStatus] = useState<{
+    kind: 'idle' | 'ok' | 'error';
+    message: string;
+  }>({ kind: 'idle', message: '' });
+  const [testingRefPort, setTestingRefPort] = useState(false);
+
+  useEffect(() => {
+    setPortDraft(String(settings.referenceContextApi.port || 3000));
+  }, [settings.referenceContextApi.port]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -164,6 +182,90 @@ export function ProductionSettingsModal({
       }));
     } finally {
       setTestingAdapterId(null);
+    }
+  };
+
+  const parseValidPort = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (!Number.isFinite(num)) return null;
+    const rounded = Math.round(num);
+    if (rounded < 1 || rounded > 65535) return null;
+    return rounded;
+  };
+
+  const previewPort =
+    parseValidPort(portDraft) ?? settings.referenceContextApi.port ?? 3000;
+  const previewApiConfig = {
+    ...settings.referenceContextApi,
+    port: previewPort,
+  };
+  const resolvedRefUrlPreview = buildReferenceContextUrl(
+    previewApiConfig,
+    settings.contextCache.activeMonth ?? new Date().getMonth() + 1,
+    settings.contextCache.activeYear ?? new Date().getFullYear(),
+    'career',
+  );
+
+  const handleApplyPort = () => {
+    const validPort = parseValidPort(portDraft);
+    if (validPort === null) {
+      setPortStatus({
+        kind: 'error',
+        message: 'Enter a valid port number between 1 and 65535.',
+      });
+      return;
+    }
+    setPortDraft(String(validPort));
+    onUpdateSettings({
+      ...settings,
+      referenceContextApi: {
+        ...settings.referenceContextApi,
+        port: validPort,
+      },
+    });
+    setPortStatus({
+      kind: 'ok',
+      message: `Reference URL port set to ${validPort}.`,
+    });
+  };
+
+  const handleTestRefPort = async () => {
+    const validPort = parseValidPort(portDraft);
+    if (validPort === null) {
+      setPortStatus({
+        kind: 'error',
+        message: 'Enter a valid port number between 1 and 65535 before testing.',
+      });
+      return;
+    }
+    setTestingRefPort(true);
+    setPortStatus({ kind: 'idle', message: '' });
+    try {
+      const result = await fetchReferenceContextFromApi({
+        month: settings.contextCache.activeMonth ?? new Date().getMonth() + 1,
+        year: settings.contextCache.activeYear ?? new Date().getFullYear(),
+        domain: 'career',
+        apiConfig: {
+          ...settings.referenceContextApi,
+          port: validPort,
+        },
+      });
+      setPortStatus({
+        kind: 'ok',
+        message: `Reachable on port ${validPort} (${result.text.length.toLocaleString()} chars returned).`,
+      });
+    } catch (err) {
+      setPortStatus({
+        kind: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : `Unable to reach Reference URL on port ${validPort}.`,
+      });
+    } finally {
+      setTestingRefPort(false);
     }
   };
 
@@ -364,6 +466,71 @@ export function ProductionSettingsModal({
               );
             })}
           </div>
+        </section>
+        {/* 4. Reference URL Port */}
+        <section className="rounded-2xl border border-white/80 bg-white/55 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-800">
+            <Globe className="w-4 h-4 text-sky-600 shrink-0" />
+            <span>Reference URL Port</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={portDraft}
+              onChange={(e) => {
+                setPortDraft(e.target.value);
+                if (portStatus.kind !== 'idle') {
+                  setPortStatus({ kind: 'idle', message: '' });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleApplyPort();
+                }
+              }}
+              placeholder="3000"
+              aria-label="Reference URL Port"
+              className="w-32 rounded-xl border border-sky-200/90 bg-white/80 px-3 py-2 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleApplyPort}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 px-3 py-2 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer"
+            >
+              <span>Save Port</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleTestRefPort()}
+              disabled={testingRefPort}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white/75 hover:bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-60"
+            >
+              {testingRefPort ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Activity className="w-3.5 h-3.5 text-sky-600" />
+              )}
+              <span>{testingRefPort ? 'Testing…' : 'Test URL'}</span>
+            </button>
+          </div>
+
+          <p className="text-[11px] font-mono text-slate-600 break-all">
+            URL: {resolvedRefUrlPreview}
+          </p>
+
+          {portStatus.message && (
+            <p
+              className={`text-xs font-medium ${
+                portStatus.kind === 'error' ? 'text-rose-700' : 'text-emerald-700'
+              }`}
+            >
+              {portStatus.message}
+            </p>
+          )}
         </section>
       </div>
     </div>
