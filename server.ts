@@ -32,10 +32,32 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function parseCliPort(argv: string[]): number | undefined {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--port' || arg === '-p') {
+      const next = Number(argv[i + 1]);
+      if (Number.isInteger(next) && next > 0 && next <= 65535) {
+        return next;
+      }
+    } else if (arg.startsWith('--port=')) {
+      const val = Number(arg.slice('--port='.length));
+      if (Number.isInteger(val) && val > 0 && val <= 65535) {
+        return val;
+      }
+    }
+  }
+  return undefined;
+}
+
 async function startServer() {
   const app = express();
-  const port = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production';
+  const cliPort = parseCliPort(process.argv.slice(2));
+  const envPort = Number(process.env.PORT);
+  const hasValidEnvPort = Number.isInteger(envPort) && envPort > 0 && envPort <= 65535;
+  const defaultPort = isProd ? 5000 : 4000;
+  const port = cliPort ?? (hasValidEnvPort ? envPort : defaultPort);
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -566,7 +588,9 @@ async function startServer() {
   }
 
   const httpServer = app.listen(port, '0.0.0.0', () => {
-    console.log(`Fluent Personal Assistant Workbench listening on http://0.0.0.0:${port}`);
+    console.log(
+      `Fluent Personal Assistant Workbench (${isProd ? 'production' : 'dev'}) listening on http://0.0.0.0:${port}`,
+    );
   });
   httpServer.timeout = 0;
   httpServer.keepAliveTimeout = 0;
