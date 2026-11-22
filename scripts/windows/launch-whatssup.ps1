@@ -1,0 +1,625 @@
+param(
+    [ValidateSet('prod', 'dev')]
+    [string]$Mode = 'prod',
+    [switch]$HiddenChild
+)
+
+$ErrorActionPreference = 'Stop'
+
+# Ensure WinForms / Drawing are available (Windows PowerShell 5.1 & PowerShell 7)
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRootFallback = Split-Path -Parent (Split-Path -Parent $ScriptDir)
+
+$DataRoot = Join-Path $env:LOCALAPPDATA 'FluentAssistantWorkbench\launcher'
+$LogsDir = Join-Path $DataRoot 'logs'
+$CmdFile = Join-Path $DataRoot 'command.txt'
+$PidFile = Join-Path $DataRoot 'tray.pid'
+New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
+
+# Single-instance mutex so clicking Desktop/Start Menu shortcuts delegates to active tray
+$CreatedNew = $false
+$Mutex = New-Object System.Threading.Mutex($false, 'Local\WhatssupLauncherTrayMutex', [ref]$CreatedNew)
+
+if (-not $CreatedNew) {
+    try {
+        Set-Content -Path $CmdFile -Value "toggle:$Mode" -Encoding UTF8
+    } catch {
+        # Ignore transient file contention
+    }
+    if ($Mutex) { $Mutex.Dispose() }
+    exit 0
+}
+
+try {
+    Set-Content -Path $PidFile -Value "$PID" -Encoding ASCII
+} catch {}
+
+function Get-EnvHome {
+    param(
+        [string]$VarName,
+        [string]$FallbackPath = ''
+    )
+    $userVal = [Environment]::GetEnvironmentVariable($VarName, 'User')
+    if (-not [string]::IsNullOrWhiteSpace($userVal)) {
+        return $userVal.Trim()
+    }
+    $procVal = [Environment]::GetEnvironmentVariable($VarName, 'Process')
+    if (-not [string]::IsNullOrWhiteSpace($procVal)) {
+        return $procVal.Trim()
+    }
+    $machVal = [Environment]::GetEnvironmentVariable($VarName, 'Machine')
+    if (-not [string]::IsNullOrWhiteSpace($machVal)) {
+        return $machVal.Trim()
+    }
+    return $FallbackPath
+}
+
+function Select-FolderDialog {
+    param(
+        [string]$Description,
+        [string]$InitialPath = ''
+    )
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $Description
+    $dialog.ShowNewFolderButton = $false
+    if (-not [string]::IsNullOrWhiteSpace($InitialPath) -and (Test-Path $InitialPath)) {
+        $dialog.SelectedPath = $InitialPath
+    }
+    $result = $dialog.ShowDialog()
+    $selected = $null
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $selected = $dialog.SelectedPath
+    }
+    $dialog.Dispose()
+    return $selected
+}
+
+function Ensure-AppHomes {
+    param([switch]$ForcePrompt)
+
+    $wbDefault = ''
+    if (Test-Path (Join-Path $RepoRootFallback 'package.json')) {
+        $wbDefault = $RepoRootFallback
+    }
+
+    $refHome = Get-EnvHome -VarName 'REF_APP_HOME'
+    $wbHome = Get-EnvHome -VarName 'WORKBENCH_APP_HOME' -FallbackPath $wbDefault
+
+    if ($ForcePrompt -or [string]::IsNullOrWhiteSpace($refHome) -or -not (Test-Path (Join-Path $refHome 'package.json'))) {
+        $chosenRef = Select-FolderDialog -Description 'Select your Reference React App folder (runs on port 3000) - saved to REF_APP_HOME' -InitialPath $refHome
+        if ([string]::IsNullOrWhiteSpace($chosenRef) -or -not (Test-Path (Join-Path $chosenRef 'package.json'))) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "REF_APP_HOME is missing or does not contain a package.json.`n`nSet the User Environment Variable REF_APP_HOME to your Reference app folder and try again.",
+                "What's up Launcher",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            ) | Out-Null
+            return $null
+        }
+        $refHome = $chosenRef
+        [Environment]::SetEnvironmentVariable('REF_APP_HOME', $refHome, 'User')
+        $env:REF_APP_HOME = $refHome
+    }
+
+    if ($ForcePrompt -or [string]::IsNullOrWhiteSpace($wbHome) -or -not (Test-Path (Join-Path $wbHome 'package.json'))) {
+        $chosenWb = Select-FolderDialog -Description "Select your What's up / Workbench App folder (ports 4000/5000) - saved to WORKBENCH_APP_HOME" -InitialPath $wbHome
+        if ([string]::IsNullOrWhiteSpace($chosenWb) -or -not (Test-Path (Join-Path $chosenWb 'package.json'))) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "WORKBENCH_APP_HOME is missing or does not contain a package.json.`n`nSet the User Environment Variable WORKBENCH_APP_HOME to your Workbench folder and try again.",
+                "What's up Launcher",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            ) | Out-Null
+            return $null
+        }
+        $wbHome = $chosenWb
+        [Environment]::SetEnvironmentVariable('WORKBENCH_APP_HOME', $wbHome, 'User')
+        $env:WORKBENCH_APP_HOME = $wbHome
+    } elseif ([string]::IsNullOrWhiteSpace((Get-EnvHome -VarName 'WORKBENCH_APP_HOME'))) {
+        # Persist discovered repo root into User env var for convenience
+        [Environment]::SetEnvironmentVariable('WORKBENCH_APP_HOME', $wbHome, 'User')
+        $env:WORKBENCH_APP_HOME = $wbHome
+    }
+
+    return @{
+        RefHome = $refHome
+        WbHome  = $wbHome
+    }
+}
+
+function Resolve-NpmScript {
+    param(
+        [string]$AppDir,
+        [string]$TargetMode,
+        [string]$OverrideEnvVar = ''
+    )
+    if (-not [string]::IsNullOrWhiteSpace($OverrideEnvVar)) {
+        $overrideVal = [Environment]::GetEnvironmentVariable($OverrideEnvVar, 'User')
+        if ([string]::IsNullOrWhiteSpace($overrideVal)) {
+            $overrideVal = [Environment]::GetEnvironmentVariable($OverrideEnvVar, 'Process')
+        }
+        if (-not [string]::IsNullOrWhiteSpace($overrideVal)) {
+            return $overrideVal.Trim()
+        }
+    }
+
+    $pkgPath = Join-Path $AppDir 'package.json'
+    if (-not (Test-Path $pkgPath)) {
+        return $TargetMode
+    }
+    try {
+        $pkg = Get-Content -Path $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $scriptNames = @()
+        if ($pkg -and $pkg.scripts) {
+            $scriptNames = $pkg.scripts.PSObject.Properties | ForEach-Object { $_.Name }
+        }
+        if ($TargetMode -eq 'prod') {
+            foreach ($candidate in @('prod', 'start', 'dev')) {
+                if ($scriptNames -contains $candidate) { return $candidate }
+            }
+        } else {
+            foreach ($candidate in @('dev', 'start', 'prod')) {
+                if ($scriptNames -contains $candidate) { return $candidate }
+            }
+        }
+    } catch {
+        # Fallback cleanly
+    }
+    return $TargetMode
+}
+
+function Test-LocalPort {
+    param([int]$Port)
+    foreach ($addr in @('127.0.0.1', '::1')) {
+        $client = $null
+        try {
+            $ip = [System.Net.IPAddress]::Parse($addr)
+            $client = New-Object System.Net.Sockets.TcpClient($ip.AddressFamily)
+            $iar = $client.BeginConnect($ip, $Port, $null, $null)
+            $connected = $iar.AsyncWaitHandle.WaitOne(160, $false)
+            if ($connected -and $client.Connected) {
+                $client.EndConnect($iar)
+                return $true
+            }
+        } catch {
+            # Try next loopback family
+        } finally {
+            if ($client) { $client.Dispose() }
+        }
+    }
+    return $false
+}
+
+function Test-HttpAlive {
+    param([string]$Url)
+    try {
+        $req = [System.Net.WebRequest]::Create($Url)
+        $req.Timeout = 350
+        $resp = $req.GetResponse()
+        $code = [int]$resp.StatusCode
+        $resp.Close()
+        return ($code -ge 200 -and $code -lt 500)
+    } catch [System.Net.WebException] {
+        if ($_.Exception.Response) {
+            $_.Exception.Response.Close()
+            return $true
+        }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+    if ($ProcessId -le 0) { return }
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'taskkill.exe'
+        $psi.Arguments = "/PID $ProcessId /T /F"
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.CreateNoWindow = $true
+        $psi.UseShellExecute = $false
+        $p = [System.Diagnostics.Process]::Start($psi)
+        if ($p) {
+            $p.WaitForExit(4000) | Out-Null
+            $p.Dispose()
+        }
+    } catch {
+        # Ignore if already exited
+    }
+}
+
+function Stop-PortListeners {
+    param([int[]]$Ports)
+    foreach ($p in $Ports) {
+        try {
+            $conns = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+            if ($conns) {
+                $pids = $conns | Select-Object -ExpandProperty OwningProcess -Unique
+                foreach ($ownerPid in $pids) {
+                    if ($ownerPid -gt 4) {
+                        Stop-ProcessTree -ProcessId ([int]$ownerPid)
+                    }
+                }
+            }
+        } catch {
+            # Fallback to netstat parsing if Get-NetTCPConnection is restricted
+            try {
+                $lines = netstat.exe -ano -p tcp | Select-String -Pattern "LISTENING\s+(\d+)$"
+                foreach ($line in $lines) {
+                    $txt = $line.ToString()
+                    if ($txt -match "[:\.]$p\s+.*LISTENING\s+(\d+)$") {
+                        $ownerPid = [int]$Matches[1]
+                        if ($ownerPid -gt 4) {
+                            Stop-ProcessTree -ProcessId $ownerPid
+                        }
+                    }
+                }
+            } catch {
+                # Ignore fallback errors
+            }
+        }
+    }
+}
+
+function Start-HiddenNpmApp {
+    param(
+        [string]$AppDir,
+        [string]$NpmScript,
+        [string]$OutLog,
+        [string]$ErrLog
+    )
+    if (Test-Path $OutLog) { Remove-Item $OutLog -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $ErrLog) { Remove-Item $ErrLog -Force -ErrorAction SilentlyContinue }
+
+    # Unset PORT inside cmd session so dev=4000 and prod=5000 work cleanly
+    $cmdLine = "/c set PORT=& npm.cmd run $NpmScript"
+    $proc = Start-Process -FilePath 'cmd.exe' `
+        -ArgumentList $cmdLine `
+        -WorkingDirectory $AppDir `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $OutLog `
+        -RedirectStandardError $ErrLog `
+        -PassThru
+    return $proc
+}
+
+function New-StatusTrayIcon {
+    param(
+        [System.Drawing.Color]$BadgeColor,
+        [System.Drawing.Color]$AccentColor
+    )
+    $bmp = New-Object System.Drawing.Bitmap(32, 32)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.Clear([System.Drawing.Color]::Transparent)
+
+    $bgBrush = New-Object System.Drawing.SolidBrush($BadgeColor)
+    $g.FillEllipse($bgBrush, 2, 2, 26, 26)
+
+    $ringPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(220, 255, 255, 255), 1.5)
+    $g.DrawEllipse($ringPen, 2, 2, 26, 26)
+
+    $font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+    $sf = New-Object System.Drawing.StringFormat
+    $sf.Alignment = [System.Drawing.StringAlignment]::Center
+    $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+    $g.DrawString('W', $font, $textBrush, (New-Object System.Drawing.RectangleF(2, 2, 26, 26)), $sf)
+
+    # Status indicator dot in bottom-right corner
+    $dotBrush = New-Object System.Drawing.SolidBrush($AccentColor)
+    $dotBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.5)
+    $g.FillEllipse($dotBrush, 20, 20, 10, 10)
+    $g.DrawEllipse($dotBorder, 20, 20, 10, 10)
+
+    $hIcon = $bmp.GetHicon()
+    $icon = [System.Drawing.Icon]::FromHandle($hIcon)
+
+    $sf.Dispose()
+    $textBrush.Dispose()
+    $font.Dispose()
+    $ringPen.Dispose()
+    $bgBrush.Dispose()
+    $dotBrush.Dispose()
+    $dotBorder.Dispose()
+    $g.Dispose()
+    $bmp.Dispose()
+
+    return $icon
+}
+
+$IconStopped  = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 71, 85, 105))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 148, 163, 184))
+$IconStarting = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 37, 99, 235))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 245, 158, 11))
+$IconRunning  = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 22, 163, 74))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 74, 222, 128))
+$IconDevRun   = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 14, 116, 144)) -AccentColor ([System.Drawing.Color]::FromArgb(255, 56, 189, 248))
+
+$State = @{
+    Status      = 'Stopped'   # Stopped | Starting | Running
+    ActiveMode  = $Mode       # prod | dev
+    RefPort     = 3000
+    WbPort      = $(if ($Mode -eq 'dev') { 4000 } else { 5000 })
+    RefProc     = $null
+    WbProc      = $null
+    StartTime   = [DateTime]::MinValue
+    BrowserOpened = $false
+}
+
+$NotifyIcon = New-Object System.Windows.Forms.NotifyIcon
+$NotifyIcon.Visible = $true
+
+$Menu = New-Object System.Windows.Forms.ContextMenuStrip
+$ItemStatus    = New-Object System.Windows.Forms.ToolStripMenuItem("What's up: Stopped")
+$ItemStatus.Enabled = $false
+$ItemToggle    = New-Object System.Windows.Forms.ToolStripMenuItem("Start What's up (Prod - 5000)")
+$ItemOpenHome  = New-Object System.Windows.Forms.ToolStripMenuItem('Open Homepage')
+$ItemLaunchProd = New-Object System.Windows.Forms.ToolStripMenuItem('Launch in Prod (Port 5000)')
+$ItemLaunchDev  = New-Object System.Windows.Forms.ToolStripMenuItem('Launch in Dev (Port 4000)')
+$ItemViewLogs  = New-Object System.Windows.Forms.ToolStripMenuItem('Open Logs Folder')
+$ItemConfigEnv = New-Object System.Windows.Forms.ToolStripMenuItem('Configure App Folders (Env Vars)...')
+$ItemExit      = New-Object System.Windows.Forms.ToolStripMenuItem('Stop Both & Exit Tray')
+
+$Menu.Items.Add($ItemStatus) | Out-Null
+$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$Menu.Items.Add($ItemToggle) | Out-Null
+$Menu.Items.Add($ItemOpenHome) | Out-Null
+$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$Menu.Items.Add($ItemLaunchProd) | Out-Null
+$Menu.Items.Add($ItemLaunchDev) | Out-Null
+$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$Menu.Items.Add($ItemViewLogs) | Out-Null
+$Menu.Items.Add($ItemConfigEnv) | Out-Null
+$Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+$Menu.Items.Add($ItemExit) | Out-Null
+
+$NotifyIcon.ContextMenuStrip = $Menu
+
+function Update-TrayUI {
+    $modeLabel = if ($State.ActiveMode -eq 'dev') { 'Dev' } else { 'Prod' }
+    $wbPort = if ($State.ActiveMode -eq 'dev') { 4000 } else { 5000 }
+    $State.WbPort = $wbPort
+
+    if ($State.Status -eq 'Running') {
+        $NotifyIcon.Icon = if ($State.ActiveMode -eq 'dev') { $IconDevRun } else { $IconRunning }
+        $tip = "What's up ($modeLabel) - Running ($($State.RefPort) & $wbPort). Click to stop."
+        $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
+        $ItemStatus.Text = "What's up: Running ($modeLabel $wbPort + Ref $($State.RefPort))"
+        $ItemToggle.Text = "Stop What's up ($modeLabel)"
+        $ItemOpenHome.Enabled = $true
+    } elseif ($State.Status -eq 'Starting') {
+        $NotifyIcon.Icon = $IconStarting
+        $tip = "What's up ($modeLabel) - Starting ($($State.RefPort) & $wbPort)..."
+        $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
+        $ItemStatus.Text = "What's up: Starting ($modeLabel $wbPort)..."
+        $ItemToggle.Text = 'Cancel & Stop'
+        $ItemOpenHome.Enabled = $false
+    } else {
+        $NotifyIcon.Icon = $IconStopped
+        $tip = "What's up ($modeLabel) - Stopped. Click to start."
+        $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
+        $ItemStatus.Text = "What's up: Stopped"
+        $ItemToggle.Text = "Start What's up ($modeLabel - $wbPort)"
+        $ItemOpenHome.Enabled = $false
+    }
+
+    $ItemLaunchProd.Checked = ($State.ActiveMode -eq 'prod')
+    $ItemLaunchDev.Checked  = ($State.ActiveMode -eq 'dev')
+}
+
+function Open-Homepage {
+    $url = "http://localhost:$($State.WbPort)/"
+    Start-Process $url
+}
+
+function Stop-BothApps {
+    param([switch]$Silent)
+    if ($State.RefProc) {
+        try {
+            if (-not $State.RefProc.HasExited) {
+                Stop-ProcessTree -ProcessId $State.RefProc.Id
+            }
+            $State.RefProc.Dispose()
+        } catch {}
+        $State.RefProc = $null
+    }
+    if ($State.WbProc) {
+        try {
+            if (-not $State.WbProc.HasExited) {
+                Stop-ProcessTree -ProcessId $State.WbProc.Id
+            }
+            $State.WbProc.Dispose()
+        } catch {}
+        $State.WbProc = $null
+    }
+
+    # Guarantee both ports (and alternate mode port) are released cleanly
+    Stop-PortListeners -Ports @(3000, 4000, 5000)
+
+    $State.Status = 'Stopped'
+    $State.BrowserOpened = $false
+    Update-TrayUI
+
+    if (-not $Silent) {
+        $NotifyIcon.ShowBalloonTip(2500, "What's up", 'Stopped both applications (ports 3000 & 4000/5000 freed).', [System.Windows.Forms.ToolTipIcon]::Info)
+    }
+}
+
+function Start-BothApps {
+    param([ValidateSet('prod', 'dev')][string]$TargetMode = $State.ActiveMode)
+
+    if ($State.Status -ne 'Stopped') {
+        Stop-BothApps -Silent
+        Start-Sleep -Milliseconds 300
+    }
+
+    $homes = Ensure-AppHomes
+    if (-not $homes) {
+        $State.Status = 'Stopped'
+        Update-TrayUI
+        return
+    }
+
+    $State.ActiveMode = $TargetMode
+    $State.WbPort = if ($TargetMode -eq 'dev') { 4000 } else { 5000 }
+    $State.BrowserOpened = $false
+
+    $refScript = Resolve-NpmScript -AppDir $homes.RefHome -TargetMode $TargetMode -OverrideEnvVar 'REF_APP_SCRIPT'
+    $wbScript  = if ($TargetMode -eq 'dev') { 'dev' } else { 'prod' }
+
+    $refOut = Join-Path $LogsDir 'reference.out.log'
+    $refErr = Join-Path $LogsDir 'reference.err.log'
+    $wbOut  = Join-Path $LogsDir 'workbench.out.log'
+    $wbErr  = Join-Path $LogsDir 'workbench.err.log'
+
+    if (-not (Test-LocalPort -Port $State.RefPort)) {
+        $State.RefProc = Start-HiddenNpmApp -AppDir $homes.RefHome -NpmScript $refScript -OutLog $refOut -ErrLog $refErr
+    }
+    if (-not (Test-LocalPort -Port $State.WbPort)) {
+        $State.WbProc = Start-HiddenNpmApp -AppDir $homes.WbHome -NpmScript $wbScript -OutLog $wbOut -ErrLog $wbErr
+    }
+
+    $State.Status = 'Starting'
+    $State.StartTime = Get-Date
+    Update-TrayUI
+}
+
+function Toggle-WhatsSup {
+    param([string]$RequestedMode = '')
+
+    if ($State.Status -eq 'Running' -or $State.Status -eq 'Starting') {
+        if (-not [string]::IsNullOrWhiteSpace($RequestedMode) -and $RequestedMode -ne $State.ActiveMode) {
+            Start-BothApps -TargetMode $RequestedMode
+        } else {
+            Stop-BothApps
+        }
+    } else {
+        $modeToRun = if ([string]::IsNullOrWhiteSpace($RequestedMode)) { $State.ActiveMode } else { $RequestedMode }
+        Start-BothApps -TargetMode $modeToRun
+    }
+}
+
+# Non-blocking timer checks server readiness and external shortcut commands
+$PollTimer = New-Object System.Windows.Forms.Timer
+$PollTimer.Interval = 400
+$PollTimer.Add_Tick({
+    try {
+        # Check shortcut commands delegated from secondary invocations
+        if (Test-Path $CmdFile) {
+            $cmdText = ''
+            try {
+                $cmdText = (Get-Content -Path $CmdFile -Raw -Encoding UTF8).Trim()
+                Remove-Item -Path $CmdFile -Force -ErrorAction SilentlyContinue
+            } catch {}
+
+            if ($cmdText -eq 'exit') {
+                $PollTimer.Stop()
+                Stop-BothApps -Silent
+                $NotifyIcon.Visible = $false
+                [System.Windows.Forms.Application]::Exit()
+                return
+            } elseif ($cmdText -match '^toggle:(prod|dev)$') {
+                Toggle-WhatsSup -RequestedMode $Matches[1]
+                return
+            } elseif ($cmdText -eq 'toggle') {
+                Toggle-WhatsSup
+                return
+            }
+        }
+
+        if ($State.Status -eq 'Starting') {
+            $elapsed = ((Get-Date) - $State.StartTime).TotalSeconds
+
+            # Detect premature exit of launched child processes
+            $refExited = ($State.RefProc -ne $null -and $State.RefProc.HasExited -and -not (Test-LocalPort -Port $State.RefPort))
+            $wbExited  = ($State.WbProc  -ne $null -and $State.WbProc.HasExited  -and -not (Test-LocalPort -Port $State.WbPort))
+
+            if ($refExited -or $wbExited) {
+                $which = if ($wbExited) { 'Workbench' } else { 'Reference' }
+                Stop-BothApps -Silent
+                $NotifyIcon.ShowBalloonTip(4000, "What's up Startup Error", "$which exited unexpectedly. Opening logs folder...", [System.Windows.Forms.ToolTipIcon]::Error)
+                Start-Process explorer.exe $LogsDir
+                return
+            }
+
+            $refReady = Test-LocalPort -Port $State.RefPort
+            $wbReady  = Test-HttpAlive -Url "http://127.0.0.1:$($State.WbPort)/api/health"
+
+            if ($refReady -and $wbReady) {
+                $State.Status = 'Running'
+                Update-TrayUI
+                if (-not $State.BrowserOpened) {
+                    $State.BrowserOpened = $true
+                    $modeLabel = if ($State.ActiveMode -eq 'dev') { 'Dev' } else { 'Prod' }
+                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started in $modeLabel mode (ports $($State.RefPort) & $($State.WbPort)). Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
+                    Open-Homepage
+                }
+            } elseif ($elapsed -gt 120) {
+                Stop-BothApps -Silent
+                $NotifyIcon.ShowBalloonTip(4000, "What's up Timeout", 'Servers took too long to respond. Check logs folder.', [System.Windows.Forms.ToolTipIcon]::Error)
+                Start-Process explorer.exe $LogsDir
+            }
+        } elseif ($State.Status -eq 'Running') {
+            # If user stopped servers externally, reflect Stopped state in tray
+            $refUp = Test-LocalPort -Port $State.RefPort
+            $wbUp  = Test-LocalPort -Port $State.WbPort
+            if (-not $refUp -and -not $wbUp) {
+                $State.Status = 'Stopped'
+                $State.BrowserOpened = $false
+                Update-TrayUI
+            }
+        }
+    } catch {
+        # Keep UI message loop resilient
+    }
+})
+
+$NotifyIcon.Add_MouseClick({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        Toggle-WhatsSup
+    }
+})
+
+$ItemToggle.Add_Click({ Toggle-WhatsSup })
+$ItemOpenHome.Add_Click({ Open-Homepage })
+$ItemLaunchProd.Add_Click({ Start-BothApps -TargetMode 'prod' })
+$ItemLaunchDev.Add_Click({ Start-BothApps -TargetMode 'dev' })
+$ItemViewLogs.Add_Click({ Start-Process explorer.exe $LogsDir })
+$ItemConfigEnv.Add_Click({ Ensure-AppHomes -ForcePrompt | Out-Null })
+$ItemExit.Add_Click({
+    $PollTimer.Stop()
+    Stop-BothApps -Silent
+    $NotifyIcon.Visible = $false
+    [System.Windows.Forms.Application]::Exit()
+})
+
+Update-TrayUI
+$PollTimer.Start()
+
+# Start immediately on launch in the requested mode (defaults to prod)
+Start-BothApps -TargetMode $Mode
+
+try {
+    [System.Windows.Forms.Application]::Run()
+} finally {
+    $PollTimer.Dispose()
+    Stop-BothApps -Silent
+    $NotifyIcon.Visible = $false
+    $NotifyIcon.Dispose()
+    $Menu.Dispose()
+    $IconStopped.Dispose()
+    $IconStarting.Dispose()
+    $IconRunning.Dispose()
+    $IconDevRun.Dispose()
+    if (Test-Path $PidFile) { Remove-Item -Path $PidFile -Force -ErrorAction SilentlyContinue }
+    if ($Mutex) {
+        try { $Mutex.ReleaseMutex() } catch {}
+        $Mutex.Dispose()
+    }
+}
