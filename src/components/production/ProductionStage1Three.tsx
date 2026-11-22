@@ -6,7 +6,6 @@ import {
   Heart,
   Home,
   Loader2,
-  Lock,
   Send,
   Shield,
   ShieldAlert,
@@ -1678,7 +1677,7 @@ export function ProductionStage1Three({
               onClick={(e) => e.stopPropagation()}
               className="fluent-3d-popup w-full max-w-lg max-h-[68vh] sm:max-h-[72vh] rounded-[30px] flex flex-col overflow-hidden text-slate-900"
             >
-              {/* Bucket Interior Header (Read-Only Badge + Soft Music Indicator) */}
+              {/* Bucket Interior Header (Month Title + Soft Music Indicator) */}
               <div className="px-5 py-3.5 border-b border-white/75 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <h2
@@ -1687,10 +1686,6 @@ export function ProductionStage1Three({
                   >
                     {inspectedBucket.monthItem.fullLabel}
                   </h2>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300/80 bg-white/75 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 shrink-0">
-                    <Lock className="w-2.5 h-2.5 text-sky-600" />
-                    <span>Read-only · {inspectedBucket.reports.length}/10</span>
-                  </span>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
