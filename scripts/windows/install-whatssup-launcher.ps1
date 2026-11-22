@@ -47,70 +47,62 @@ if (-not [string]::IsNullOrWhiteSpace($RefAppHome)) {
     Write-Warning "REF_APP_HOME was not selected yet. What's up will prompt you for it on first launch."
 }
 
-function Save-ShortcutIco {
+function Save-IcoFromPng {
     param(
-        [string]$OutPath,
-        [System.Drawing.Color]$BgColor,
-        [string]$Letter = 'W'
+        [string]$PngPath,
+        [string]$OutPath
     )
+    $src = [System.Drawing.Image]::FromFile($PngPath)
     $bmp = New-Object System.Drawing.Bitmap(64, 64)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $g.Clear([System.Drawing.Color]::Transparent)
+    $g.DrawImage($src, 0, 0, 64, 64)
 
-    $brush = New-Object System.Drawing.SolidBrush($BgColor)
-    $g.FillEllipse($brush, 4, 4, 56, 56)
-
-    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(220, 255, 255, 255), 3)
-    $g.DrawEllipse($pen, 4, 4, 56, 56)
-
-    $font = New-Object System.Drawing.Font('Segoe UI', 28, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-    $sf = New-Object System.Drawing.StringFormat
-    $sf.Alignment = [System.Drawing.StringAlignment]::Center
-    $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $g.DrawString($Letter, $font, $textBrush, (New-Object System.Drawing.RectangleF(4, 4, 56, 56)), $sf)
-
-    # Write PNG-encoded ICO container (supported by Windows Vista+)
     $pngStream = New-Object System.IO.MemoryStream
     $bmp.Save($pngStream, [System.Drawing.Imaging.ImageFormat]::Png)
     $pngBytes = $pngStream.ToArray()
 
     $fs = [System.IO.File]::Open($OutPath, [System.IO.FileMode]::Create)
     $bw = New-Object System.IO.BinaryWriter($fs)
-    $bw.Write([UInt16]0)          # Reserved
-    $bw.Write([UInt16]1)          # Type: Icon
-    $bw.Write([UInt16]1)          # Image count
-    $bw.Write([byte]64)           # Width
-    $bw.Write([byte]64)           # Height
-    $bw.Write([byte]0)            # Color count
-    $bw.Write([byte]0)            # Reserved
-    $bw.Write([UInt16]1)          # Color planes
-    $bw.Write([UInt16]32)         # Bits per pixel
-    $bw.Write([UInt32]$pngBytes.Length) # Image data size
-    $bw.Write([UInt32]22)         # Offset of image data (6 + 16)
+    $bw.Write([UInt16]0)
+    $bw.Write([UInt16]1)
+    $bw.Write([UInt16]1)
+    $bw.Write([byte]64)
+    $bw.Write([byte]64)
+    $bw.Write([byte]0)
+    $bw.Write([byte]0)
+    $bw.Write([UInt16]1)
+    $bw.Write([UInt16]32)
+    $bw.Write([UInt32]$pngBytes.Length)
+    $bw.Write([UInt32]22)
     $bw.Write($pngBytes)
     $bw.Flush()
     $bw.Close()
     $fs.Dispose()
     $pngStream.Dispose()
 
-    $sf.Dispose()
-    $textBrush.Dispose()
-    $font.Dispose()
-    $pen.Dispose()
-    $brush.Dispose()
     $g.Dispose()
     $bmp.Dispose()
+    $src.Dispose()
 }
 
 $LauncherDataDir = Join-Path $env:LOCALAPPDATA 'FluentAssistantWorkbench\launcher'
 New-Item -ItemType Directory -Force -Path $LauncherDataDir | Out-Null
 
-$ProdIco = Join-Path $LauncherDataDir 'whatssup-prod.ico'
-$DevIco  = Join-Path $LauncherDataDir 'whatssup-dev.ico'
-Save-ShortcutIco -OutPath $ProdIco -BgColor ([System.Drawing.Color]::FromArgb(255, 22, 163, 74)) -Letter 'W'
-Save-ShortcutIco -OutPath $DevIco  -BgColor ([System.Drawing.Color]::FromArgb(255, 14, 116, 144)) -Letter 'W'
+$SourceHandIco = Join-Path $ScriptDir 'whatsup.ico'
+$SourceHandPng = Join-Path $ScriptDir 'whatsup.png'
+$InstalledHandIco = Join-Path $LauncherDataDir 'whatsup.ico'
+
+if (Test-Path $SourceHandIco) {
+    Copy-Item -Path $SourceHandIco -Destination $InstalledHandIco -Force
+} elseif (Test-Path $SourceHandPng) {
+    Save-IcoFromPng -PngPath $SourceHandPng -OutPath $InstalledHandIco
+}
+
+$ProdIco = $InstalledHandIco
+$DevIco  = $InstalledHandIco
 
 $VbsPath = Join-Path $ScriptDir 'launch-whatssup.vbs'
 $WscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'

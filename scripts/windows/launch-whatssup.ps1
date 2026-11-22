@@ -290,55 +290,63 @@ function Start-HiddenNpmApp {
     return $proc
 }
 
-function New-StatusTrayIcon {
+$HandIconPng = Join-Path $ScriptDir 'whatsup.png'
+
+function New-HandTrayIcon {
     param(
-        [System.Drawing.Color]$BadgeColor,
-        [System.Drawing.Color]$AccentColor
+        [ValidateSet('running', 'starting', 'stopped', 'dev')]
+        [string]$VisualState = 'running'
     )
+
     $bmp = New-Object System.Drawing.Bitmap(32, 32)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    $bgBrush = New-Object System.Drawing.SolidBrush($BadgeColor)
-    $g.FillEllipse($bgBrush, 2, 2, 26, 26)
+    if (Test-Path $HandIconPng) {
+        $srcImg = [System.Drawing.Image]::FromFile($HandIconPng)
+        $ia = New-Object System.Drawing.Imaging.ImageAttributes
+        $cm = New-Object System.Drawing.Imaging.ColorMatrix
 
-    $ringPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(220, 255, 255, 255), 1.5)
-    $g.DrawEllipse($ringPen, 2, 2, 26, 26)
+        if ($VisualState -eq 'stopped') {
+            # Desaturated muted hand alone when stopped
+            $cm.Matrix00 = 0.30; $cm.Matrix01 = 0.30; $cm.Matrix02 = 0.30
+            $cm.Matrix10 = 0.59; $cm.Matrix11 = 0.59; $cm.Matrix12 = 0.59
+            $cm.Matrix20 = 0.11; $cm.Matrix21 = 0.11; $cm.Matrix22 = 0.11
+            $cm.Matrix33 = 0.65
+        } elseif ($VisualState -eq 'starting') {
+            $cm.Matrix00 = 1.0; $cm.Matrix11 = 1.0; $cm.Matrix22 = 1.0
+            $cm.Matrix33 = 0.72
+        } else {
+            $cm.Matrix00 = 1.0; $cm.Matrix11 = 1.0; $cm.Matrix22 = 1.0
+            $cm.Matrix33 = 1.0
+        }
 
-    $font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-    $sf = New-Object System.Drawing.StringFormat
-    $sf.Alignment = [System.Drawing.StringAlignment]::Center
-    $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $g.DrawString('W', $font, $textBrush, (New-Object System.Drawing.RectangleF(2, 2, 26, 26)), $sf)
-
-    # Status indicator dot in bottom-right corner
-    $dotBrush = New-Object System.Drawing.SolidBrush($AccentColor)
-    $dotBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.5)
-    $g.FillEllipse($dotBrush, 20, 20, 10, 10)
-    $g.DrawEllipse($dotBorder, 20, 20, 10, 10)
+        $ia.SetColorMatrix($cm)
+        $destRect = New-Object System.Drawing.Rectangle(1, 1, 30, 30)
+        $g.DrawImage($srcImg, $destRect, 0, 0, $srcImg.Width, $srcImg.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+        $ia.Dispose()
+        $srcImg.Dispose()
+    } else {
+        $fallbackColor = if ($VisualState -eq 'stopped') { [System.Drawing.Color]::Gray } else { [System.Drawing.Color]::Gold }
+        $brush = New-Object System.Drawing.SolidBrush($fallbackColor)
+        $g.FillEllipse($brush, 4, 4, 24, 24)
+        $brush.Dispose()
+    }
 
     $hIcon = $bmp.GetHicon()
     $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-
-    $sf.Dispose()
-    $textBrush.Dispose()
-    $font.Dispose()
-    $ringPen.Dispose()
-    $bgBrush.Dispose()
-    $dotBrush.Dispose()
-    $dotBorder.Dispose()
     $g.Dispose()
     $bmp.Dispose()
-
     return $icon
 }
 
-$IconStopped  = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 71, 85, 105))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 148, 163, 184))
-$IconStarting = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 37, 99, 235))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 245, 158, 11))
-$IconRunning  = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 22, 163, 74))  -AccentColor ([System.Drawing.Color]::FromArgb(255, 74, 222, 128))
-$IconDevRun   = New-StatusTrayIcon -BadgeColor ([System.Drawing.Color]::FromArgb(255, 14, 116, 144)) -AccentColor ([System.Drawing.Color]::FromArgb(255, 56, 189, 248))
+$IconStopped  = New-HandTrayIcon -VisualState 'stopped'
+$IconStarting = New-HandTrayIcon -VisualState 'starting'
+$IconRunning  = New-HandTrayIcon -VisualState 'running'
+$IconDevRun   = New-HandTrayIcon -VisualState 'dev'
 
 $State = @{
     Status      = 'Stopped'   # Stopped | Starting | Running
