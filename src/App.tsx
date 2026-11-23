@@ -85,7 +85,6 @@ import {
   requestDesktopNotificationPermission,
   setBucketAmbientMusicDucked,
   showDesktopNotification,
-  startBucketAmbientMusic,
   stopBucketAmbientMusic,
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
@@ -1263,11 +1262,9 @@ export default function App() {
   useEffect(() => {
     if (!isProductionApp || !isProdMusicEnabled) {
       stopBucketAmbientMusic();
-      return;
     }
-    const stopMusic = startBucketAmbientMusic();
     return () => {
-      stopMusic();
+      stopBucketAmbientMusic();
     };
   }, [isProductionApp, isProdMusicEnabled]);
 

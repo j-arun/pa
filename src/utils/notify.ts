@@ -520,6 +520,158 @@ export function playLaunchTransitionCue(): void {
   }
 }
 
+export function playIntroPopInMusic(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => undefined);
+      return;
+    }
+
+    const now = ctx.currentTime;
+
+    // 1. Crisp cartoon bubble "bloop-pop!" upward scoop as the icon drops in
+    const popOsc = ctx.createOscillator();
+    const popGain = ctx.createGain();
+    popOsc.type = 'sine';
+    popOsc.frequency.setValueAtTime(320, now);
+    popOsc.frequency.exponentialRampToValueAtTime(780, now + 0.09);
+
+    popGain.gain.setValueAtTime(0.0001, now);
+    popGain.gain.linearRampToValueAtTime(0.14, now + 0.014);
+    popGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+    popOsc.connect(popGain);
+    popGain.connect(ctx.destination);
+    popOsc.start(now);
+    popOsc.stop(now + 0.14);
+
+    // 2. Cheerful 3-note flash pop-in chime (C5 -> E5 -> G5)
+    const notes = [523.25, 659.25, 783.99];
+    notes.forEach((freq, idx) => {
+      const start = now + 0.07 + idx * 0.068;
+      const osc = ctx.createOscillator();
+      const harm = ctx.createOscillator();
+      const harmGain = ctx.createGain();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+
+      harm.type = 'triangle';
+      harm.frequency.setValueAtTime(freq * 2, start);
+      harmGain.gain.setValueAtTime(0.09, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(0.1, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+
+      osc.connect(gain);
+      harm.connect(harmGain);
+      harmGain.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      harm.start(start);
+      osc.stop(start + 0.22);
+      harm.stop(start + 0.22);
+    });
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
+export function playIntroBucketSwellMusic(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => undefined);
+      return;
+    }
+
+    const now = ctx.currentTime;
+    // Soft luminous swell shimmer chord (C5 -> G5 -> D6 -> E6) while bucket enlarges
+    const notes = [523.25, 783.99, 1174.66, 1318.51];
+    notes.forEach((freq, idx) => {
+      const start = now + idx * 0.065;
+      const dur = idx === notes.length - 1 ? 0.38 : 0.26;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(0.075, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + dur + 0.02);
+    });
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
+export function playIntroPopOutMusic(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => undefined);
+      return;
+    }
+
+    const now = ctx.currentTime;
+
+    // 1. Springy "pop-out!" bubble release (high -> bright dip -> hop)
+    const popOsc = ctx.createOscillator();
+    const popGain = ctx.createGain();
+    popOsc.type = 'sine';
+    popOsc.frequency.setValueAtTime(860, now);
+    popOsc.frequency.exponentialRampToValueAtTime(420, now + 0.075);
+    popOsc.frequency.exponentialRampToValueAtTime(587.33, now + 0.14);
+
+    popGain.gain.setValueAtTime(0.0001, now);
+    popGain.gain.linearRampToValueAtTime(0.13, now + 0.012);
+    popGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
+
+    popOsc.connect(popGain);
+    popGain.connect(ctx.destination);
+    popOsc.start(now);
+    popOsc.stop(now + 0.19);
+
+    // 2. Playful descending-resolving flash notes (G5 -> E5 -> C5) as ball glides back
+    const notes = [783.99, 659.25, 523.25];
+    notes.forEach((freq, idx) => {
+      const start = now + 0.085 + idx * 0.075;
+      const dur = idx === notes.length - 1 ? 0.28 : 0.18;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(0.085, start + 0.014);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + dur + 0.02);
+    });
+  } catch {
+    // Ignore Web Audio errors
+  }
+}
+
 export function playReplyChime(isError = false): void {
   try {
     const ctx = getAudioContext();

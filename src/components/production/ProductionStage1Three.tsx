@@ -36,11 +36,16 @@ import {
 import {
   playBucketDropCue,
   playBucketExpandCue,
+  playIntroBucketSwellMusic,
+  playIntroPopInMusic,
+  playIntroPopOutMusic,
   playLaunchTransitionCue,
   startBucketAmbientMusic,
   stopBucketAmbientMusic,
   warmAudioContext,
 } from '../../utils/notify';
+
+let hasPlayedStage1BrowserIntro = false;
 
 export interface ProductionTopicDef {
   domain: PromptDomain;
@@ -744,6 +749,7 @@ export function ProductionStage1Three({
     dockedTarget,
     blockedDropNotice,
     inspectedBucketKey,
+    isMusicMuted,
   });
   stateRef.current = {
     activeMonthNum,
@@ -755,6 +761,7 @@ export function ProductionStage1Three({
     dockedTarget,
     blockedDropNotice,
     inspectedBucketKey,
+    isMusicMuted,
   };
 
   useEffect(() => {
@@ -764,8 +771,7 @@ export function ProductionStage1Three({
   }, [blockedDropNotice, dockedTarget, isSending]);
 
   useEffect(() => {
-    if (isBackgroundMusicEnabled !== undefined) return;
-    if (localMusicMuted) {
+    if (!inspectedBucketKey || isMusicMuted) {
       stopBucketAmbientMusic();
       return;
     }
@@ -773,7 +779,7 @@ export function ProductionStage1Three({
     return () => {
       stopMusic();
     };
-  }, [isBackgroundMusicEnabled, localMusicMuted]);
+  }, [inspectedBucketKey, isMusicMuted]);
 
   useEffect(() => {
     if (!dockedTarget && !blockedDropNotice && !inspectedBucketKey) return;
@@ -1473,11 +1479,17 @@ export function ProductionStage1Three({
       return next;
     };
 
-    // Silent Connected Two-Step Idle Navigation Loop (Step 1 drops ghost -> bucket gets +1 extra ball -> Step 2 swells that SAME bucket big showing balls + extra ball -> returns to normal)
-    let demoPhase: 'idle_wait' | 'step1_drag' | 'step2_swell' | 'rest' = 'idle_wait';
+    // One-time browser-open intro sequence:
+    // Step 1: icon drops into bucket (pops-in flash music) -> bucket gets +1 extra ball
+    // Step 2: bucket swells big showing balls + extra ball (swell flash music)
+    // Step 3: ball pops back out & glides home as bucket shrinks back (pops-out flash music) -> done forever
+    let demoPhase: 'idle_wait' | 'step1_drag' | 'step2_swell' | 'step3_popout' | 'done' =
+      hasPlayedStage1BrowserIntro ? 'done' : 'idle_wait';
     let demoPhaseElapsed = 0;
     let idleWaitElapsed = 0;
-    let hasShownInitialDemo = false;
+    let playedPopInFlash = false;
+    let playedSwellFlash = false;
+    let playedPopOutFlash = false;
     let demoOrbIdx = 0;
     let lastDemoOrbIdx = -1;
     let demoTargetBucketIdx = 0;
@@ -1491,12 +1503,30 @@ export function ProductionStage1Three({
     let dropRippleBucketIdx: number | null = null;
     let dropRippleElapsed = 0;
 
-    const STEP1_FLIGHT_SEC = 2.15;
-    const STEP1_TOTAL_SEC = 2.7;
-    const STEP2_TOTAL_SEC = 3.45;
-    const REST_TOTAL_SEC = 0.75;
+    const STEP1_FLIGHT_SEC = 1.95;
+    const STEP1_TOTAL_SEC = 2.4;
+    const STEP2_TOTAL_SEC = 2.35;
+    const STEP3_POPOUT_SEC = 1.65;
+
+    const unlockIntroAudioOnce = () => {
+      if (!stateRef.current.isMusicMuted) {
+        warmAudioContext();
+      }
+      if (demoPhase === 'done') {
+        window.removeEventListener('pointerdown', unlockIntroAudioOnce);
+        window.removeEventListener('keydown', unlockIntroAudioOnce);
+      }
+    };
+    if (demoPhase !== 'done') {
+      if (!stateRef.current.isMusicMuted) {
+        warmAudioContext();
+      }
+      window.addEventListener('pointerdown', unlockIntroAudioOnce, { passive: true });
+      window.addEventListener('keydown', unlockIntroAudioOnce, { passive: true });
+    }
 
     const beginStep1 = () => {
+      hasPlayedStage1BrowserIntro = true;
       demoOrbIdx = pickRandomOtherIdx(orbEntries.length, lastDemoOrbIdx);
 
       // Prefer any bucket with room for +1 extra ball (< BUCKET_CAPACITY) and avoid repeating the immediate previous bucket
@@ -1522,6 +1552,9 @@ export function ProductionStage1Three({
       ghostHaloMat.color.set(orb.topic.accentHex);
       dropRippleMat.color.set(orb.topic.accentHex);
 
+      playedPopInFlash = false;
+      playedSwellFlash = false;
+      playedPopOutFlash = false;
       demoExtraBallBucketKey = null;
       demoExtraBallAccent = orb.topic.accentHex;
       demoExtraBallPop = 0;
@@ -1537,7 +1570,7 @@ export function ProductionStage1Three({
       if (!targetBucket) {
         demoSwellBucketKey = null;
         demoExtraBallBucketKey = null;
-        demoPhase = 'rest';
+        demoPhase = 'done';
         demoPhaseElapsed = 0;
         return;
       }
@@ -1547,6 +1580,28 @@ export function ProductionStage1Three({
       demoSwellBucketKey = targetBucket.monthItem.key;
       demoPhase = 'step2_swell';
       demoPhaseElapsed = 0;
+      if (!playedSwellFlash) {
+        playedSwellFlash = true;
+        if (!stateRef.current.isMusicMuted) {
+          playIntroBucketSwellMusic();
+        }
+      }
+    };
+
+    const beginStep3PopOut = () => {
+      demoSwellBucketKey = null;
+      demoExtraBallBucketKey = null;
+      demoHoverBucketKey = null;
+      demoPhase = 'step3_popout';
+      demoPhaseElapsed = 0;
+      dropRippleBucketIdx = demoTargetBucketIdx;
+      dropRippleElapsed = 0.001;
+      if (!playedPopOutFlash) {
+        playedPopOutFlash = true;
+        if (!stateRef.current.isMusicMuted) {
+          playIntroPopOutMusic();
+        }
+      }
     };
 
     let elapsed = 0;
@@ -1578,7 +1633,7 @@ export function ProductionStage1Three({
         starMat.opacity = 0.25;
       }
 
-      // Advance Silent Connected Idle Navigation Demo (Pauses on hover/drag/modals; resumes after idle)
+      // Advance One-Time Connected Browser-Open Intro Animation (stops cleanly if interrupted or finished)
       const userInteractingOrModal =
         draggingOrbIdx !== null ||
         pointerHoverOrbIdx !== null ||
@@ -1588,10 +1643,14 @@ export function ProductionStage1Three({
         Boolean(stateRef.current.inspectedBucketKey) ||
         stateRef.current.isSending;
 
-      if (userInteractingOrModal) {
-        demoPhase = 'idle_wait';
+      if (userInteractingOrModal && demoPhase !== 'done') {
+        if (demoPhase !== 'idle_wait') {
+          hasPlayedStage1BrowserIntro = true;
+          demoPhase = 'done';
+        } else {
+          idleWaitElapsed = 0;
+        }
         demoPhaseElapsed = 0;
-        idleWaitElapsed = 0;
         demoHoverBucketKey = null;
         demoSwellBucketKey = null;
         demoStep2BucketKey = null;
@@ -1602,9 +1661,7 @@ export function ProductionStage1Three({
         ghostHaloMat.opacity = 0;
       } else if (demoPhase === 'idle_wait') {
         idleWaitElapsed += dt;
-        const waitThreshold = hasShownInitialDemo ? 1.9 : 0.9;
-        if (idleWaitElapsed >= waitThreshold) {
-          hasShownInitialDemo = true;
+        if (idleWaitElapsed >= 0.75) {
           beginStep1();
         }
       } else if (demoPhase === 'step1_drag') {
@@ -1662,6 +1719,12 @@ export function ProductionStage1Three({
                 dropRippleBucketIdx = demoTargetBucketIdx;
                 dropRippleElapsed = 0.001;
               }
+              if (!playedPopInFlash) {
+                playedPopInFlash = true;
+                if (!stateRef.current.isMusicMuted) {
+                  playIntroPopInMusic();
+                }
+              }
               // Drop spawns the +1 extra ball inside THIS exact bucket
               demoExtraBallBucketKey = dstBucket.monthItem.key;
             }
@@ -1671,7 +1734,7 @@ export function ProductionStage1Three({
           ghostIconMat.opacity = 0;
           ghostHaloMat.opacity = 0;
           demoExtraBallBucketKey = dstBucket.monthItem.key;
-          if (demoPhaseElapsed >= STEP1_TOTAL_SEC - 0.2) {
+          if (demoPhaseElapsed >= STEP1_TOTAL_SEC - 0.15) {
             demoHoverBucketKey = null;
           }
           if (demoPhaseElapsed >= STEP1_TOTAL_SEC) {
@@ -1680,25 +1743,55 @@ export function ProductionStage1Three({
         }
       } else if (demoPhase === 'step2_swell') {
         demoPhaseElapsed += dt;
-        // Hold swelled big (~2.35s) showing existing balls + the newly dropped extra ball, then shrink back to normal (~1.1s)
-        if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 1.1) {
-          demoSwellBucketKey = null;
-        }
-        if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 0.25) {
-          demoExtraBallBucketKey = null;
-        }
         if (demoPhaseElapsed >= STEP2_TOTAL_SEC) {
+          beginStep3PopOut();
+        }
+      } else if (demoPhase === 'step3_popout') {
+        demoPhaseElapsed += dt;
+        const srcOrb = orbEntries[demoOrbIdx];
+        const dstBucket = bucketEntries[demoTargetBucketIdx];
+        const mouthX = dstBucket.basePos.x;
+        const mouthY = dstBucket.basePos.y + 0.72;
+        const mouthZ = dstBucket.basePos.z + 0.65;
+        const p = Math.min(1, demoPhaseElapsed / STEP3_POPOUT_SEC);
+
+        demoGhostGroup.visible = true;
+        if (p < 0.22) {
+          // Ball pops back up out of the bucket mouth
+          const popU = easeInOutCubic(p / 0.22);
+          demoGhostGroup.position.set(
+            mouthX,
+            THREE.MathUtils.lerp(dstBucket.basePos.y + 0.08, mouthY + 0.35, popU),
+            THREE.MathUtils.lerp(dstBucket.basePos.z + 0.15, mouthZ + 0.3, popU),
+          );
+          demoGhostGroup.scale.setScalar(THREE.MathUtils.lerp(0.32, 1.12, popU));
+          ghostIconMat.opacity = popU * 0.92;
+          ghostHaloMat.opacity = popU * 0.88;
+        } else {
+          // Glides cleanly back down into its home icon orb
+          const backU = easeInOutCubic((p - 0.22) / 0.78);
+          const arcLift = Math.sin(backU * Math.PI) * 1.0;
+          demoGhostGroup.position.set(
+            THREE.MathUtils.lerp(mouthX, srcOrb.currentPos.x, backU),
+            THREE.MathUtils.lerp(mouthY + 0.35, srcOrb.currentPos.y, backU) + arcLift,
+            THREE.MathUtils.lerp(mouthZ + 0.3, srcOrb.currentPos.z + 0.35, backU),
+          );
+          demoGhostGroup.scale.setScalar(THREE.MathUtils.lerp(1.12, 0.92, backU));
+          const fadeOut = backU > 0.75 ? 1 - (backU - 0.75) / 0.25 : 1;
+          ghostIconMat.opacity = 0.92 * fadeOut;
+          ghostHaloMat.opacity = 0.82 * fadeOut;
+        }
+
+        if (demoPhaseElapsed >= STEP3_POPOUT_SEC) {
+          demoGhostGroup.visible = false;
+          ghostIconMat.opacity = 0;
+          ghostHaloMat.opacity = 0;
           demoExtraBallBucketKey = null;
           demoStep2BucketKey = null;
-          demoPhase = 'rest';
-          demoPhaseElapsed = 0;
-        }
-      } else if (demoPhase === 'rest') {
-        demoPhaseElapsed += dt;
-        demoExtraBallBucketKey = null;
-        demoStep2BucketKey = null;
-        if (demoPhaseElapsed >= REST_TOTAL_SEC) {
-          beginStep1();
+          demoSwellBucketKey = null;
+          demoPhase = 'done';
+          window.removeEventListener('pointerdown', unlockIntroAudioOnce);
+          window.removeEventListener('keydown', unlockIntroAudioOnce);
         }
       }
 
@@ -1989,6 +2082,8 @@ export function ProductionStage1Three({
       isDisposed = true;
       window.cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
+      window.removeEventListener('pointerdown', unlockIntroAudioOnce);
+      window.removeEventListener('keydown', unlockIntroAudioOnce);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('pointermove', onPointerMove);
