@@ -12,6 +12,8 @@ export function getDomainEmblemIcon(domain?: PromptDomain): EventCardIconType {
       return 'heart';
     case 'health':
       return 'shield';
+    case 'litigation':
+      return 'scales';
     default:
       return 'sparkles';
   }
@@ -115,6 +117,47 @@ export function EventCategoryEmblem({
           <rect x="4" y="4" width="28" height="28" rx="9" fill="#8B5CF6" />
           <rect x="15.25" y="9.5" width="5.5" height="17" rx="1.8" fill="#FFFFFF" />
           <rect x="9.5" y="15.25" width="17" height="5.5" rx="1.8" fill="#FFFFFF" />
+        </svg>
+      );
+    case 'scales':
+      return (
+        <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
+          {/* Central pillar & base */}
+          <path
+            d="M18 6V30M11.5 30H24.5"
+            stroke="#EA580C"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          {/* Balance beam */}
+          <path
+            d="M7 11.5H29"
+            stroke="#FB923C"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <circle cx="18" cy="11.5" r="2.2" fill="#FDBA74" />
+          {/* Left pan suspension & dish */}
+          <path
+            d="M8.5 11.5L5.2 20.5H11.8L8.5 11.5Z"
+            stroke="#FB923C"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <path d="M4.2 20.5C4.6 23.4 6.4 24.8 8.5 24.8C10.6 24.8 12.4 23.4 12.8 20.5H4.2Z" fill="#EA580C" />
+          {/* Right pan suspension & dish */}
+          <path
+            d="M27.5 11.5L24.2 20.5H30.8L27.5 11.5Z"
+            stroke="#FB923C"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <path d="M23.2 20.5C23.6 23.4 25.4 24.8 27.5 24.8C29.6 24.8 31.4 23.4 31.8 20.5H23.2Z" fill="#EA580C" />
         </svg>
       );
     case 'sparkles':

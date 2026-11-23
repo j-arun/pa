@@ -9,6 +9,7 @@ import {
   MessageSquarePlus,
   Pause,
   RotateCcw,
+  Scale,
   Send,
   ShieldPlus,
   Sparkles,
@@ -228,6 +229,41 @@ function drawDomainArtwork(
       target.beginPath();
       target.roundRect(-18, 10, 36, 44, 6);
       target.stroke();
+    } else if (icon === 'scales') {
+      // Pillar & base
+      target.beginPath();
+      target.moveTo(0, -64);
+      target.lineTo(0, 62);
+      target.moveTo(-36, 62);
+      target.lineTo(36, 62);
+      target.stroke();
+      // Beam
+      target.beginPath();
+      target.moveTo(-58, -36);
+      target.lineTo(58, -36);
+      target.stroke();
+      // Left pan & strings
+      target.lineWidth = 7;
+      target.beginPath();
+      target.moveTo(-48, -36);
+      target.lineTo(-68, 16);
+      target.lineTo(-28, 16);
+      target.closePath();
+      target.stroke();
+      target.beginPath();
+      target.arc(-48, 16, 22, 0, Math.PI, false);
+      target.stroke();
+      // Right pan & strings
+      target.beginPath();
+      target.moveTo(48, -36);
+      target.lineTo(28, 16);
+      target.lineTo(68, 16);
+      target.closePath();
+      target.stroke();
+      target.beginPath();
+      target.arc(48, 16, 22, 0, Math.PI, false);
+      target.stroke();
+      target.lineWidth = 10;
     } else {
       target.beginPath();
       target.roundRect(-64, -32, 128, 86, 18);
@@ -359,6 +395,7 @@ function inferCardCategoryLabel(
   if (card.icon === 'coins') return 'Finance';
   if (card.icon === 'layers') return 'Family';
   if (card.icon === 'briefcase') return 'Career';
+  if (card.icon === 'scales') return 'Litigation';
   if (fallbackDomain) return WAITING_DOMAIN_META[fallbackDomain].label;
   return 'Highlight';
 }
@@ -744,6 +781,7 @@ const WAITING_DOMAIN_META: Record<
   finance: { label: 'Finance', accentHex: '#fbbf24', glowHex: '#d97706' },
   general: { label: 'Love', accentHex: '#fb7185', glowHex: '#e11d48' },
   health: { label: 'Health', accentHex: '#a78bfa', glowHex: '#7c3aed' },
+  litigation: { label: 'Litigation', accentHex: '#fb923c', glowHex: '#ea580c' },
 };
 
 function Stage2DomainEmblem({ domain }: { domain: PromptDomain }) {
@@ -766,6 +804,8 @@ function Stage2DomainEmblem({ domain }: { domain: PromptDomain }) {
         <DollarSign className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.5} />
       ) : domain === 'general' ? (
         <Heart className="w-3.5 h-3.5 text-white fill-white/90 drop-shadow" strokeWidth={2.2} />
+      ) : domain === 'litigation' ? (
+        <Scale className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
       ) : (
         <ShieldPlus className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
       )}

@@ -12,6 +12,7 @@ export const PROMPT_DOMAINS: PromptDomain[] = [
   'family',
   'finance',
   'general',
+  'litigation',
 ];
 
 export const PROMPT_DOMAIN_SHORT_LABELS: Record<PromptDomain, string> = {
@@ -20,6 +21,7 @@ export const PROMPT_DOMAIN_SHORT_LABELS: Record<PromptDomain, string> = {
   family: 'Family',
   finance: 'Finance',
   general: 'Love',
+  litigation: 'Litigation',
 };
 
 export function getDomainQueryValue(domain: PromptDomain): string {
@@ -34,6 +36,8 @@ export function getDomainQueryValue(domain: PromptDomain): string {
       return 'love';
     case 'health':
       return 'health';
+    case 'litigation':
+      return 'litigation';
   }
 }
 
@@ -184,6 +188,12 @@ export const DEFAULT_PROMPT_TEMPLATES: PromptTemplates = {
       'Respond clearly and professionally. Address the request directly, organize details where useful, and identify any important assumptions.\n\nRequest:\n{{prompt}}',
     classic:
       'Use the context in the request to prepare a thoughtful, well-structured response. Use useful headings, specific details, and an actionable sequence where appropriate. Identify assumptions and unknowns.\n\nRequest:\n{{prompt}}',
+  },
+  litigation: {
+    formal:
+      'Respond in clear, neutral, professional language regarding legal disputes, claims, contracts, and procedural milestones. Organize key facts, timelines, risks, and assumptions clearly, and note that this analysis is general information rather than formal legal representation.\n\nRequest:\n{{prompt}}',
+    classic:
+      'Analyze the litigation and dispute context carefully. Organize relevant procedural developments, settlement opportunities, contract considerations, and specific dates cleanly while identifying assumptions and uncertainties. Do not provide formal legal representation.\n\nLitigation request:\n{{prompt}}',
   },
 };
 

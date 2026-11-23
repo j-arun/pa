@@ -23,9 +23,9 @@ export const EVENT_EXTRACTION_SYSTEM_DIRECTIVE = [
   '   - **How it will happen:** Complete, practical everyday explanation of how the event unfolds.',
   '4. STRICTLY NO ASTROLOGICAL INFORMATION IN EVENTS OR CARDS: Do NOT include any astrological terms, planet names (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto, Rahu, Ketu), zodiac signs, houses, transits, aspects, conjunctions, retrogrades, dashas, nakshatras, birth charts, horoscopes, or ascendants in event titles, timing, probability ratings, or "How it will happen" descriptions. Describe every event purely in clear, everyday human and practical terms.',
   '5. At the very end of your response, append a <pa_events>...</pa_events> JSON array containing EVERY event listed in Section 3. Do NOT include Overview, Introduction, or Summary cards in <pa_events>.',
-  '6. Schema for each <pa_events> item: {"title":"Turning Point and Communication Breakthrough","when":"Exact date or range","probability":"High · 82%","how":"Full practical everyday explanation of how it will happen, with zero astrological details.","category":"Relationship|Love|Career|Family|Health|General","icon":"heart|shield|briefcase|layers|calendar|compass|sparkles"}. NEVER prefix title with "Event 1:", "Event 2:", or numbers.',
+  '6. Schema for each <pa_events> item: {"title":"Turning Point and Communication Breakthrough","when":"Exact date or range","probability":"High · 82%","how":"Full practical everyday explanation of how it will happen, with zero astrological details.","category":"Relationship|Love|Career|Family|Finance|Health|Litigation|General","icon":"heart|shield|briefcase|layers|coins|scales|calendar|compass|sparkles"}. NEVER prefix title with "Event 1:", "Event 2:", or numbers.',
   '7. Immediately after </pa_events>, also append a <pa_caution_dates>...</pa_caution_dates> JSON array listing specific dates (and time windows when specified) to be careful about across domains.',
-  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|General","date":"Specific date or range, including time window if available","note":"Only what to avoid or watch out for (the practical guidance after Avoid), with ZERO astrological terms or planetary context.","severity":"high|caution|watch"}.',
+  '8. Schema for each <pa_caution_dates> item: {"domain":"Relationship|Health|Career|Family|Finance|Litigation|General","date":"Specific date or range, including time window if available","note":"Only what to avoid or watch out for (the practical guidance after Avoid), with ZERO astrological terms or planetary context.","severity":"high|caution|watch"}.',
 ].join('\n');
 
 const VALID_ICONS: readonly EventCardIconType[] = [
@@ -37,6 +37,7 @@ const VALID_ICONS: readonly EventCardIconType[] = [
   'heart',
   'shield',
   'coins',
+  'scales',
 ];
 
 const HTML_ENTITIES: Record<string, string> = {
@@ -66,6 +67,8 @@ function inferCategoryAndIcon(
       return { category: 'Love', icon: 'heart' };
     case 'health':
       return { category: 'Health', icon: 'shield' };
+    case 'litigation':
+      return { category: 'Litigation', icon: 'scales' };
     default:
       break;
   }
@@ -81,6 +84,12 @@ function inferCategoryAndIcon(
     return {
       category: 'Health',
       icon: 'shield',
+    };
+  }
+  if (/(litigation|legal|lawsuit|dispute|court|hearing|settlement|arbitration|claim|contract)/.test(lower)) {
+    return {
+      category: 'Litigation',
+      icon: 'scales',
     };
   }
   if (/(career|work|job|project|business|team|lead|promotion|role|profession)/.test(lower)) {
@@ -112,6 +121,9 @@ function inferIconFromText(text: string, fallbackIndex: number): EventCardIconTy
   }
   if (/(health|wellness|energy|rest|vital|fitness|medical|sleep)/.test(lower)) {
     return 'shield';
+  }
+  if (/(litigation|legal|lawsuit|dispute|court|hearing|settlement|arbitration|claim|contract)/.test(lower)) {
+    return 'scales';
   }
   if (/(career|work|job|project|business|team|lead|promotion|role)/.test(lower)) {
     return 'briefcase';
@@ -277,7 +289,7 @@ function normalizeIcon(
   fallbackDomain?: PromptDomain,
 ): EventCardIconType {
   const inferred = inferCategoryAndIcon(hintText, fallbackDomain);
-  if (inferred.icon === 'heart' || inferred.icon === 'shield') {
+  if (inferred.icon === 'heart' || inferred.icon === 'shield' || inferred.icon === 'scales') {
     return inferred.icon;
   }
   if (typeof rawIcon === 'string') {
@@ -364,7 +376,7 @@ function isBreakdownCategorySubheading(heading: string): boolean {
   if (/^(?:detailed\s+)?[a-z\s&/,-]{2,42}\s+(?:domain\s+)?event\s+breakdown\b/i.test(cleaned)) {
     return true;
   }
-  if (/^(?:detailed\s+)?(?:career|retail(?:\s+domain)?|family|domestic|love|relationship|health|finance)\s+(?:domain\s+)?(?:events?|event\s+breakdown|cards?)\b/i.test(cleaned)) {
+  if (/^(?:detailed\s+)?(?:career|retail(?:\s+domain)?|family|domestic|love|relationship|health|finance|litigation|legal)\s+(?:domain\s+)?(?:events?|event\s+breakdown|cards?)\b/i.test(cleaned)) {
     return true;
   }
   return false;

@@ -6,6 +6,7 @@ import {
   Heart,
   Home,
   Loader2,
+  Scale,
   Send,
   Shield,
   ShieldAlert,
@@ -102,7 +103,16 @@ const TOPICS: ProductionTopicDef[] = [
     accentHex: '#a78bfa',
     glowHex: '#7c3aed',
   },
+  {
+    domain: 'litigation',
+    label: 'Litigation',
+    icon: 'scales',
+    accentHex: '#fb923c',
+    glowHex: '#ea580c',
+  },
 ];
+
+const BUCKET_CAPACITY = 12;
 
 const TOPIC_ACCENT_BY_DOMAIN: Record<PromptDomain, string> = {
   astrology: '#38bdf8',
@@ -110,6 +120,7 @@ const TOPIC_ACCENT_BY_DOMAIN: Record<PromptDomain, string> = {
   finance: '#fbbf24',
   general: '#fb7185',
   health: '#a78bfa',
+  litigation: '#fb923c',
 };
 
 interface ProductionStage1ThreeProps {
@@ -141,7 +152,8 @@ function normalizeRecordDomain(rawDomain?: string, relPath?: string): PromptDoma
     rawDomain === 'family' ||
     rawDomain === 'finance' ||
     rawDomain === 'general' ||
-    rawDomain === 'health'
+    rawDomain === 'health' ||
+    rawDomain === 'litigation'
   ) {
     if (rawDomain === 'finance' && relPath && /(?:^|\/)family(?:\/|$)/i.test(relPath)) {
       return 'family';
@@ -271,6 +283,50 @@ function drawPureCoreIconCanvas(
     ctx.beginPath();
     ctx.ellipse(-34, -38, 18, 10, -0.5, 0, Math.PI * 2);
     ctx.fill();
+  } else if (icon === 'scales') {
+    // Litigation: warm-orange glowing Scales of Justice
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(0, -82);
+    ctx.lineTo(0, 74);
+    ctx.moveTo(-42, 74);
+    ctx.lineTo(42, 74);
+    ctx.stroke();
+
+    // Top balance beam
+    ctx.lineWidth = 15;
+    ctx.beginPath();
+    ctx.moveTo(-72, -48);
+    ctx.lineTo(72, -48);
+    ctx.stroke();
+
+    // Fulcrum crown highlight
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff7ed';
+    ctx.beginPath();
+    ctx.arc(0, -48, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Left & right suspension lines + bowls
+    ctx.shadowColor = accentHex;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = grad;
+    ctx.fillStyle = grad;
+    ctx.lineWidth = 7;
+
+    for (const side of [-58, 58]) {
+      ctx.beginPath();
+      ctx.moveTo(side, -48);
+      ctx.lineTo(side - 26, 12);
+      ctx.lineTo(side + 26, 12);
+      ctx.closePath();
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(side, 12, 26, 0, Math.PI, false);
+      ctx.closePath();
+      ctx.fill();
+    }
   } else {
     // Health: vibrant violet shield with crisp white medical cross
     ctx.beginPath();
@@ -301,6 +357,25 @@ function drawPureCoreIconCanvas(
   return texture;
 }
 
+function drawGhostHaloCanvas(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 6, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+  grad.addColorStop(0.35, 'rgba(255, 255, 255, 0.42)');
+  grad.addColorStop(0.7, 'rgba(255, 255, 255, 0.12)');
+  grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function TopicBackdropIcon({
   icon,
   color,
@@ -315,6 +390,7 @@ function TopicBackdropIcon({
   if (icon === 'layers') return <Home className={className} style={style} strokeWidth={1.5} />;
   if (icon === 'coins') return <DollarSign className={className} style={style} strokeWidth={1.7} />;
   if (icon === 'heart') return <Heart className={className} style={style} strokeWidth={1.5} />;
+  if (icon === 'scales') return <Scale className={className} style={style} strokeWidth={1.5} />;
   return <Shield className={className} style={style} strokeWidth={1.5} />;
 }
 
@@ -339,7 +415,7 @@ function drawBucketLabelCanvas(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const isFull = count >= 10;
+  const isFull = count >= BUCKET_CAPACITY;
   ctx.shadowColor = isFull
     ? 'rgba(251, 191, 36, 0.9)'
     : isHovered || isInspected
@@ -350,7 +426,7 @@ function drawBucketLabelCanvas(
   ctx.shadowBlur = isHovered || isInspected || isFull ? 22 : 14;
 
   if (isInspected) {
-    // Minimal glowing top rim title when bucket is expanded for read-only report reading
+    // Minimal glowing top rim title when bucket is expanded so interior balls remain clearly visible
     ctx.lineJoin = 'round';
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(4, 12, 28, 0.82)';
@@ -364,7 +440,7 @@ function drawBucketLabelCanvas(
     ctx.lineJoin = 'round';
     ctx.lineWidth = 8;
     ctx.strokeStyle = 'rgba(4, 12, 28, 0.82)';
-    const headerTitle = `${shortMonth.toUpperCase()} ${year} · ${isFull ? 'FULL 10/10' : `${count}/10`}`;
+    const headerTitle = `${shortMonth.toUpperCase()} ${year} · ${isFull ? `FULL ${BUCKET_CAPACITY}/${BUCKET_CAPACITY}` : `${count}/${BUCKET_CAPACITY}`}`;
     ctx.font = '800 44px "Plus Jakarta Sans", system-ui, sans-serif';
     ctx.strokeText(headerTitle, width / 2, 54);
     ctx.fillStyle = isFull ? '#fef3c7' : '#ffffff';
@@ -456,7 +532,9 @@ function drawBucketLabelCanvas(
     ctx.fillStyle = isFull ? '#fde68a' : '#bae6fd';
     ctx.fillText(String(year), width / 2, height / 2 + 34);
 
-    const countText = isFull ? 'FOLDED · 10/10' : `${count}/10`;
+    const countText = isFull
+      ? `FOLDED · ${BUCKET_CAPACITY}/${BUCKET_CAPACITY}`
+      : `${count}/${BUCKET_CAPACITY}`;
     ctx.lineWidth = 6;
     ctx.font = '700 40px "JetBrains Mono", monospace';
     ctx.strokeText(countText, width / 2, height / 2 + 114);
@@ -479,7 +557,7 @@ export function ProductionStage1Three({
   isDarkTheme = true,
   ratedThreads,
   isSending,
-  switchingMonthKey,
+  switchingMonthKey: _switchingMonthKey,
   monthSwitchError,
   onDismissMonthSwitchError,
   onPromptDomainChange,
@@ -503,8 +581,6 @@ export function ProductionStage1Three({
   } | null>(null);
   const [questionText, setQuestionText] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [hoveredBucketLabel, setHoveredBucketLabel] = useState<string | null>(null);
-  const [isDraggingTopic, setIsDraggingTopic] = useState(false);
   const [inspectedBucketKey, setInspectedBucketKey] = useState<string | null>(null);
   const [selectedInspectReportIdx, setSelectedInspectReportIdx] = useState(0);
   const [isMusicMuted, setIsMusicMuted] = useState(false);
@@ -526,7 +602,7 @@ export function ProductionStage1Three({
     });
   }, []);
 
-  // Build lookup map of existing Gemini/Fable reports per month bucket (max 10 per bucket: 2 per domain)
+  // Build lookup map of existing Gemini/Fable reports per month bucket (max 12 per bucket: 6 domains x 2 providers)
   const bucketReportsByKey = useMemo(() => {
     const map = new Map<string, BucketReportEntry[]>();
     for (const m of stageQuickMonths) {
@@ -631,8 +707,6 @@ export function ProductionStage1Three({
     setDockedTarget,
     setQuestionText,
     setValidationError,
-    setHoveredBucketLabel,
-    setIsDraggingTopic,
     setInspectedBucketKey,
     setSelectedInspectReportIdx,
   });
@@ -642,8 +716,6 @@ export function ProductionStage1Three({
     setDockedTarget,
     setQuestionText,
     setValidationError,
-    setHoveredBucketLabel,
-    setIsDraggingTopic,
     setInspectedBucketKey,
     setSelectedInspectReportIdx,
   };
@@ -823,17 +895,20 @@ export function ProductionStage1Three({
       miniBallGeo,
     );
 
+    // 12 staggered non-overlapping ball slots arranged inside tapered bucket walls
     const BALL_LOCAL_OFFSETS: Array<{ x: number; y: number; z: number }> = [
-      { x: -0.46, y: -0.54, z: 0.28 },
-      { x: -0.23, y: -0.54, z: 0.36 },
-      { x: 0.0, y: -0.54, z: 0.39 },
-      { x: 0.23, y: -0.54, z: 0.36 },
-      { x: 0.46, y: -0.54, z: 0.28 },
-      { x: -0.40, y: -0.34, z: -0.02 },
-      { x: -0.20, y: -0.34, z: 0.06 },
-      { x: 0.0, y: -0.34, z: 0.09 },
-      { x: 0.20, y: -0.34, z: 0.06 },
-      { x: 0.40, y: -0.34, z: -0.02 },
+      { x: -0.44, y: -0.56, z: 0.24 },
+      { x: -0.15, y: -0.56, z: 0.36 },
+      { x: 0.15, y: -0.56, z: 0.36 },
+      { x: 0.44, y: -0.56, z: 0.24 },
+      { x: -0.48, y: -0.36, z: -0.04 },
+      { x: -0.16, y: -0.36, z: 0.08 },
+      { x: 0.16, y: -0.36, z: 0.08 },
+      { x: 0.48, y: -0.36, z: -0.04 },
+      { x: -0.36, y: -0.16, z: -0.24 },
+      { x: -0.12, y: -0.16, z: -0.18 },
+      { x: 0.12, y: -0.16, z: -0.18 },
+      { x: 0.36, y: -0.16, z: -0.24 },
     ];
 
     interface BucketEntry {
@@ -860,6 +935,8 @@ export function ProductionStage1Three({
       hitMesh: THREE.Mesh;
       hoverLerp: number;
       inspectLerp: number;
+      demoHoverLerp: number;
+      demoSwellLerp: number;
     }
 
     const hitSphereGeo = new THREE.SphereGeometry(1.24, 16, 16);
@@ -931,7 +1008,7 @@ export function ProductionStage1Three({
       liquidMesh.renderOrder = 2;
       group.add(liquidMesh);
 
-      // 10 pre-allocated report balls sitting inside the bottom of each bucket
+      // 12 pre-allocated report balls sitting inside the bottom of each bucket
       const reportBalls = BALL_LOCAL_OFFSETS.map((offset) => {
         const mat = new THREE.MeshPhysicalMaterial({
           color: 0x38bdf8,
@@ -950,7 +1027,7 @@ export function ProductionStage1Three({
         return { mesh, mat, baseOffset: offset };
       });
 
-      // Flush crystal seal cap that settles cleanly ON TOP ONLY when bucket hits 10/10 reports
+      // Flush crystal seal cap that settles cleanly ON TOP ONLY when bucket hits 12/12 reports
       // (open buckets have zero clutter/flaps sticking up on top)
       const sealLidGroup = new THREE.Group();
       sealLidGroup.position.set(0, 0.75, 0);
@@ -1032,16 +1109,19 @@ export function ProductionStage1Three({
         hitMesh,
         hoverLerp: 0,
         inspectLerp: 0,
+        demoHoverLerp: 0,
+        demoSwellLerp: 0,
       };
     });
 
-    // 5 Jumping Core Domain Icons ONLY at the bottom (NO outer sphere, NO outer ring, NO background circle)
+    // 6 Jumping Core Domain Icons ONLY at the bottom (Career, Family, Finance, Love, Health, Litigation)
     const orbSlots = [
-      new THREE.Vector3(-4.2, -2.35, 0.30),
-      new THREE.Vector3(-2.1, -2.42, 0.36),
-      new THREE.Vector3(0.0, -2.45, 0.40),
-      new THREE.Vector3(2.1, -2.42, 0.36),
-      new THREE.Vector3(4.2, -2.35, 0.30),
+      new THREE.Vector3(-4.75, -2.26, 0.24),
+      new THREE.Vector3(-2.85, -2.38, 0.32),
+      new THREE.Vector3(-0.95, -2.45, 0.38),
+      new THREE.Vector3(0.95, -2.45, 0.38),
+      new THREE.Vector3(2.85, -2.38, 0.32),
+      new THREE.Vector3(4.75, -2.26, 0.24),
     ];
 
     const orbIconPlaneGeo = new THREE.PlaneGeometry(1.18, 1.18);
@@ -1053,6 +1133,7 @@ export function ProductionStage1Three({
       topic: ProductionTopicDef;
       group: THREE.Group;
       homePos: THREE.Vector3;
+      iconTex: THREE.CanvasTexture;
       shadowMesh: THREE.Mesh;
       shadowMat: THREE.MeshBasicMaterial;
       hitMesh: THREE.Mesh;
@@ -1105,6 +1186,7 @@ export function ProductionStage1Three({
         topic,
         group,
         homePos,
+        iconTex,
         shadowMesh,
         shadowMat,
         hitMesh,
@@ -1114,6 +1196,53 @@ export function ProductionStage1Three({
       };
     });
 
+    // Floating Glowing Ghost Copy + Drop Ripple for Silent Looping Idle Navigation Demo
+    const ghostHaloTex = drawGhostHaloCanvas();
+    const ghostHaloGeo = new THREE.PlaneGeometry(1.92, 1.92);
+    const ghostHaloMat = new THREE.MeshBasicMaterial({
+      map: ghostHaloTex,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const ghostHaloMesh = new THREE.Mesh(ghostHaloGeo, ghostHaloMat);
+    ghostHaloMesh.position.z = -0.02;
+    ghostHaloMesh.renderOrder = 8;
+
+    const ghostIconMat = new THREE.MeshBasicMaterial({
+      map: orbEntries[0].iconTex,
+      transparent: true,
+      alphaTest: 0.02,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ghostIconMesh = new THREE.Mesh(orbIconPlaneGeo, ghostIconMat);
+    ghostIconMesh.renderOrder = 9;
+
+    const demoGhostGroup = new THREE.Group();
+    demoGhostGroup.add(ghostHaloMesh, ghostIconMesh);
+    demoGhostGroup.visible = false;
+    scene.add(demoGhostGroup);
+
+    const dropRippleGeo = new THREE.RingGeometry(0.45, 0.62, 42);
+    const dropRippleMat = new THREE.MeshBasicMaterial({
+      color: 0xbae6fd,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const dropRippleMesh = new THREE.Mesh(dropRippleGeo, dropRippleMat);
+    dropRippleMesh.rotation.x = Math.PI / 2 + 0.18;
+    dropRippleMesh.visible = false;
+    dropRippleMesh.renderOrder = 7;
+    scene.add(dropRippleMesh);
+    disposables.push(ghostHaloTex, ghostHaloGeo, ghostHaloMat, ghostIconMat, dropRippleGeo, dropRippleMat);
+
     const raycaster = new THREE.Raycaster();
     const pointerNdc = new THREE.Vector2();
     const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.35);
@@ -1122,6 +1251,7 @@ export function ProductionStage1Three({
 
     let draggingOrbIdx: number | null = null;
     let pointerHoverOrbIdx: number | null = null;
+    let pointerHoverBucketKey: string | null = null;
     let hoveredBucketKeyLocal: string | null = null;
     let pointerDownClientX = 0;
     let pointerDownClientY = 0;
@@ -1169,7 +1299,6 @@ export function ProductionStage1Three({
         draggingOrbIdx = idx;
         pointerDownClientX = e.clientX;
         pointerDownClientY = e.clientY;
-        callbacksRef.current.setIsDraggingTopic(true);
         renderer.domElement.style.cursor = 'grabbing';
         renderer.domElement.setPointerCapture?.(e.pointerId);
         return;
@@ -1214,8 +1343,6 @@ export function ProductionStage1Three({
           const nextBucketKey = findNearestBucketKey(entry.currentPos);
           if (nextBucketKey !== hoveredBucketKeyLocal) {
             hoveredBucketKeyLocal = nextBucketKey;
-            const b = bucketEntries.find((item) => item.monthItem.key === nextBucketKey);
-            callbacksRef.current.setHoveredBucketLabel(b ? b.monthItem.fullLabel : null);
           }
         }
         return;
@@ -1226,6 +1353,8 @@ export function ProductionStage1Three({
         stateRef.current.blockedDropNotice ||
         stateRef.current.inspectedBucketKey
       ) {
+        pointerHoverOrbIdx = null;
+        pointerHoverBucketKey = null;
         renderer.domElement.style.cursor = 'default';
         return;
       }
@@ -1236,6 +1365,7 @@ export function ProductionStage1Three({
       );
       if (orbHits.length > 0) {
         pointerHoverOrbIdx = orbHits[0].object.userData.orbIndex as number;
+        pointerHoverBucketKey = null;
         renderer.domElement.style.cursor = 'grab';
         return;
       }
@@ -1245,7 +1375,18 @@ export function ProductionStage1Three({
         bucketEntries.map((b) => b.hitMesh),
         false,
       );
-      renderer.domElement.style.cursor = bucketHits.length > 0 ? 'pointer' : 'default';
+      if (bucketHits.length > 0) {
+        pointerHoverBucketKey = bucketHits[0].object.userData.bucketKey as string;
+        renderer.domElement.style.cursor = 'pointer';
+      } else {
+        pointerHoverBucketKey = null;
+        renderer.domElement.style.cursor = 'default';
+      }
+    };
+
+    const onPointerLeave = () => {
+      pointerHoverOrbIdx = null;
+      pointerHoverBucketKey = null;
     };
 
     const finishDrag = (e: PointerEvent, cancelled: boolean) => {
@@ -1253,8 +1394,6 @@ export function ProductionStage1Three({
       const orbIdx = draggingOrbIdx;
       const entry = orbEntries[orbIdx];
       draggingOrbIdx = null;
-      callbacksRef.current.setIsDraggingTopic(false);
-      callbacksRef.current.setHoveredBucketLabel(null);
       renderer.domElement.style.cursor = 'default';
       renderer.domElement.releasePointerCapture?.(e.pointerId);
 
@@ -1287,6 +1426,7 @@ export function ProductionStage1Three({
     const onPointerCancel = (e: PointerEvent) => finishDrag(e, true);
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
@@ -1305,6 +1445,80 @@ export function ProductionStage1Three({
 
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(mount);
+
+    const easeInOutCubic = (x: number): number =>
+      x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+
+    const pickRandomOtherIdx = (count: number, excludeIdx: number): number => {
+      if (count <= 1) return 0;
+      let next = Math.floor(Math.random() * count);
+      if (next === excludeIdx) {
+        next = (next + 1 + Math.floor(Math.random() * (count - 1))) % count;
+      }
+      return next;
+    };
+
+    // Silent Two-Step Idle Navigation Loop State (Step 1: glowing ghost arc drop -> Step 2: filled bucket + balls swell big)
+    let demoPhase: 'idle_wait' | 'step1_drag' | 'step2_swell' | 'rest' = 'idle_wait';
+    let demoPhaseElapsed = 0;
+    let idleWaitElapsed = 0;
+    let hasShownInitialDemo = false;
+    let demoOrbIdx = 0;
+    let lastDemoOrbIdx = -1;
+    let demoTargetBucketIdx = 0;
+    let lastDemoTargetBucketIdx = -1;
+    let demoStep2BucketKey: string | null = null;
+    let lastDemoStep2BucketKey: string | null = null;
+    let demoHoverBucketKey: string | null = null;
+    let demoSwellBucketKey: string | null = null;
+    let dropRippleBucketIdx: number | null = null;
+    let dropRippleElapsed = 0;
+
+    const STEP1_FLIGHT_SEC = 2.15;
+    const STEP1_TOTAL_SEC = 2.65;
+    const STEP2_TOTAL_SEC = 3.35;
+    const REST_TOTAL_SEC = 0.75;
+
+    const beginStep1 = () => {
+      demoOrbIdx = pickRandomOtherIdx(orbEntries.length, lastDemoOrbIdx);
+      demoTargetBucketIdx = pickRandomOtherIdx(bucketEntries.length, lastDemoTargetBucketIdx);
+      lastDemoOrbIdx = demoOrbIdx;
+      lastDemoTargetBucketIdx = demoTargetBucketIdx;
+
+      const orb = orbEntries[demoOrbIdx];
+      ghostIconMat.map = orb.iconTex;
+      ghostIconMat.needsUpdate = true;
+      ghostHaloMat.color.set(orb.topic.accentHex);
+      dropRippleMat.color.set(orb.topic.accentHex);
+
+      demoHoverBucketKey = null;
+      demoSwellBucketKey = null;
+      demoPhase = 'step1_drag';
+      demoPhaseElapsed = 0;
+    };
+
+    const beginStep2OrRest = () => {
+      const filledBuckets = bucketEntries.filter(
+        (b) => (bucketReportsRef.current.get(b.monthItem.key) ?? []).length > 0,
+      );
+      if (filledBuckets.length === 0) {
+        demoSwellBucketKey = null;
+        demoPhase = 'rest';
+        demoPhaseElapsed = 0;
+        return;
+      }
+      const candidates =
+        filledBuckets.length > 1 && lastDemoStep2BucketKey
+          ? filledBuckets.filter((b) => b.monthItem.key !== lastDemoStep2BucketKey)
+          : filledBuckets;
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)] ?? filledBuckets[0];
+      demoStep2BucketKey = chosen.monthItem.key;
+      lastDemoStep2BucketKey = chosen.monthItem.key;
+      demoHoverBucketKey = null;
+      demoSwellBucketKey = chosen.monthItem.key;
+      demoPhase = 'step2_swell';
+      demoPhaseElapsed = 0;
+    };
 
     let elapsed = 0;
     let lastTime = performance.now();
@@ -1335,25 +1549,169 @@ export function ProductionStage1Three({
         starMat.opacity = 0.25;
       }
 
-      // Animate 6 Month Buckets + Swell Big on Hover/Inspect + Floating Interior Reports
+      // Advance Silent Idle Navigation Demo (Pauses instantly on hover, drag, or open modals; resumes cleanly after idle)
+      const userInteractingOrModal =
+        draggingOrbIdx !== null ||
+        pointerHoverOrbIdx !== null ||
+        pointerHoverBucketKey !== null ||
+        Boolean(stateRef.current.dockedTarget) ||
+        Boolean(stateRef.current.blockedDropNotice) ||
+        Boolean(stateRef.current.inspectedBucketKey) ||
+        stateRef.current.isSending;
+
+      if (userInteractingOrModal) {
+        demoPhase = 'idle_wait';
+        demoPhaseElapsed = 0;
+        idleWaitElapsed = 0;
+        demoHoverBucketKey = null;
+        demoSwellBucketKey = null;
+        demoGhostGroup.visible = false;
+        ghostIconMat.opacity = 0;
+        ghostHaloMat.opacity = 0;
+      } else if (demoPhase === 'idle_wait') {
+        idleWaitElapsed += dt;
+        const waitThreshold = hasShownInitialDemo ? 1.9 : 0.9;
+        if (idleWaitElapsed >= waitThreshold) {
+          hasShownInitialDemo = true;
+          beginStep1();
+        }
+      } else if (demoPhase === 'step1_drag') {
+        demoPhaseElapsed += dt;
+        const srcOrb = orbEntries[demoOrbIdx];
+        const dstBucket = bucketEntries[demoTargetBucketIdx];
+        const dstY = dstBucket.basePos.y + 0.56;
+        const dstZ = dstBucket.basePos.z + 0.65;
+
+        if (demoPhaseElapsed <= STEP1_FLIGHT_SEC) {
+          const p = demoPhaseElapsed / STEP1_FLIGHT_SEC;
+          demoGhostGroup.visible = true;
+
+          if (p < 0.16) {
+            const lift = easeInOutCubic(p / 0.16);
+            demoGhostGroup.position.set(
+              srcOrb.currentPos.x,
+              srcOrb.currentPos.y + lift * 0.48,
+              srcOrb.currentPos.z + 0.75,
+            );
+            demoGhostGroup.scale.setScalar(0.96 + lift * 0.2);
+            ghostIconMat.opacity = lift * 0.92;
+            ghostHaloMat.opacity = lift * 0.85;
+            demoHoverBucketKey = null;
+          } else if (p < 0.84) {
+            const u = easeInOutCubic((p - 0.16) / 0.68);
+            const sx = srcOrb.currentPos.x;
+            const sy = srcOrb.currentPos.y + 0.48;
+            const sz = srcOrb.currentPos.z + 0.75;
+            const arcLift = Math.sin(u * Math.PI) * 1.15;
+            demoGhostGroup.position.set(
+              THREE.MathUtils.lerp(sx, dstBucket.basePos.x, u),
+              THREE.MathUtils.lerp(sy, dstY, u) + arcLift,
+              THREE.MathUtils.lerp(sz, dstZ, u) + Math.sin(u * Math.PI) * 0.6,
+            );
+            demoGhostGroup.scale.setScalar(1.16 - u * 0.12);
+            ghostIconMat.opacity = 0.92;
+            ghostHaloMat.opacity = 0.82 + Math.sin(elapsed * 8) * 0.12;
+            if (u > 0.52) {
+              demoHoverBucketKey = dstBucket.monthItem.key;
+            }
+          } else {
+            const dropU = easeInOutCubic((p - 0.84) / 0.16);
+            demoHoverBucketKey = dstBucket.monthItem.key;
+            demoGhostGroup.position.set(
+              dstBucket.basePos.x,
+              THREE.MathUtils.lerp(dstY, dstBucket.basePos.y + 0.06, dropU),
+              THREE.MathUtils.lerp(dstZ, dstBucket.basePos.z + 0.12, dropU),
+            );
+            demoGhostGroup.scale.setScalar(THREE.MathUtils.lerp(1.04, 0.26, dropU));
+            ghostIconMat.opacity = (1 - dropU) * 0.9;
+            ghostHaloMat.opacity = (1 - dropU) * 0.8;
+            if (dropU > 0.45 && dropRippleBucketIdx !== demoTargetBucketIdx) {
+              dropRippleBucketIdx = demoTargetBucketIdx;
+              dropRippleElapsed = 0.001;
+            }
+          }
+        } else {
+          demoGhostGroup.visible = false;
+          ghostIconMat.opacity = 0;
+          ghostHaloMat.opacity = 0;
+          if (demoPhaseElapsed >= STEP1_TOTAL_SEC - 0.2) {
+            demoHoverBucketKey = null;
+          }
+          if (demoPhaseElapsed >= STEP1_TOTAL_SEC) {
+            beginStep2OrRest();
+          }
+        }
+      } else if (demoPhase === 'step2_swell') {
+        demoPhaseElapsed += dt;
+        const targetCount = demoStep2BucketKey
+          ? (bucketReportsRef.current.get(demoStep2BucketKey) ?? []).length
+          : 0;
+        if (targetCount === 0) {
+          demoSwellBucketKey = null;
+          demoPhase = 'rest';
+          demoPhaseElapsed = 0;
+        } else {
+          // Hold swelled big (~2.25s), then smoothly shrink back to resting size (~1.1s) before transitioning
+          if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 1.1) {
+            demoSwellBucketKey = null;
+          }
+          if (demoPhaseElapsed >= STEP2_TOTAL_SEC) {
+            demoPhase = 'rest';
+            demoPhaseElapsed = 0;
+          }
+        }
+      } else if (demoPhase === 'rest') {
+        demoPhaseElapsed += dt;
+        if (demoPhaseElapsed >= REST_TOTAL_SEC) {
+          beginStep1();
+        }
+      }
+
+      // Silent visual drop ripple at target bucket mouth
+      if (dropRippleBucketIdx !== null) {
+        dropRippleElapsed += dt;
+        const rippleP = dropRippleElapsed / 0.65;
+        if (rippleP >= 1) {
+          dropRippleBucketIdx = null;
+          dropRippleMesh.visible = false;
+        } else {
+          const rb = bucketEntries[dropRippleBucketIdx];
+          dropRippleMesh.visible = true;
+          dropRippleMesh.position.set(
+            rb.group.position.x,
+            rb.group.position.y + 0.72 * rb.group.scale.y,
+            rb.group.position.z + 0.05,
+          );
+          const rs = (0.65 + easeInOutCubic(rippleP) * 1.15) * rb.group.scale.x;
+          dropRippleMesh.scale.setScalar(rs);
+          dropRippleMat.opacity = (1 - rippleP) * 0.65;
+        }
+      }
+
+      // Animate 6 Month Buckets + Swell Big on Hover/Inspect/Demo + Floating Interior Reports
       const anyBucketHovered = hoveredBucketKeyLocal !== null;
       const activeInspectKey = stateRef.current.inspectedBucketKey;
       const anyBucketInspected = activeInspectKey !== null;
+      const anyDemoSwell = !anyBucketInspected && demoSwellBucketKey !== null;
 
       for (let i = 0; i < bucketEntries.length; i += 1) {
         const b = bucketEntries[i];
         const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
         const reportCount = reportsInBucket.length;
-        const isFull = reportCount >= 10;
+        const isFull = reportCount >= BUCKET_CAPACITY;
 
         const isActive =
           b.monthItem.month === stateRef.current.activeMonthNum &&
           b.monthItem.year === stateRef.current.activeYearNum;
         const isHovered = !anyBucketInspected && hoveredBucketKeyLocal === b.monthItem.key;
         const isInspected = activeInspectKey === b.monthItem.key;
+        const isDemoHovered = !anyBucketInspected && demoHoverBucketKey === b.monthItem.key;
+        const isDemoSwelled = anyDemoSwell && demoSwellBucketKey === b.monthItem.key;
 
         b.hoverLerp = THREE.MathUtils.damp(b.hoverLerp, isHovered ? 1 : 0, 8.5, dt);
         b.inspectLerp = THREE.MathUtils.damp(b.inspectLerp, isInspected ? 1 : 0, 7.2, dt);
+        b.demoHoverLerp = THREE.MathUtils.damp(b.demoHoverLerp, isDemoHovered ? 1 : 0, 6.2, dt);
+        b.demoSwellLerp = THREE.MathUtils.damp(b.demoSwellLerp, isDemoSwelled ? 1 : 0, 5.2, dt);
 
         const recedeBlend = anyBucketInspected
           ? isInspected
@@ -1361,51 +1719,77 @@ export function ProductionStage1Three({
             : 1
           : anyBucketHovered && !isHovered
             ? 1
-            : 0;
+            : anyDemoSwell && !isDemoSwelled
+              ? 0.55
+              : 0;
         const floatY = Math.sin(elapsed * 1.5 + i * 0.55) * 0.045;
 
-        // Swell hovered/inspected bucket large & center forward; gently recede neighbors
-        const hoverX = b.basePos.x * (1 - b.hoverLerp * 0.14);
-        const hoverY = b.basePos.y + floatY - b.hoverLerp * 0.34;
-        const hoverZ = b.basePos.z + b.hoverLerp * 2.15 - recedeBlend * (anyBucketInspected ? 1.85 : 0.42);
-        const pullX = THREE.MathUtils.lerp(hoverX, 0, b.inspectLerp);
-        const pullY = THREE.MathUtils.lerp(hoverY, -0.05 + Math.sin(elapsed * 1.25) * 0.045, b.inspectLerp);
-        const pullZ = THREE.MathUtils.lerp(hoverZ, 5.25, b.inspectLerp);
+        // Swell hovered/inspected/demo bucket large & forward; gently recede neighbors
+        const activeHoverAmt = Math.max(b.hoverLerp, b.demoHoverLerp * 0.52);
+        const hoverX = b.basePos.x * (1 - activeHoverAmt * 0.14);
+        const hoverY = b.basePos.y + floatY - activeHoverAmt * 0.3;
+        const hoverZ =
+          b.basePos.z +
+          activeHoverAmt * 2.0 -
+          recedeBlend * (anyBucketInspected ? 1.85 : 0.42);
+        const demoFocusX = THREE.MathUtils.lerp(hoverX, hoverX * 0.52, b.demoSwellLerp);
+        const demoFocusY = THREE.MathUtils.lerp(
+          hoverY,
+          hoverY - 0.18 + Math.sin(elapsed * 1.35) * 0.04,
+          b.demoSwellLerp,
+        );
+        const demoFocusZ = THREE.MathUtils.lerp(hoverZ, b.basePos.z + 2.75, b.demoSwellLerp);
+        const pullX = THREE.MathUtils.lerp(demoFocusX, 0, b.inspectLerp);
+        const pullY = THREE.MathUtils.lerp(
+          demoFocusY,
+          -0.05 + Math.sin(elapsed * 1.25) * 0.045,
+          b.inspectLerp,
+        );
+        const pullZ = THREE.MathUtils.lerp(demoFocusZ, 5.25, b.inspectLerp);
         b.group.position.set(pullX, pullY, pullZ);
-        b.group.rotation.y = Math.sin(elapsed * 0.85) * 0.08 * b.inspectLerp;
+        b.group.rotation.y =
+          Math.sin(elapsed * 0.85) * 0.08 * Math.max(b.inspectLerp, b.demoSwellLerp * 0.65);
 
-        const baseScale = 1 + b.hoverLerp * 0.62 - recedeBlend * (anyBucketInspected ? 0.22 : 0.1);
-        const s = THREE.MathUtils.lerp(baseScale, 2.38, b.inspectLerp);
+        const baseScale =
+          1 + activeHoverAmt * 0.58 - recedeBlend * (anyBucketInspected ? 0.22 : 0.1);
+        const demoScaled = THREE.MathUtils.lerp(baseScale, 1.76, b.demoSwellLerp);
+        const s = THREE.MathUtils.lerp(demoScaled, 2.38, b.inspectLerp);
         b.group.scale.set(s, s, s);
 
-        const emphasized = Math.max(b.hoverLerp, b.inspectLerp);
+        const emphasized = Math.max(b.hoverLerp, b.inspectLerp, b.demoSwellLerp * 0.92);
         b.wallMat.opacity = isInspected
           ? 0.34
           : anyBucketInspected
             ? 0.09
-            : isHovered
-              ? 0.38
-              : isFull
-                ? 0.3
-                : isActive
-                  ? 0.26
-                  : 0.2;
-        b.rimMat.color.setHex(isFull ? 0xfde68a : isHovered || isInspected ? 0xe0f2fe : 0xbae6fd);
+            : isHovered || b.demoSwellLerp > 0.25
+              ? 0.36
+              : isDemoHovered
+                ? 0.32
+                : isFull
+                  ? 0.3
+                  : isActive
+                    ? 0.26
+                    : 0.2;
+        b.rimMat.color.setHex(
+          isFull ? 0xfde68a : isHovered || isInspected || isDemoHovered || isDemoSwelled ? 0xe0f2fe : 0xbae6fd,
+        );
         b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
         b.rimMat.emissiveIntensity = isInspected
           ? 1.9
           : isHovered
             ? 2.1
-            : isFull
-              ? 1.35
-              : isActive
-                ? 1.15
-                : 0.65;
+            : isDemoSwelled || isDemoHovered
+              ? 1.75
+              : isFull
+                ? 1.35
+                : isActive
+                  ? 1.15
+                  : 0.65;
         b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
         b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
-        // Dynamic fill surface rising cleanly inside the bucket as reports accumulate
-        const fillRatio = Math.min(1, reportCount / 10);
+        // Dynamic fill surface rising cleanly inside the bucket as reports accumulate (capacity 12)
+        const fillRatio = Math.min(1, reportCount / BUCKET_CAPACITY);
         b.liquidMesh.position.y = THREE.MathUtils.damp(
           b.liquidMesh.position.y,
           -0.52 + fillRatio * 0.84,
@@ -1418,16 +1802,21 @@ export function ProductionStage1Three({
           ? 0.36
           : anyBucketInspected
             ? 0.06
-            : isHovered
-              ? 0.42
+            : isHovered || b.demoSwellLerp > 0.25
+              ? 0.4
               : isFull
                 ? 0.34
                 : isActive
                   ? 0.25
                   : 0.15;
 
-        // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 10/10
-        b.sealBlend = THREE.MathUtils.damp(b.sealBlend, isFull && !isInspected ? 1 : 0, 9, dt);
+        // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 12/12
+        b.sealBlend = THREE.MathUtils.damp(
+          b.sealBlend,
+          isFull && !isInspected && !isDemoSwelled ? 1 : 0,
+          9,
+          dt,
+        );
         b.sealLidGroup.visible = b.sealBlend > 0.02;
         if (b.sealLidGroup.visible) {
           b.sealLidGroup.position.y = THREE.MathUtils.lerp(0.98, 0.75, b.sealBlend);
@@ -1436,7 +1825,7 @@ export function ProductionStage1Three({
           b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
         }
 
-        // Interior domain balls swell bigger and linger/float noticeably inside the hovered/inspected bucket
+        // Interior domain balls swell bigger and linger/float noticeably inside the hovered/inspected/demo-swelled bucket
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
           const ball = b.reportBalls[bi];
           if (bi < reportCount) {
@@ -1445,16 +1834,16 @@ export function ProductionStage1Three({
             ball.mat.color.set(entry.accentHex);
             ball.mat.emissive.set(entry.accentHex);
             ball.mat.emissiveIntensity =
-              (entry.provider === 'fable' ? 0.85 : 0.55) + emphasized * 0.5;
+              (entry.provider === 'fable' ? 0.85 : 0.55) + emphasized * 0.55;
             const lingerWave =
-              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + emphasized * 0.07);
-            const swayX = Math.cos(elapsed * 1.5 + bi * 1.1) * emphasized * 0.07;
+              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + emphasized * 0.075);
+            const swayX = Math.cos(elapsed * 1.5 + bi * 1.1) * emphasized * 0.075;
             ball.mesh.position.set(
-              ball.baseOffset.x * (1 + emphasized * 0.26) + swayX,
-              ball.baseOffset.y + emphasized * 0.32 + lingerWave,
+              ball.baseOffset.x * (1 + emphasized * 0.28) + swayX,
+              ball.baseOffset.y + emphasized * 0.36 + lingerWave,
               ball.baseOffset.z * (1 + emphasized * 0.22),
             );
-            const ballScale = 1 + emphasized * 0.85;
+            const ballScale = 1 + emphasized * 0.95;
             ball.mesh.scale.setScalar(ballScale);
           } else {
             ball.mesh.visible = false;
@@ -1462,10 +1851,11 @@ export function ProductionStage1Three({
         }
 
         // Update inner label + enlarged existing-report preview pills when hovered/inspected or count changes
+        const isMinimalRimMode = isInspected || isDemoSwelled;
         const summarySig = reportsInBucket
           .map((r) => `${r.domain}:${r.provider}:${r.shortSummary}`)
           .join('|');
-        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isInspected ? 1 : 0}:${isHovered ? summarySig : ''}`;
+        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isMinimalRimMode ? 1 : 0}:${isHovered ? summarySig : ''}`;
         if (b.cachedSignature !== sig) {
           b.cachedSignature = sig;
           const nextTex = drawBucketLabelCanvas(
@@ -1474,7 +1864,7 @@ export function ProductionStage1Three({
             reportsInBucket,
             isActive,
             isHovered,
-            isInspected,
+            isMinimalRimMode,
             maxAnisotropy,
           );
           const oldTex = b.activeTex;
@@ -1485,7 +1875,7 @@ export function ProductionStage1Three({
         }
       }
 
-      // Animate 5 Pure Core Domain Icons Jumping (step gracefully aside while inspecting a bucket)
+      // Animate 6 Pure Core Domain Icons Jumping (real icons always remain interactive & grabbable)
       for (let i = 0; i < orbEntries.length; i += 1) {
         const o = orbEntries[i];
         const isDragged = draggingOrbIdx === i;
@@ -1533,6 +1923,7 @@ export function ProductionStage1Three({
       window.cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
@@ -1632,27 +2023,6 @@ export function ProductionStage1Three({
     >
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
-
-      {/* Subtle Bottom Guidance Text */}
-      {!dockedTarget && !blockedDropNotice && !inspectedBucket && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3.5 z-10 flex justify-center px-4">
-          <p
-            className={`text-xs font-medium tracking-wide rounded-xl px-3.5 py-1.5 border ${
-              isDarkTheme
-                ? 'text-sky-200/85 bg-[#081226]/90 border-sky-400/25'
-                : 'fluent-3d-popup-pill text-slate-700'
-            }`}
-          >
-            {isDraggingTopic
-              ? hoveredBucketLabel
-                ? `Release to drop into ${hoveredBucketLabel}`
-                : 'Drop icon into any month bucket above'
-              : switchingMonthKey
-                ? 'Updating reference period…'
-                : `Drag any jumping icon into a bucket to ask · Click any filled bucket to view reports (${activeProvider === 'fable' ? 'Fable' : 'Gemini'} active)`}
-          </p>
-        </div>
-      )}
 
       {/* Enlarged Read-Only Report Showcase Inside Clicked Bucket + Gentle Background Music */}
       <AnimatePresence>

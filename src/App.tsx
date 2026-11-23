@@ -2005,7 +2005,7 @@ export default function App() {
       }
       const runNumber = matchingExisting.length + 1;
       const baseTitle = effectiveThreadName || 'Report';
-      const isGenericDomainTitle = /^(career|family|finance|love|health|general)$/i.test(
+      const isGenericDomainTitle = /^(career|family|finance|love|health|litigation|general)$/i.test(
         baseTitle,
       );
       if (isGenericDomainTitle) {

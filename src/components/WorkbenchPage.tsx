@@ -219,6 +219,13 @@ const DOMAIN_HOME_CARDS: Array<{
     backdropEmoji: '🌿',
     icon: 'shield',
   },
+  {
+    domain: 'litigation',
+    label: 'Litigation',
+    description: 'Legal disputes, filings, contracts, and settlement events.',
+    backdropEmoji: '⚖️',
+    icon: 'scales',
+  },
 ];
 
 export interface SendThreadMessagePayload {
@@ -310,6 +317,8 @@ function getDomainIconFromPromptDomain(domain?: PromptDomain): EventCardIconType
       return 'coins';
     case 'health':
       return 'shield';
+    case 'litigation':
+      return 'scales';
     case 'general':
     default:
       return 'heart';
@@ -1492,7 +1501,7 @@ export function WorkbenchPage({
                       )}
                     </AnimatePresence>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 sm:gap-7 place-items-center pt-3 pb-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 sm:gap-9 place-items-center pt-3 pb-5">
                       {DOMAIN_HOME_CARDS.map((card, idx) => {
                         const isActiveDomainBubble = card.domain === activePromptDomain;
                         const isBeingCarried = activeDrag?.card.domain === card.domain;
@@ -2272,7 +2281,7 @@ export function WorkbenchPage({
                     <div
                       role="group"
                       aria-labelledby="composer-domain-label"
-                      className="flex-1 grid grid-cols-5 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
+                      className="flex-1 grid grid-cols-3 sm:grid-cols-6 gap-1 rounded-xl border border-slate-200/90 dark:border-slate-700/85 bg-slate-50/90 dark:bg-slate-950/65 p-0.5"
                     >
                       {PROMPT_DOMAINS.map((domain) => {
                         const selected = activePromptDomain === domain;

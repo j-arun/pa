@@ -16,6 +16,7 @@ export const DOMAIN_PROMPT_FILES: Record<
   family: { fileName: 'family.json', label: 'Family' },
   finance: { fileName: 'finance.json', label: 'Finance' },
   general: { fileName: 'love.json', label: 'Love' },
+  litigation: { fileName: 'litigation.json', label: 'Litigation' },
 };
 
 export function resolvePromptsDir(): string {
@@ -30,6 +31,7 @@ export function getDomainPromptFilePaths(): Record<PromptDomain, string> {
     family: path.join(dir, DOMAIN_PROMPT_FILES.family.fileName),
     finance: path.join(dir, DOMAIN_PROMPT_FILES.finance.fileName),
     general: path.join(dir, DOMAIN_PROMPT_FILES.general.fileName),
+    litigation: path.join(dir, DOMAIN_PROMPT_FILES.litigation.fileName),
   };
 }
 

@@ -32,6 +32,7 @@ const DOMAIN_FOLDER_NAMES: Record<PromptDomain, string> = {
   finance: 'Finance',
   general: 'Love',
   health: 'Health',
+  litigation: 'Litigation',
 };
 
 const ADAPTER_FOLDER_NAMES: Record<AnyAdapterId, string> = {
@@ -108,7 +109,8 @@ function normalizeDomain(rawDomain?: string): PromptDomain {
     rawDomain === 'family' ||
     rawDomain === 'finance' ||
     rawDomain === 'general' ||
-    rawDomain === 'health'
+    rawDomain === 'health' ||
+    rawDomain === 'litigation'
   ) {
     return rawDomain;
   }
@@ -232,6 +234,8 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
       result.promptDomain = 'general';
     } else if (lower === 'health') {
       result.promptDomain = 'health';
+    } else if (lower === 'litigation' || lower === 'legal' || lower === 'dispute' || lower === 'lawsuit') {
+      result.promptDomain = 'litigation';
     } else if (lower === 'local' || lower === 'ollama') {
       result.adapterId = 'ollama';
       result.scope = 'private';
@@ -257,6 +261,7 @@ function parseFolderMetadataFromRelativePath(relPosixPath: string): {
     else if (/^(finance|money)[-_ ]/.test(fileLower)) result.promptDomain = 'finance';
     else if (/^(love|general|relationship)[-_ ]/.test(fileLower)) result.promptDomain = 'general';
     else if (/^health[-_ ]/.test(fileLower)) result.promptDomain = 'health';
+    else if (/^(litigation|legal|dispute|lawsuit)[-_ ]/.test(fileLower)) result.promptDomain = 'litigation';
   }
 
   return result;

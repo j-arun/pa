@@ -340,6 +340,9 @@ function matchDomainExplicit(rawText: string): PromptDomain | null {
   if (/\b(?:health|wellness|vitality|medical|fitness|well-being|wellbeing|sleep)\b/.test(lower)) {
     return 'health';
   }
+  if (/\b(?:litigation|legal|lawsuit|dispute|court|hearing|settlement|arbitration|claim)\b/.test(lower)) {
+    return 'litigation';
+  }
   return null;
 }
 
@@ -400,6 +403,12 @@ function detectDomain(
       domain: 'health',
       score: countMatches(
         /\b(?:health|wellness|vitality|sleep|energy|fatigue|stress|medical|fitness|diet|illness|immunity)\b/g,
+      ),
+    },
+    {
+      domain: 'litigation',
+      score: countMatches(
+        /\b(?:litigation|legal|lawsuit|dispute|court|hearing|settlement|arbitration|claim|contract|counsel|filing)\b/g,
       ),
     },
   ];

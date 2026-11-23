@@ -43,7 +43,8 @@ function normalizeFloatingDomain(rawDomain?: string, relPath?: string): PromptDo
     rawDomain === 'family' ||
     rawDomain === 'finance' ||
     rawDomain === 'general' ||
-    rawDomain === 'health'
+    rawDomain === 'health' ||
+    rawDomain === 'litigation'
   ) {
     if (rawDomain === 'finance' && relPath && /(?:^|\/)family(?:\/|$)/i.test(relPath)) {
       return 'family';
@@ -255,7 +256,7 @@ export function ProductionReportsMenu({
                               <span>{mg.month}</span>
                             </span>
                             <span className="text-[10px] font-mono text-slate-500 tabular-nums">
-                              {mg.items.length}/10
+                              {mg.items.length}/12
                             </span>
                           </button>
 
