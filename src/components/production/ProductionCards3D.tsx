@@ -1311,8 +1311,8 @@ export function ProductionCards3D({
                     }`}
                   />
                   <h2
-                    className={`font-display text-sm font-semibold tracking-tight ${
-                      isDarkTheme ? 'text-white' : 'text-slate-900'
+                    className={`font-sans text-xs font-bold uppercase tracking-wider ${
+                      isDarkTheme ? 'text-sky-300' : 'text-sky-700'
                     }`}
                   >
                     Answer
@@ -1342,14 +1342,14 @@ export function ProductionCards3D({
               </div>
 
               <div
-                className={`flex-1 min-h-0 overflow-y-auto fluent-scroll pr-1 select-text text-[13.5px] sm:text-[14.5px] leading-relaxed ${
+                className={`flex-1 min-h-0 overflow-y-auto fluent-scroll pr-1 select-text font-sans text-xs leading-relaxed ${
                   isDarkTheme ? 'text-slate-100/95' : 'text-slate-800'
                 }`}
               >
                 {answerText ? (
-                  <p className="whitespace-pre-line">{answerText}</p>
+                  <p className="whitespace-pre-line break-words">{answerText}</p>
                 ) : summaryText ? (
-                  <p className="whitespace-pre-line">{summaryText}</p>
+                  <p className="whitespace-pre-line break-words">{summaryText}</p>
                 ) : (
                   <p className={isDarkTheme ? 'text-slate-300' : 'text-slate-600'}>
                     Report insights ready across your timeline below.
