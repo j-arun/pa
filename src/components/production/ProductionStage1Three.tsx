@@ -408,6 +408,7 @@ function drawBucketLabelCanvas(
   isActive: boolean,
   isHovered: boolean,
   isInspected: boolean,
+  isDarkTheme: boolean,
   maxAnisotropy: number,
 ): THREE.CanvasTexture {
   const count = reportsInBucket.length;
@@ -520,33 +521,58 @@ function drawBucketLabelCanvas(
       }
     }
   } else {
-    // Clean resting label at standard bucket size
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 10;
-    ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
-    ctx.font = '800 124px "Plus Jakarta Sans", system-ui, sans-serif';
-    ctx.strokeText(shortMonth.toUpperCase(), width / 2, height / 2 - 58);
-    ctx.fillStyle = isFull
-      ? '#fef3c7'
-      : isActive
-        ? '#f0f9ff'
-        : '#e0f2fe';
-    ctx.fillText(shortMonth.toUpperCase(), width / 2, height / 2 - 58);
-
-    ctx.lineWidth = 7;
-    ctx.font = '700 58px "JetBrains Mono", monospace';
-    ctx.strokeText(String(year), width / 2, height / 2 + 34);
-    ctx.fillStyle = isFull ? '#fde68a' : '#bae6fd';
-    ctx.fillText(String(year), width / 2, height / 2 + 34);
-
+    // Clean resting label inside the shallow Sculptural Crystal Bowl
+    const monthYearText = `${shortMonth} ${year}`;
     const countText = isFull
-      ? `FOLDED · ${BUCKET_CAPACITY}/${BUCKET_CAPACITY}`
+      ? `FULL · ${BUCKET_CAPACITY}/${BUCKET_CAPACITY}`
       : `${count}/${BUCKET_CAPACITY}`;
-    ctx.lineWidth = 6;
-    ctx.font = '700 40px "JetBrains Mono", monospace';
-    ctx.strokeText(countText, width / 2, height / 2 + 114);
-    ctx.fillStyle = isFull ? '#fbbf24' : count > 0 ? '#7dd3fc' : 'rgba(186, 230, 253, 0.65)';
-    ctx.fillText(countText, width / 2, height / 2 + 114);
+
+    ctx.lineJoin = 'round';
+    if (isDarkTheme) {
+      ctx.lineWidth = 9;
+      ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
+      ctx.font = '700 72px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.strokeText(monthYearText, width / 2, height / 2 - 42);
+      ctx.fillStyle = isFull
+        ? '#fef3c7'
+        : isActive
+          ? '#ffffff'
+          : '#f0f9ff';
+      ctx.fillText(monthYearText, width / 2, height / 2 - 42);
+
+      ctx.lineWidth = 6;
+      ctx.font = '600 42px "JetBrains Mono", monospace';
+      ctx.strokeText(countText, width / 2, height / 2 + 24);
+      ctx.fillStyle = isFull
+        ? '#fde68a'
+        : count > 0
+          ? '#bae6fd'
+          : 'rgba(224, 242, 254, 0.72)';
+      ctx.fillText(countText, width / 2, height / 2 + 24);
+    } else {
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.85)';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.font = '700 72px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.strokeText(monthYearText, width / 2, height / 2 - 42);
+      ctx.fillStyle = isFull
+        ? '#b45309'
+        : isActive
+          ? '#0369a1'
+          : '#0f172a';
+      ctx.fillText(monthYearText, width / 2, height / 2 - 42);
+
+      ctx.lineWidth = 5;
+      ctx.font = '600 42px "JetBrains Mono", monospace';
+      ctx.strokeText(countText, width / 2, height / 2 + 24);
+      ctx.fillStyle = isFull
+        ? '#d97706'
+        : count > 0
+          ? '#0284c7'
+          : '#475569';
+      ctx.fillText(countText, width / 2, height / 2 + 24);
+    }
   }
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -967,31 +993,42 @@ export function ProductionStage1Three({
     scene.add(stars);
     disposables.push(starGeo, starMat);
 
-    // 6 Bigger Medium-Size Spaced 3D Month Buckets lifted cleanly above the bottom 5 jumping icons
+    // 6 Wide, Shallow Sculptural Crystal Bowls arched gracefully above the 6 jumping domain icons
     const bucketSlots: Array<{ x: number; y: number; z: number }> = [
-      { x: -6.15, y: 1.38, z: -0.34 },
-      { x: -3.69, y: 2.04, z: -0.18 },
-      { x: -1.23, y: 2.46, z: -0.04 },
-      { x: 1.23, y: 2.46, z: -0.04 },
-      { x: 3.69, y: 2.04, z: -0.18 },
-      { x: 6.15, y: 1.38, z: -0.34 },
+      { x: -6.18, y: 1.18, z: -0.34 },
+      { x: -3.72, y: 1.92, z: -0.18 },
+      { x: -1.24, y: 2.38, z: -0.04 },
+      { x: 1.24, y: 2.38, z: -0.04 },
+      { x: 3.72, y: 1.92, z: -0.18 },
+      { x: 6.18, y: 1.18, z: -0.34 },
     ];
 
-    const bucketTopRadius = 1.06;
-    const bucketBotRadius = 0.80;
-    const bucketHeight = 1.54;
-    const bucketWallGeo = new THREE.CylinderGeometry(bucketTopRadius, bucketBotRadius, bucketHeight, 44, 1, true);
-    const bucketFloorGeo = new THREE.CircleGeometry(bucketBotRadius, 40);
-    const bucketRimGeo = new THREE.TorusGeometry(bucketTopRadius, 0.048, 16, 52);
-    const bucketFootGeo = new THREE.TorusGeometry(bucketBotRadius, 0.032, 14, 44);
-    const bucketLiquidGeo = new THREE.CircleGeometry(0.86, 36);
-    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.58, 0.98);
-    const lidCapGeo = new THREE.CircleGeometry(bucketTopRadius - 0.02, 40);
-    const lidRimGeo = new THREE.TorusGeometry(bucketTopRadius - 0.01, 0.036, 14, 48);
-    const miniBallGeo = new THREE.SphereGeometry(0.135, 22, 22);
+    const BOWL_TILT_X = 0.38;
+    const BOWL_RIM_RADIUS = 1.2;
+    const BOWL_BASE_RADIUS = 0.68;
+
+    // Smooth blown-glass dish profile via LatheGeometry (shallow curved optical bowl)
+    const bowlProfilePoints: THREE.Vector2[] = [
+      new THREE.Vector2(0.0, -0.35),
+      new THREE.Vector2(0.32, -0.345),
+      new THREE.Vector2(0.58, -0.31),
+      new THREE.Vector2(0.82, -0.22),
+      new THREE.Vector2(1.0, -0.07),
+      new THREE.Vector2(1.13, 0.14),
+      new THREE.Vector2(1.2, 0.34),
+      new THREE.Vector2(1.22, 0.365),
+      new THREE.Vector2(1.185, 0.37),
+    ];
+    const bucketWallGeo = new THREE.LatheGeometry(bowlProfilePoints, 56);
+    const bucketRimGeo = new THREE.TorusGeometry(BOWL_RIM_RADIUS, 0.036, 18, 64);
+    const bucketFootGeo = new THREE.TorusGeometry(BOWL_BASE_RADIUS, 0.02, 14, 48);
+    const bucketLiquidGeo = new THREE.CircleGeometry(0.84, 40);
+    const bucketInnerTextGeo = new THREE.PlaneGeometry(1.76, 0.96);
+    const lidCapGeo = new THREE.CircleGeometry(BOWL_RIM_RADIUS - 0.02, 48);
+    const lidRimGeo = new THREE.TorusGeometry(BOWL_RIM_RADIUS - 0.01, 0.032, 16, 56);
+    const miniBallGeo = new THREE.SphereGeometry(0.118, 24, 24);
     disposables.push(
       bucketWallGeo,
-      bucketFloorGeo,
       bucketRimGeo,
       bucketFootGeo,
       bucketLiquidGeo,
@@ -1001,20 +1038,20 @@ export function ProductionStage1Three({
       miniBallGeo,
     );
 
-    // 12 staggered non-overlapping ball slots arranged inside tapered bucket walls
+    // 12 staggered glossy pearl slots nestled naturally along the shallow curved crystal dish floor
     const BALL_LOCAL_OFFSETS: Array<{ x: number; y: number; z: number }> = [
-      { x: -0.44, y: -0.56, z: 0.24 },
-      { x: -0.15, y: -0.56, z: 0.36 },
-      { x: 0.15, y: -0.56, z: 0.36 },
-      { x: 0.44, y: -0.56, z: 0.24 },
-      { x: -0.48, y: -0.36, z: -0.04 },
-      { x: -0.16, y: -0.36, z: 0.08 },
-      { x: 0.16, y: -0.36, z: 0.08 },
-      { x: 0.48, y: -0.36, z: -0.04 },
-      { x: -0.36, y: -0.16, z: -0.24 },
-      { x: -0.12, y: -0.16, z: -0.18 },
-      { x: 0.12, y: -0.16, z: -0.18 },
-      { x: 0.36, y: -0.16, z: -0.24 },
+      { x: -0.52, y: -0.20, z: 0.44 },
+      { x: -0.26, y: -0.23, z: 0.54 },
+      { x: 0.0, y: -0.24, z: 0.57 },
+      { x: 0.26, y: -0.23, z: 0.54 },
+      { x: 0.52, y: -0.20, z: 0.44 },
+      { x: -0.44, y: -0.22, z: 0.18 },
+      { x: -0.15, y: -0.25, z: 0.26 },
+      { x: 0.15, y: -0.25, z: 0.26 },
+      { x: 0.44, y: -0.22, z: 0.18 },
+      { x: -0.28, y: -0.22, z: -0.06 },
+      { x: 0.0, y: -0.24, z: -0.04 },
+      { x: 0.28, y: -0.22, z: -0.06 },
     ];
 
     interface BucketEntry {
@@ -1045,7 +1082,7 @@ export function ProductionStage1Three({
       demoSwellLerp: number;
     }
 
-    const hitSphereGeo = new THREE.SphereGeometry(1.24, 16, 16);
+    const hitSphereGeo = new THREE.SphereGeometry(1.28, 16, 16);
     const invisibleHitMat = new THREE.MeshBasicMaterial({ visible: false });
     disposables.push(hitSphereGeo, invisibleHitMat);
 
@@ -1055,51 +1092,54 @@ export function ProductionStage1Three({
       const basePos = new THREE.Vector3(slot.x, slot.y, slot.z);
       group.position.copy(basePos);
 
+      // Shared tilted dish pivot so bowl glass, rim, base ring, pearls, and seal lid align cleanly
+      const dishPivot = new THREE.Group();
+      dishPivot.rotation.x = BOWL_TILT_X;
+      group.add(dishPivot);
+
       const wallMat = new THREE.MeshPhysicalMaterial({
-        color: 0x7dd3fc,
-        metalness: 0.08,
-        roughness: 0.12,
+        color: 0x93c5fd,
+        metalness: 0.04,
+        roughness: 0.08,
         clearcoat: 1.0,
-        clearcoatRoughness: 0.06,
+        clearcoatRoughness: 0.04,
+        ior: 1.48,
+        reflectivity: 0.9,
+        envMapIntensity: 1.3,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.24,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       const wallMesh = new THREE.Mesh(bucketWallGeo, wallMat);
-      wallMesh.rotation.x = 0.18;
       wallMesh.renderOrder = 4;
-      group.add(wallMesh);
-
-      const floorMesh = new THREE.Mesh(bucketFloorGeo, wallMat);
-      floorMesh.rotation.x = -Math.PI / 2 + 0.18;
-      floorMesh.position.y = -0.75;
-      floorMesh.renderOrder = 1;
-      group.add(floorMesh);
+      dishPivot.add(wallMesh);
 
       const footMat = new THREE.MeshStandardMaterial({
         color: 0x7dd3fc,
         emissive: 0x0369a1,
-        emissiveIntensity: 0.45,
-        metalness: 0.78,
-        roughness: 0.22,
+        emissiveIntensity: 0.35,
+        metalness: 0.72,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.55,
       });
       const footMesh = new THREE.Mesh(bucketFootGeo, footMat);
-      footMesh.rotation.x = Math.PI / 2 + 0.18;
-      footMesh.position.y = -0.75;
-      group.add(footMesh);
+      footMesh.rotation.x = Math.PI / 2;
+      footMesh.position.y = -0.32;
+      dishPivot.add(footMesh);
 
       const rimMat = new THREE.MeshStandardMaterial({
         color: 0xbae6fd,
-        emissive: 0x0284c7,
-        emissiveIntensity: 0.85,
-        metalness: 0.82,
-        roughness: 0.16,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 0.9,
+        metalness: 0.76,
+        roughness: 0.14,
       });
       const rimMesh = new THREE.Mesh(bucketRimGeo, rimMat);
-      rimMesh.rotation.x = Math.PI / 2 + 0.18;
-      rimMesh.position.y = 0.75;
-      group.add(rimMesh);
+      rimMesh.rotation.x = Math.PI / 2;
+      rimMesh.position.y = 0.355;
+      dishPivot.add(rimMesh);
 
       const liquidMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
@@ -1109,46 +1149,45 @@ export function ProductionStage1Three({
         side: THREE.DoubleSide,
       });
       const liquidMesh = new THREE.Mesh(bucketLiquidGeo, liquidMat);
-      liquidMesh.rotation.x = -Math.PI / 2 + 0.18;
-      liquidMesh.position.y = -0.45;
+      liquidMesh.rotation.x = -Math.PI / 2;
+      liquidMesh.position.y = -0.24;
       liquidMesh.renderOrder = 2;
-      group.add(liquidMesh);
+      dishPivot.add(liquidMesh);
 
-      // 12 pre-allocated report balls sitting inside the bottom of each bucket
+      // 12 pre-allocated glossy domain pearls resting inside the curved crystal dish
       const reportBalls = BALL_LOCAL_OFFSETS.map((offset) => {
         const mat = new THREE.MeshPhysicalMaterial({
           color: 0x38bdf8,
           emissive: 0x0284c7,
           emissiveIntensity: 0.55,
-          metalness: 0.18,
-          roughness: 0.14,
+          metalness: 0.14,
+          roughness: 0.1,
           clearcoat: 1.0,
+          clearcoatRoughness: 0.05,
         });
         const mesh = new THREE.Mesh(miniBallGeo, mat);
         mesh.position.set(offset.x, offset.y, offset.z);
         mesh.visible = false;
         mesh.renderOrder = 3;
-        group.add(mesh);
+        dishPivot.add(mesh);
         disposables.push(mat);
         return { mesh, mat, baseOffset: offset };
       });
 
-      // Flush crystal seal cap that settles cleanly ON TOP ONLY when bucket hits 12/12 reports
-      // (open buckets have zero clutter/flaps sticking up on top)
+      // Flush golden crystal seal settles gently over the bowl rim ONLY at 12/12 reports
       const sealLidGroup = new THREE.Group();
-      sealLidGroup.position.set(0, 0.75, 0);
-      sealLidGroup.rotation.x = 0.18;
+      sealLidGroup.position.set(0, 0.36, 0);
       sealLidGroup.visible = false;
 
       const sealLidMat = new THREE.MeshPhysicalMaterial({
         color: 0xfde68a,
         emissive: 0xf59e0b,
         emissiveIntensity: 0.35,
-        metalness: 0.25,
-        roughness: 0.12,
+        metalness: 0.2,
+        roughness: 0.1,
         clearcoat: 1.0,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.42,
         side: THREE.DoubleSide,
       });
       const sealCapMesh = new THREE.Mesh(lidCapGeo, sealLidMat);
@@ -1164,7 +1203,7 @@ export function ProductionStage1Three({
       const sealRimMesh = new THREE.Mesh(lidRimGeo, sealRimMat);
       sealRimMesh.rotation.x = Math.PI / 2;
       sealLidGroup.add(sealCapMesh, sealRimMesh);
-      group.add(sealLidGroup);
+      dishPivot.add(sealLidGroup);
       disposables.push(sealLidMat, sealRimMat);
 
       const initialTex = drawBucketLabelCanvas(
@@ -1174,6 +1213,7 @@ export function ProductionStage1Three({
         false,
         false,
         false,
+        stateRef.current.isDarkTheme,
         maxAnisotropy,
       );
       const badgeMat = new THREE.MeshBasicMaterial({
@@ -1183,8 +1223,8 @@ export function ProductionStage1Three({
         side: THREE.DoubleSide,
       });
       const badgeMesh = new THREE.Mesh(bucketInnerTextGeo, badgeMat);
-      badgeMesh.position.set(0, 0.08, 0.08);
-      badgeMesh.rotation.x = 0.12;
+      badgeMesh.position.set(0, 0.11, 0.18);
+      badgeMesh.rotation.x = 0.1;
       badgeMesh.renderOrder = 5;
       group.add(badgeMesh);
 
@@ -1333,7 +1373,7 @@ export function ProductionStage1Three({
     demoGhostGroup.visible = false;
     scene.add(demoGhostGroup);
 
-    const dropRippleGeo = new THREE.RingGeometry(0.45, 0.62, 42);
+    const dropRippleGeo = new THREE.RingGeometry(0.55, 0.72, 48);
     const dropRippleMat = new THREE.MeshBasicMaterial({
       color: 0xbae6fd,
       transparent: true,
@@ -1343,7 +1383,7 @@ export function ProductionStage1Three({
       blending: THREE.AdditiveBlending,
     });
     const dropRippleMesh = new THREE.Mesh(dropRippleGeo, dropRippleMat);
-    dropRippleMesh.rotation.x = Math.PI / 2 + 0.18;
+    dropRippleMesh.rotation.x = Math.PI / 2 + BOWL_TILT_X;
     dropRippleMesh.visible = false;
     dropRippleMesh.renderOrder = 7;
     scene.add(dropRippleMesh);
@@ -1901,10 +1941,10 @@ export function ProductionStage1Three({
           dropRippleMesh.visible = true;
           dropRippleMesh.position.set(
             rb.group.position.x,
-            rb.group.position.y + 0.72 * rb.group.scale.y,
-            rb.group.position.z + 0.05,
+            rb.group.position.y + 0.32 * rb.group.scale.y,
+            rb.group.position.z + 0.16 * rb.group.scale.z,
           );
-          const rs = (0.65 + easeInOutCubic(rippleP) * 1.15) * rb.group.scale.x;
+          const rs = (0.72 + easeInOutCubic(rippleP) * 1.25) * rb.group.scale.x;
           dropRippleMesh.scale.setScalar(rs);
           dropRippleMat.opacity = (1 - rippleP) * 0.65;
         }
@@ -1986,7 +2026,9 @@ export function ProductionStage1Three({
         const s = THREE.MathUtils.lerp(demoScaled, 2.38, b.inspectLerp);
         b.group.scale.set(s, s, s);
 
+        const isDark = stateRef.current.isDarkTheme;
         const emphasized = Math.max(b.hoverLerp, b.inspectLerp, b.demoSwellLerp * 0.92);
+        b.wallMat.color.setHex(isFull ? 0xfde68a : isDark ? 0x93c5fd : 0x38bdf8);
         b.wallMat.opacity = isInspected
           ? 0.34
           : anyBucketInspected
@@ -1999,11 +2041,19 @@ export function ProductionStage1Three({
                   ? 0.3
                   : isActive
                     ? 0.26
-                    : 0.2;
+                    : isDark
+                      ? 0.22
+                      : 0.28;
         b.rimMat.color.setHex(
-          isFull ? 0xfde68a : isHovered || isInspected || isDemoHovered || isDemoSwelled ? 0xe0f2fe : 0xbae6fd,
+          isFull
+            ? 0xfde68a
+            : isDark
+              ? isHovered || isInspected || isDemoHovered || isDemoSwelled
+                ? 0xe0f2fe
+                : 0xbae6fd
+              : 0x0284c7,
         );
-        b.rimMat.emissive.setHex(isFull ? 0xd97706 : 0x0284c7);
+        b.rimMat.emissive.setHex(isFull ? 0xd97706 : isDark ? 0x0284c7 : 0x38bdf8);
         b.rimMat.emissiveIntensity = isInspected
           ? 1.9
           : isHovered
@@ -2014,33 +2064,35 @@ export function ProductionStage1Three({
                 ? 1.35
                 : isActive
                   ? 1.15
-                  : 0.65;
-        b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
+                  : isDark
+                    ? 0.65
+                    : 0.45;
+        b.footMat.color.setHex(isFull ? 0xfde68a : isDark ? 0x7dd3fc : 0x0ea5e9);
         b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
-        // Dynamic fill surface rising cleanly inside the bucket (including +1 extra demo ball)
+        // Dynamic crystal sheen gently rising inside the shallow bowl (including +1 extra demo ball)
         const fillRatio = Math.min(1, visualBallCount / BUCKET_CAPACITY);
         b.liquidMesh.position.y = THREE.MathUtils.damp(
           b.liquidMesh.position.y,
-          -0.52 + fillRatio * 0.84,
+          -0.25 + fillRatio * 0.22,
           7,
           dt,
         );
-        const liquidRadiusScale = 0.88 + fillRatio * 0.24;
+        const liquidRadiusScale = 0.78 + fillRatio * 0.28;
         b.liquidMesh.scale.setScalar(liquidRadiusScale);
         b.liquidMat.opacity = isInspected
-          ? 0.36
+          ? 0.34
           : anyBucketInspected
             ? 0.06
             : isHovered || b.demoSwellLerp > 0.25
-              ? 0.4
+              ? 0.36
               : isFull
-                ? 0.34
+                ? 0.32
                 : isActive
-                  ? 0.25
-                  : 0.15;
+                  ? 0.24
+                  : 0.14;
 
-        // Open buckets stay completely clean on top; flush crystal lid closes onto rim ONLY at 12/12
+        // Open crystal bowls stay clean; flush golden crystal seal settles ONLY at 12/12
         b.sealBlend = THREE.MathUtils.damp(
           b.sealBlend,
           isFull && !isInspected && !isDemoSwelled ? 1 : 0,
@@ -2049,13 +2101,13 @@ export function ProductionStage1Three({
         );
         b.sealLidGroup.visible = b.sealBlend > 0.02;
         if (b.sealLidGroup.visible) {
-          b.sealLidGroup.position.y = THREE.MathUtils.lerp(0.98, 0.75, b.sealBlend);
+          b.sealLidGroup.position.y = THREE.MathUtils.lerp(0.56, 0.36, b.sealBlend);
           b.sealLidGroup.scale.setScalar(THREE.MathUtils.lerp(0.84, 1.0, b.sealBlend));
-          b.sealLidMat.opacity = b.sealBlend * 0.48;
+          b.sealLidMat.opacity = b.sealBlend * 0.42;
           b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
         }
 
-        // Interior domain balls (existing + Step 1 connected extra ball) swell bigger and float inside the bucket
+        // Glossy domain pearls resting cleanly along the curved crystal dish floor
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
           const ball = b.reportBalls[bi];
           if (bi < reportCount) {
@@ -2066,43 +2118,42 @@ export function ProductionStage1Three({
             ball.mat.emissiveIntensity =
               (entry.provider === 'fable' ? 0.85 : 0.55) + emphasized * 0.55;
             const lingerWave =
-              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.018 + emphasized * 0.075);
-            const swayX = Math.cos(elapsed * 1.5 + bi * 1.1) * emphasized * 0.075;
+              Math.sin(elapsed * 2.2 + bi * 0.85) * (0.014 + emphasized * 0.055);
+            const swayX = Math.cos(elapsed * 1.5 + bi * 1.1) * emphasized * 0.055;
             ball.mesh.position.set(
-              ball.baseOffset.x * (1 + emphasized * 0.28) + swayX,
-              ball.baseOffset.y + emphasized * 0.36 + lingerWave,
-              ball.baseOffset.z * (1 + emphasized * 0.22),
+              ball.baseOffset.x * (1 + emphasized * 0.18) + swayX,
+              ball.baseOffset.y + emphasized * 0.2 + lingerWave,
+              ball.baseOffset.z * (1 + emphasized * 0.12),
             );
-            const ballScale = 1 + emphasized * 0.95;
+            const ballScale = 1 + emphasized * 0.82;
             ball.mesh.scale.setScalar(ballScale);
           } else if (hasExtraDemoBall && bi === reportCount) {
-            // The +1 extra ball added by Step 1's drop into this exact bucket
             ball.mesh.visible = true;
             ball.mat.color.set(demoExtraBallAccent);
             ball.mat.emissive.set(demoExtraBallAccent);
             ball.mat.emissiveIntensity = 1.05 + emphasized * 0.65;
             const lingerWave =
-              Math.sin(elapsed * 2.5 + bi * 0.85) * (0.025 + emphasized * 0.085);
-            const swayX = Math.cos(elapsed * 1.6 + bi * 1.1) * emphasized * 0.085;
-            const dropLiftY = (1 - demoExtraBallPop) * 0.45;
+              Math.sin(elapsed * 2.5 + bi * 0.85) * (0.02 + emphasized * 0.065);
+            const swayX = Math.cos(elapsed * 1.6 + bi * 1.1) * emphasized * 0.065;
+            const dropLiftY = (1 - demoExtraBallPop) * 0.38;
             ball.mesh.position.set(
-              ball.baseOffset.x * (1 + emphasized * 0.28) + swayX,
-              ball.baseOffset.y + emphasized * 0.38 + lingerWave + dropLiftY,
-              ball.baseOffset.z * (1 + emphasized * 0.22),
+              ball.baseOffset.x * (1 + emphasized * 0.18) + swayX,
+              ball.baseOffset.y + emphasized * 0.22 + lingerWave + dropLiftY,
+              ball.baseOffset.z * (1 + emphasized * 0.12),
             );
-            const ballScale = (1 + emphasized * 1.02) * Math.max(0.05, demoExtraBallPop);
+            const ballScale = (1 + emphasized * 0.9) * Math.max(0.05, demoExtraBallPop);
             ball.mesh.scale.setScalar(ballScale);
           } else {
             ball.mesh.visible = false;
           }
         }
 
-        // Update inner label + enlarged existing-report preview pills when hovered/inspected or count changes
+        // Update inner label + enlarged existing-report preview pills when hovered/inspected or theme changes
         const isMinimalRimMode = isInspected || isDemoSwelled;
         const summarySig = reportsInBucket
           .map((r) => `${r.domain}:${r.provider}:${r.shortSummary}`)
           .join('|');
-        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isMinimalRimMode ? 1 : 0}:${isHovered ? summarySig : ''}`;
+        const sig = `${reportCount}:${isActive ? 1 : 0}:${isHovered ? 1 : 0}:${isMinimalRimMode ? 1 : 0}:${isDark ? 1 : 0}:${isHovered ? summarySig : ''}`;
         if (b.cachedSignature !== sig) {
           b.cachedSignature = sig;
           const nextTex = drawBucketLabelCanvas(
@@ -2112,6 +2163,7 @@ export function ProductionStage1Three({
             isActive,
             isHovered,
             isMinimalRimMode,
+            isDark,
             maxAnisotropy,
           );
           const oldTex = b.activeTex;
