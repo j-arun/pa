@@ -2,10 +2,8 @@ import {
   Check,
   Cloud,
   Copy,
-  FolderOpen,
   Home,
   Lock,
-  Music,
   PanelLeft,
   PanelRight,
   Settings,
@@ -2701,8 +2699,8 @@ export default function App() {
                 )}
                 onToggleSpeakSummary={() => {
                   const summaryText =
-                    productionStageData.readOutSections?.summary?.trim() ||
                     productionStageData.readOutSections?.answer?.trim() ||
+                    productionStageData.readOutSections?.summary?.trim() ||
                     '';
                   if (!summaryText || !productionStageData.latestReplyTurn) return;
                   speech.speakText(
@@ -2996,63 +2994,15 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0 min-w-0">
-              <span
-                title={`Production Reports Directory: ${prodReportsDirDisplay}`}
-                className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono truncate max-w-[260px] ${
-                  isProdDarkTheme ? 'text-slate-400' : 'text-slate-600'
-                }`}
-              >
-                <FolderOpen
-                  className={`w-3.5 h-3.5 shrink-0 ${
-                    isProdDarkTheme ? 'text-sky-400/80' : 'text-sky-600'
-                  }`}
-                />
-                <span className="truncate">Reports: {prodReportsDirDisplay}</span>
-              </span>
-              <span
-                className={`hidden sm:inline ${
-                  isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'
-                }`}
-              >
-                |
-              </span>
-              <button
-                type="button"
-                aria-pressed={isProdMusicEnabled}
-                onClick={toggleProdMusic}
-                title={
-                  isProdMusicEnabled
-                    ? 'Background music is On — click to turn Off'
-                    : 'Background music is Off — click to turn On'
-                }
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-semibold leading-none transition-colors shrink-0 cursor-pointer ${
-                  isProdMusicEnabled
-                    ? isProdDarkTheme
-                      ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
-                      : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
-                    : isProdDarkTheme
-                      ? 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                }`}
-              >
-                <Music
-                  className={`w-3.5 h-3.5 shrink-0 ${
-                    isProdMusicEnabled
-                      ? isProdDarkTheme
-                        ? 'text-sky-300'
-                        : 'text-sky-600'
-                      : isProdDarkTheme
-                        ? 'text-slate-400'
-                        : 'text-slate-500'
-                  }`}
-                />
-                <span>{isProdMusicEnabled ? 'Music On' : 'Music Off'}</span>
-              </button>
-              <span className={isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'}>|</span>
+            <div className="flex items-center gap-2 shrink-0 min-w-0">
               <button
                 type="button"
                 aria-pressed={settings.voice.prodSummarySpeakerEnabled !== false}
+                aria-label={
+                  settings.voice.prodSummarySpeakerEnabled !== false
+                    ? 'Mute speaker'
+                    : 'Unmute speaker'
+                }
                 onClick={() => {
                   const next = settings.voice.prodSummarySpeakerEnabled === false;
                   if (!next) {
@@ -3068,17 +3018,17 @@ export default function App() {
                 }}
                 title={
                   settings.voice.prodSummarySpeakerEnabled !== false
-                    ? 'Speaker icon is On — click to turn Off'
-                    : 'Speaker icon is Off — click to turn On'
+                    ? 'Speaker On — click to mute'
+                    : 'Speaker Off — click to unmute'
                 }
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-semibold leading-none transition-colors shrink-0 cursor-pointer ${
+                className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors shrink-0 cursor-pointer ${
                   settings.voice.prodSummarySpeakerEnabled !== false
                     ? isProdDarkTheme
                       ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
                       : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
                     : isProdDarkTheme
                       ? 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                      : 'border-slate-200 bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200'
                 }`}
               >
                 {settings.voice.prodSummarySpeakerEnabled !== false ? (
@@ -3094,11 +3044,6 @@ export default function App() {
                     }`}
                   />
                 )}
-                <span>
-                  {settings.voice.prodSummarySpeakerEnabled !== false
-                    ? 'Speaker On'
-                    : 'Speaker Off'}
-                </span>
               </button>
               <span className={isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'}>|</span>
               <button
