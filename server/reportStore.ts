@@ -576,6 +576,7 @@ export function saveStoredReport(
   reportsDir: string;
   fileName: string;
   filePath: string;
+  relativePath: string;
   record: RatedThreadRecord;
 } {
   const { root, metaDir } = ensureReportsFolders(customReportsDir);
@@ -667,6 +668,7 @@ export function saveStoredReport(
     reportsDir: root,
     fileName,
     filePath: htmlFilePath,
+    relativePath,
     record: updatedRecord,
   };
 }

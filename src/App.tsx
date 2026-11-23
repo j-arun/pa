@@ -320,7 +320,7 @@ export default function App() {
         }
         if (Array.isArray(data.reports)) {
           const diskReports = data.reports.map((rec) => ({ ...rec, isFinalized: true }));
-          if (isProductionApp) {
+          if (isProductionApp && !reportsHydratedRef.current) {
             setRatedThreads(
               [...diskReports].sort(
                 (a, b) => Date.parse(b.ratedAt || '') - Date.parse(a.ratedAt || ''),
@@ -336,12 +336,18 @@ export default function App() {
                 if (!byId.has(localRec.id) && !localRec.isExternalFile) {
                   byId.set(localRec.id, localRec);
                   // Persist browser-only report onto disk folder too
-                  void fetch(`/api/reports/${encodeURIComponent(localRec.id)}`, {
+                  const syncQuery = isProductionApp ? '?mode=production' : '';
+                  void fetch(`/api/reports/${encodeURIComponent(localRec.id)}${syncQuery}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       record: localRec,
-                      reportsDir: data.reportsDir || dirOverride,
+                      ...(isProductionApp
+                        ? {
+                            mode: 'production',
+                            ...(effectiveProdDir ? { reportsDir: effectiveProdDir } : {}),
+                          }
+                        : { reportsDir: data.reportsDir || dirOverride }),
                     }),
                   }).catch(() => undefined);
                 }
@@ -373,6 +379,7 @@ export default function App() {
       try {
         const query = isProductionApp ? '?mode=production' : '';
         const prodDir = (settingsRef.current.prodReportsDir || '').trim();
+        const devDir = dirOverride ?? settingsRef.current.reportsDir;
         const res = await fetch(`/api/reports/${encodeURIComponent(record.id)}${query}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -384,21 +391,28 @@ export default function App() {
                   mode: 'production',
                   ...(prodDir ? { reportsDir: prodDir } : {}),
                 }
-              : { reportsDir: dirOverride ?? settings.reportsDir }),
+              : { reportsDir: devDir }),
           }),
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          const errPayload = (await res.json().catch(() => null)) as { error?: string } | null;
+          const errMsg = errPayload?.error || `HTTP ${res.status} saving report to disk.`;
+          setMonthSwitchError(`Unable to save report to disk: ${errMsg}`);
+          return;
+        }
         const saved = (await res.json()) as {
           fileName?: string;
           filePath?: string;
           relativePath?: string;
+          record?: RatedThreadRecord;
           reportsDir?: string;
           displayReportsDir?: string;
         };
         if (isProductionApp && saved.displayReportsDir) {
           setProdReportsDirDisplay(saved.displayReportsDir);
         }
-        if (saved.filePath || saved.fileName || saved.relativePath) {
+        const resolvedRelPath = saved.relativePath || saved.record?.relativePath;
+        if (saved.filePath || saved.fileName || resolvedRelPath) {
           setRatedThreads((prev) =>
             prev.map((item) =>
               item.id === record.id
@@ -406,17 +420,18 @@ export default function App() {
                     ...item,
                     fileName: saved.fileName || item.fileName,
                     filePath: saved.filePath || item.filePath,
-                    relativePath: saved.relativePath || item.relativePath,
+                    relativePath: resolvedRelPath || item.relativePath,
                   }
                 : item,
             ),
           );
         }
-      } catch {
-        // Non-fatal if server unavailable
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unable to save report to disk.';
+        setMonthSwitchError(`Unable to save report to disk: ${msg}`);
       }
     },
-    [isProductionApp, settings.reportsDir],
+    [isProductionApp],
   );
 
   const persistSettingsToFile = useCallback(async (nextSettings: WorkbenchSettings) => {
@@ -1507,19 +1522,29 @@ export default function App() {
     const targetScope: ConversationScope = isProductionApp
       ? 'public'
       : (userTurn.scope ?? scope);
+    const turnPublicAdapter: PublicAdapterId | null =
+      userTurn.adapterId === 'fable' ||
+      userTurn.adapterId === 'gemini' ||
+      userTurn.adapterId === 'claude'
+        ? userTurn.adapterId
+        : null;
     const activeProdPublicAdapter: PublicAdapterId =
-      settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+      turnPublicAdapter === 'fable' || turnPublicAdapter === 'gemini'
+        ? turnPublicAdapter
+        : settingsRef.current.publicLlm.activeAdapter === 'fable'
+          ? 'fable'
+          : 'gemini';
     const targetPublicAdapter: PublicAdapterId = isProductionApp
       ? activeProdPublicAdapter
-      : settings.publicLlm.activeAdapter;
+      : (turnPublicAdapter ?? settingsRef.current.publicLlm.activeAdapter);
     const targetAdapterId: AnyAdapterId =
       targetScope === 'private'
-        ? settings.privateLlm.activeAdapter
+        ? settingsRef.current.privateLlm.activeAdapter
         : targetPublicAdapter;
     const targetModel =
       targetScope === 'private'
-        ? settings.privateLlm.selectedModel || 'unselected'
-        : settings.publicLlm.adapters[targetPublicAdapter].model;
+        ? settingsRef.current.privateLlm.selectedModel || 'unselected'
+        : settingsRef.current.publicLlm.adapters[targetPublicAdapter].model;
     const maxHistory = Math.min(32, Math.max(2, settings.privateLlm.maxHistoryTurns || 16));
     const targetCachedContext = (
       overrideCachedContext !== undefined
@@ -1659,22 +1684,22 @@ export default function App() {
     const options =
       targetScope === 'private'
         ? {
-            model: settings.privateLlm.selectedModel,
+            model: settingsRef.current.privateLlm.selectedModel,
             systemInstruction: targetSystemInstruction,
-            ollamaBaseUrl: settings.privateLlm.ollamaBaseUrl,
-            contextWindow: settings.privateLlm.contextWindow,
-            keepAlive: settings.privateLlm.keepAlive,
+            ollamaBaseUrl: settingsRef.current.privateLlm.ollamaBaseUrl,
+            contextWindow: settingsRef.current.privateLlm.contextWindow,
+            keepAlive: settingsRef.current.privateLlm.keepAlive,
             requestTimeoutSeconds: timeoutSec,
           }
         : {
-            model: settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model,
+            model: settingsRef.current.publicLlm.adapters[targetPublicAdapter].model,
             systemInstruction: targetSystemInstruction,
             thinkingLevel:
-              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].thinkingLevel,
+              settingsRef.current.publicLlm.adapters[targetPublicAdapter].thinkingLevel,
             endpointUrl:
-              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].endpointUrl,
+              settingsRef.current.publicLlm.adapters[targetPublicAdapter].endpointUrl,
             maxTokens:
-              settings.publicLlm.adapters[settings.publicLlm.activeAdapter].maxTokens,
+              settingsRef.current.publicLlm.adapters[targetPublicAdapter].maxTokens,
             requestTimeoutSeconds: timeoutSec,
           };
 
@@ -1808,25 +1833,23 @@ export default function App() {
         assistantTurn,
       ]);
 
-      // In Production Mode, save completed reports silently into backend folder structure (no left-hand Reports UI)
-      if (isProductionApp) {
-        const finalizedTurns = [...effectiveBaseTurns, assistantTurn].map((t) =>
-          t.id === rootUserTurn.id && t.role === 'user'
-            ? { ...t, isFinalized: true }
-            : t,
-        );
-        const silentRecord: RatedThreadRecord = {
-          id: rootUserTurn.id,
-          turns: finalizedTurns,
-          ratedAt: nowIso,
-          isFinalized: true,
-        };
-        setRatedThreads((prevRated) => {
-          const withoutCurrent = prevRated.filter((item) => item.id !== rootUserTurn.id);
-          return [silentRecord, ...withoutCurrent];
-        });
-        void syncReportToDisk(silentRecord, htmlReport);
-      }
+      // Save completed report into state (left-hand Reports & Stage 1 buckets) and disk immediately when response arrives
+      const savedTurns = [...effectiveBaseTurns, assistantTurn].map((t) =>
+        isProductionApp && t.id === rootUserTurn.id && t.role === 'user'
+          ? { ...t, isFinalized: true }
+          : t,
+      );
+      const completedRecord: RatedThreadRecord = {
+        id: rootUserTurn.id,
+        turns: savedTurns,
+        ratedAt: nowIso,
+        isFinalized: isProductionApp,
+      };
+      setRatedThreads((prevRated) => {
+        const withoutCurrent = prevRated.filter((item) => item.id !== rootUserTurn.id);
+        return [completedRecord, ...withoutCurrent];
+      });
+      void syncReportToDisk(completedRecord, htmlReport);
 
       setSessionTokens((prev) => prev + totalTokens);
       setTelemetry((prev) => ({
@@ -2781,7 +2804,9 @@ export default function App() {
                 turns.some((t) => t.role === 'user' && t.isFinalized) ||
                   (() => {
                     const rootQ = turns.find((t) => t.role === 'user');
-                    return rootQ ? ratedThreads.some((r) => r.id === rootQ.id) : false;
+                    return rootQ
+                      ? ratedThreads.some((r) => r.id === rootQ.id && r.isFinalized)
+                      : false;
                   })(),
               )}
               activePromptDomain={activePromptDomain}

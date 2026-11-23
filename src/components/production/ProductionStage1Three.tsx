@@ -645,13 +645,28 @@ export function ProductionStage1Three({
       const provider: 'gemini' | 'fable' = rawProvider === 'fable' ? 'fable' : 'gemini';
       if (rawProvider !== 'gemini' && rawProvider !== 'fable') continue;
 
-      const monthName = (qTurn.threadMonth || '').trim().toLowerCase();
-      const matchedMonth = stageQuickMonths.find(
-        (m) =>
-          m.year === qTurn.threadYear &&
-          (getMonthNameFromNumber(m.month)?.toLowerCase() === monthName ||
-            m.shortMonth.toLowerCase() === monthName.slice(0, 3)),
-      );
+      const fallbackIso = aTurn?.timestamp || qTurn.timestamp || rec.ratedAt;
+      const fallbackDate = fallbackIso ? new Date(fallbackIso) : new Date();
+      const safeFallbackDate = Number.isNaN(fallbackDate.getTime()) ? new Date() : fallbackDate;
+
+      const rawMonth = (qTurn.threadMonth || '').trim().toLowerCase();
+      const targetYear =
+        typeof qTurn.threadYear === 'number' && Number.isFinite(qTurn.threadYear)
+          ? Math.round(qTurn.threadYear)
+          : Number.isFinite(Number(qTurn.threadYear)) && Number(qTurn.threadYear) >= 1990
+            ? Math.round(Number(qTurn.threadYear))
+            : safeFallbackDate.getFullYear();
+      const targetMonthFallback = safeFallbackDate.getMonth() + 1;
+
+      const matchedMonth = stageQuickMonths.find((m) => {
+        if (m.year !== targetYear) return false;
+        if (!rawMonth) return m.month === targetMonthFallback;
+        return (
+          getMonthNameFromNumber(m.month)?.toLowerCase() === rawMonth ||
+          m.shortMonth.toLowerCase() === rawMonth.slice(0, 3) ||
+          String(m.month) === rawMonth
+        );
+      });
       if (!matchedMonth) continue;
 
       const domain = normalizeRecordDomain(qTurn.promptDomain, rec.relativePath);
