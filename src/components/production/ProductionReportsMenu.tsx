@@ -273,12 +273,8 @@ export function ProductionReportsMenu({
       exit={{ x: -18, opacity: 0, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 380, damping: 32 }}
       style={menuPos ? { left: menuPos.x, top: menuPos.y } : undefined}
-      className={`fixed z-30 flex flex-col w-[204px] sm:w-[216px] max-w-[calc(100vw-1rem)] max-h-[min(52vh,calc(100vh-8.25rem))] rounded-2xl border backdrop-blur-xl overflow-hidden transition-colors ${
+      className={`pa-glass-card fixed z-30 flex flex-col w-[204px] sm:w-[216px] max-w-[calc(100vw-1rem)] max-h-[min(52vh,calc(100vh-8.25rem))] rounded-2xl overflow-hidden transition-colors ${
         menuPos ? '' : 'top-[4.25rem] left-3 sm:left-4'
-      } ${
-        isDarkTheme
-          ? 'border-slate-700/80 bg-[#0b1222]/94 shadow-[0_22px_54px_-12px_rgba(2,6,23,0.78)] text-slate-100'
-          : 'border-sky-200/85 bg-[#f4f9ff]/94 shadow-[0_20px_48px_-12px_rgba(15,23,42,0.20)] text-slate-900'
       }`}
     >
       {/* Movable Drag Bar */}
@@ -330,14 +326,14 @@ export function ProductionReportsMenu({
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
         } ${
           isDarkTheme
-            ? 'border-slate-800/85 bg-[#080d1a]/80 text-slate-300'
-            : 'border-sky-200/75 bg-white/70 text-slate-700'
+            ? 'border-white/12 bg-white/6 text-slate-200'
+            : 'border-white/70 bg-white/55 text-slate-700'
         }`}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <GripHorizontal
             className={`w-3.5 h-3.5 shrink-0 ${
-              isDarkTheme ? 'text-slate-400' : 'text-slate-500'
+              isDarkTheme ? 'text-slate-300' : 'text-slate-500'
             }`}
           />
           <span className="text-[11px] font-semibold tracking-wide truncate">Reports</span>

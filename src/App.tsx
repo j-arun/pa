@@ -2274,7 +2274,11 @@ export default function App() {
   }, [isReportRunning]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex mica-canvas text-slate-900 dark:text-slate-100 select-none sm:select-auto">
+    <div
+      className={`h-screen w-screen overflow-hidden flex text-slate-900 dark:text-slate-100 select-none sm:select-auto ${
+        isProductionApp ? 'pa-prod-backdrop' : 'mica-canvas'
+      }`}
+    >
       {/* Left WinUI 3 NavigationView Rail (Dev Mode ONLY — Hidden in Production Mode and while a report is running) */}
       {!isProductionApp && !isReportRunning && isLeftRailOpen && (
         <>
@@ -2351,10 +2355,10 @@ export default function App() {
         {isProductionApp ? (
           /* Minimal Production Header: Left Reports Toggle + Settings Icon (after toggle) + Right Watch Out Toggle */
           <header
-            className={`relative h-14 shrink-0 px-4 sm:px-6 border-b flex items-center justify-between gap-4 transition-colors ${
+            className={`relative h-14 shrink-0 px-4 sm:px-6 border-b backdrop-blur-2xl flex items-center justify-between gap-4 transition-colors ${
               isProdDarkTheme
-                ? 'border-slate-800/80 bg-[#080d1a]/95'
-                : 'border-slate-200/85 bg-white/90 backdrop-blur-xl'
+                ? 'border-white/12 bg-[#0c1426]/60'
+                : 'border-white/80 bg-white/65'
             }`}
           >
             <div className="flex items-center gap-2 shrink-0">
@@ -2371,14 +2375,14 @@ export default function App() {
                       ? `Hide Reports (${prodReportsDirDisplay})`
                       : `Show Reports (${prodReportsDirDisplay})`
                   }
-                  className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                  className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer backdrop-blur-md ${
                     isProdDarkTheme
                       ? isProdReportsMenuOpen
-                        ? 'bg-slate-800 border-sky-400/70 text-sky-300'
-                        : 'border-slate-700/80 bg-slate-800/85 text-sky-400 hover:bg-slate-800 hover:border-slate-600'
+                        ? 'bg-sky-500/20 border-sky-400/70 text-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.22)]'
+                        : 'border-white/15 bg-white/8 text-sky-300 hover:bg-white/15 hover:border-white/25'
                       : isProdReportsMenuOpen
-                        ? 'bg-sky-50 border-sky-400 text-sky-700'
-                        : 'border-slate-200 bg-white text-sky-600 hover:bg-slate-50 hover:border-slate-300'
+                        ? 'bg-sky-500/15 border-sky-400 text-sky-700'
+                        : 'border-white/85 bg-white/75 text-sky-600 hover:bg-white/95 hover:border-sky-300'
                   }`}
                 >
                   <PanelLeft className="w-4 h-4" />
@@ -2393,14 +2397,14 @@ export default function App() {
                 aria-pressed={isSettingsOpen}
                 aria-label="Settings"
                 title="Settings"
-                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer backdrop-blur-md ${
                   isProdDarkTheme
                     ? isSettingsOpen
-                      ? 'bg-slate-800 border-sky-400/70 text-sky-300'
-                      : 'border-slate-700/80 bg-slate-800/85 text-slate-300 hover:text-sky-300 hover:bg-slate-800 hover:border-slate-600'
+                      ? 'bg-sky-500/20 border-sky-400/70 text-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.22)]'
+                      : 'border-white/15 bg-white/8 text-slate-200 hover:text-sky-300 hover:bg-white/15 hover:border-white/25'
                     : isSettingsOpen
-                      ? 'bg-sky-50 border-sky-400 text-sky-700'
-                      : 'border-slate-200 bg-white text-slate-700 hover:text-sky-600 hover:bg-slate-50 hover:border-slate-300'
+                      ? 'bg-sky-500/15 border-sky-400 text-sky-700'
+                      : 'border-white/85 bg-white/75 text-slate-700 hover:text-sky-600 hover:bg-white/95 hover:border-sky-300'
                 }`}
               >
                 <Settings className="w-4 h-4" />
@@ -2414,14 +2418,14 @@ export default function App() {
                   onClick={() => setIsContextRailOpen((prev) => !prev)}
                   aria-label={isContextRailVisible ? 'Hide Watch Out Timeline' : 'Show Watch Out Timeline'}
                   aria-pressed={isContextRailVisible}
-                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer backdrop-blur-md ${
                     isProdDarkTheme
                       ? isContextRailVisible
-                        ? 'border-amber-400/70 bg-amber-500/15 text-amber-200'
-                        : 'border-slate-700/80 bg-slate-900/90 text-slate-200 hover:bg-slate-800'
+                        ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
+                        : 'border-white/15 bg-white/8 text-slate-100 hover:bg-white/15'
                       : isContextRailVisible
-                        ? 'border-amber-400 bg-amber-50 text-amber-800'
-                        : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
+                        ? 'border-amber-400 bg-amber-50/90 text-amber-800'
+                        : 'border-white/85 bg-white/75 text-slate-800 hover:bg-white/95'
                   }`}
                 >
                   <ShieldAlert
@@ -2723,6 +2727,9 @@ export default function App() {
                   }
                 }}
                 onStartNewThread={handleStartNewThread}
+                rawReportMarkdown={productionStageData.latestReplyTurn?.content}
+                carefulDatesCount={activeCarefulDates.length}
+                onOpenWatchOut={() => setIsContextRailOpen(true)}
               />
             )
           ) : isSettingsOpen ? (
@@ -2875,6 +2882,7 @@ export default function App() {
                 <ProductionTimelinePanel
                   carefulDates={activeCarefulDates}
                   periodLabel={activeCarefulPeriodLabel}
+                  isDarkTheme={isProdDarkTheme}
                   onClose={() => setIsContextRailOpen(false)}
                 />
               ) : (
@@ -2915,19 +2923,19 @@ export default function App() {
         {/* Bottom Panel Status Bar */}
         {isProductionApp ? (
           <footer
-            className={`h-9 shrink-0 px-4 sm:px-6 border-t flex items-center justify-between gap-3 text-xs transition-colors ${
+            className={`h-9 shrink-0 px-4 sm:px-6 border-t backdrop-blur-2xl flex items-center justify-between gap-3 text-xs transition-colors ${
               isProdDarkTheme
-                ? 'border-slate-800/80 bg-[#080d1a]/95'
-                : 'border-slate-200/85 bg-white/90 backdrop-blur-xl'
+                ? 'border-white/12 bg-[#0c1426]/65'
+                : 'border-white/80 bg-white/65'
             }`}
           >
             <div
               className={`flex items-center gap-2.5 min-w-0 ${
-                isProdDarkTheme ? 'text-slate-200' : 'text-slate-800'
+                isProdDarkTheme ? 'text-slate-100' : 'text-slate-800'
               }`}
             >
               <span
-                className="w-2 h-2 rounded-full shrink-0 bg-sky-500"
+                className="w-2 h-2 rounded-full shrink-0 bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]"
                 aria-hidden="true"
               />
               <span className="truncate font-medium text-xs">
@@ -2942,10 +2950,10 @@ export default function App() {
                     ? 'Switch Public provider between Gemini and Fable'
                     : 'Gemini / Fable switching is only available on Home before starting a report'
                 }
-                className={`inline-flex items-center p-0.5 rounded-md border shrink-0 transition-opacity ${
+                className={`inline-flex items-center p-0.5 rounded-md border shrink-0 transition-opacity backdrop-blur-md ${
                   isProdDarkTheme
-                    ? 'bg-slate-800/95 border-slate-700/80'
-                    : 'bg-slate-100 border-slate-200'
+                    ? 'bg-white/8 border-white/15'
+                    : 'bg-white/75 border-white/90'
                 } ${canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'}`}
               >
                 {(['gemini', 'fable'] as const).map((providerId) => {

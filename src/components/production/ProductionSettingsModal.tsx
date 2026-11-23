@@ -269,9 +269,11 @@ export function ProductionSettingsModal({
     }
   };
 
+  const isDarkTheme = activeProdTheme === 'dark';
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/35 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/45 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-labelledby="prod-settings-title"
@@ -279,12 +281,14 @@ export function ProductionSettingsModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="fluent-3d-popup w-full max-w-lg rounded-[28px] p-5 sm:p-6 space-y-5 max-h-[88vh] overflow-y-auto fluent-scroll"
+        className="pa-glass-card w-full max-w-lg rounded-[26px] p-5 sm:p-6 space-y-4 max-h-[88vh] overflow-y-auto fluent-scroll"
       >
         <div className="flex items-center justify-between gap-3">
           <h2
             id="prod-settings-title"
-            className="font-display text-base font-bold text-slate-900 tracking-tight"
+            className={`font-display text-base font-bold tracking-tight ${
+              isDarkTheme ? 'text-white' : 'text-slate-900'
+            }`}
           >
             Settings
           </h2>
@@ -292,16 +296,24 @@ export function ProductionSettingsModal({
             type="button"
             onClick={onClose}
             aria-label="Close settings"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white/75 transition-colors cursor-pointer"
+            className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+              isDarkTheme ? 'text-slate-200 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* 1. Reports Folder Location */}
-        <section className="rounded-2xl border border-white/80 bg-white/55 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-800">
-            <FolderOpen className="w-4 h-4 text-sky-600 shrink-0" />
+        <section className="pa-glass-subwell rounded-2xl p-4 space-y-3">
+          <div
+            className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${
+              isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+            }`}
+          >
+            <FolderOpen
+              className={`w-4 h-4 shrink-0 ${isDarkTheme ? 'text-sky-400' : 'text-sky-600'}`}
+            />
             <span>Reports Folder Location</span>
           </div>
 
@@ -311,7 +323,11 @@ export function ProductionSettingsModal({
             onChange={(e) => setFolderDraft(e.target.value)}
             placeholder={defaultReportsDir}
             aria-label="Report folder location"
-            className="w-full rounded-xl border border-sky-200/90 bg-white/80 px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none"
+            className={`w-full rounded-xl border px-3 py-2 text-xs font-mono focus:outline-none ${
+              isDarkTheme
+                ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+            }`}
           />
 
           <div className="flex flex-wrap items-center gap-2">
@@ -327,33 +343,49 @@ export function ProductionSettingsModal({
               type="button"
               onClick={() => void handleVerifyFolder()}
               disabled={verifyingFolder}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white/75 hover:bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-60"
+              className={`pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                isDarkTheme ? 'text-slate-100' : 'text-slate-700'
+              }`}
             >
               {verifyingFolder ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Activity className="w-3.5 h-3.5 text-sky-600" />
+                <Activity
+                  className={`w-3.5 h-3.5 ${isDarkTheme ? 'text-sky-300' : 'text-sky-600'}`}
+                />
               )}
               <span>Verify</span>
             </button>
             <button
               type="button"
               onClick={handleUseDefaultFolder}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white/75 hover:bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+              className={`pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                isDarkTheme ? 'text-slate-100' : 'text-slate-700'
+              }`}
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Use Default</span>
             </button>
           </div>
 
-          <p className="text-[11px] font-mono text-slate-600 break-all">
+          <p
+            className={`text-[11px] font-mono break-all ${
+              isDarkTheme ? 'text-slate-300' : 'text-slate-600'
+            }`}
+          >
             Active: {effectiveReportsDir}
           </p>
 
           {folderStatus.message && (
             <p
               className={`text-xs font-medium ${
-                folderStatus.kind === 'error' ? 'text-rose-700' : 'text-emerald-700'
+                folderStatus.kind === 'error'
+                  ? isDarkTheme
+                    ? 'text-rose-300'
+                    : 'text-rose-700'
+                  : isDarkTheme
+                    ? 'text-emerald-300'
+                    : 'text-emerald-700'
               }`}
             >
               {folderStatus.message}
@@ -362,15 +394,23 @@ export function ProductionSettingsModal({
         </section>
 
         {/* 2. Theme: Dark or Light */}
-        <section className="rounded-2xl border border-white/80 bg-white/55 p-4 space-y-3">
+        <section className="pa-glass-subwell rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-sky-800">
+            <span
+              className={`text-xs font-bold uppercase tracking-wider ${
+                isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+              }`}
+            >
               Theme
             </span>
             <div
               role="group"
               aria-label="Production theme"
-              className="inline-flex items-center p-1 rounded-xl border border-slate-200/90 bg-white/75"
+              className={`inline-flex items-center p-1 rounded-xl border ${
+                isDarkTheme
+                  ? 'border-white/15 bg-slate-950/60'
+                  : 'border-slate-200/90 bg-white/80'
+              }`}
             >
               <button
                 type="button"
@@ -379,7 +419,9 @@ export function ProductionSettingsModal({
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                   activeProdTheme === 'light'
                     ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-700 hover:bg-white'
+                    : isDarkTheme
+                      ? 'text-slate-300 hover:bg-white/10'
+                      : 'text-slate-700 hover:bg-white'
                 }`}
               >
                 <Sun className="w-3.5 h-3.5" />
@@ -391,8 +433,10 @@ export function ProductionSettingsModal({
                 onClick={() => handleThemeChange('dark')}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
                   activeProdTheme === 'dark'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-700 hover:bg-white'
+                    ? 'bg-sky-500 text-white shadow-xs'
+                    : isDarkTheme
+                      ? 'text-slate-300 hover:bg-white/10'
+                      : 'text-slate-700 hover:bg-white'
                 }`}
               >
                 <Moon className="w-3.5 h-3.5" />
@@ -403,8 +447,12 @@ export function ProductionSettingsModal({
         </section>
 
         {/* 3. Test Gemini & Fable Adapters */}
-        <section className="rounded-2xl border border-white/80 bg-white/55 p-4 space-y-3">
-          <div className="text-xs font-bold uppercase tracking-wider text-sky-800">
+        <section className="pa-glass-subwell rounded-2xl p-4 space-y-3">
+          <div
+            className={`text-xs font-bold uppercase tracking-wider ${
+              isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+            }`}
+          >
             Test Gemini &amp; Fable Adapters
           </div>
 
@@ -418,12 +466,26 @@ export function ProductionSettingsModal({
               return (
                 <div
                   key={adapterId}
-                  className="rounded-xl border border-white/85 bg-white/75 px-3.5 py-2.5 space-y-1.5"
+                  className={`rounded-xl border px-3.5 py-2.5 space-y-1.5 ${
+                    isDarkTheme
+                      ? 'border-white/12 bg-white/6'
+                      : 'border-white/90 bg-white/80'
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900">{label}</div>
-                      <div className="text-[11px] font-mono text-slate-600 truncate">
+                      <div
+                        className={`text-xs font-bold ${
+                          isDarkTheme ? 'text-white' : 'text-slate-900'
+                        }`}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        className={`text-[11px] font-mono truncate ${
+                          isDarkTheme ? 'text-slate-300' : 'text-slate-600'
+                        }`}
+                      >
                         {model}
                       </div>
                     </div>
@@ -446,8 +508,12 @@ export function ProductionSettingsModal({
                     <div
                       className={`flex items-start gap-1.5 text-[11px] leading-snug ${
                         health.reachable && health.configured
-                          ? 'text-emerald-700'
-                          : 'text-rose-700'
+                          ? isDarkTheme
+                            ? 'text-emerald-300'
+                            : 'text-emerald-700'
+                          : isDarkTheme
+                            ? 'text-rose-300'
+                            : 'text-rose-700'
                       }`}
                     >
                       {health.reachable && health.configured ? (
@@ -467,10 +533,17 @@ export function ProductionSettingsModal({
             })}
           </div>
         </section>
+
         {/* 4. Reference URL Port */}
-        <section className="rounded-2xl border border-white/80 bg-white/55 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-800">
-            <Globe className="w-4 h-4 text-sky-600 shrink-0" />
+        <section className="pa-glass-subwell rounded-2xl p-4 space-y-3">
+          <div
+            className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${
+              isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+            }`}
+          >
+            <Globe
+              className={`w-4 h-4 shrink-0 ${isDarkTheme ? 'text-sky-400' : 'text-sky-600'}`}
+            />
             <span>Reference URL Port</span>
           </div>
 
@@ -494,7 +567,11 @@ export function ProductionSettingsModal({
               }}
               placeholder="3000"
               aria-label="Reference URL Port"
-              className="w-32 rounded-xl border border-sky-200/90 bg-white/80 px-3 py-2 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none"
+              className={`w-32 rounded-xl border px-3 py-2 text-xs font-mono tabular-nums focus:outline-none ${
+                isDarkTheme
+                  ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                  : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+              }`}
             />
             <button
               type="button"
@@ -507,25 +584,39 @@ export function ProductionSettingsModal({
               type="button"
               onClick={() => void handleTestRefPort()}
               disabled={testingRefPort}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300/80 bg-white/75 hover:bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors cursor-pointer disabled:opacity-60"
+              className={`pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                isDarkTheme ? 'text-slate-100' : 'text-slate-700'
+              }`}
             >
               {testingRefPort ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Activity className="w-3.5 h-3.5 text-sky-600" />
+                <Activity
+                  className={`w-3.5 h-3.5 ${isDarkTheme ? 'text-sky-300' : 'text-sky-600'}`}
+                />
               )}
               <span>{testingRefPort ? 'Testing…' : 'Test URL'}</span>
             </button>
           </div>
 
-          <p className="text-[11px] font-mono text-slate-600 break-all">
+          <p
+            className={`text-[11px] font-mono break-all ${
+              isDarkTheme ? 'text-slate-300' : 'text-slate-600'
+            }`}
+          >
             URL: {resolvedRefUrlPreview}
           </p>
 
           {portStatus.message && (
             <p
               className={`text-xs font-medium ${
-                portStatus.kind === 'error' ? 'text-rose-700' : 'text-emerald-700'
+                portStatus.kind === 'error'
+                  ? isDarkTheme
+                    ? 'text-rose-300'
+                    : 'text-rose-700'
+                  : isDarkTheme
+                    ? 'text-emerald-300'
+                    : 'text-emerald-700'
               }`}
             >
               {portStatus.message}

@@ -2265,17 +2265,11 @@ export function ProductionStage1Three({
     : null;
 
   return (
-    <div
-      className={`relative flex-1 min-h-0 overflow-hidden transition-colors duration-300 ${
-        isDarkTheme
-          ? 'bg-[#060c1a]'
-          : 'bg-gradient-to-b from-[#edf5fd] via-[#f6fafe] to-[#ffffff]'
-      }`}
-    >
+    <div className="pa-prod-backdrop relative flex-1 min-h-0 overflow-hidden transition-colors duration-300">
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Right-Hand Current-Month Cross-Model Suggestions (Max 2, Follow-up Glass Pop-up Style) */}
+      {/* Right-Hand Current-Month Cross-Model Suggestions (Max 2, Unified Frosted Glass) */}
       <AnimatePresence>
         {!dockedTarget &&
           !blockedDropNotice &&
@@ -2297,7 +2291,7 @@ export function ProductionStage1Three({
                 return (
                   <div
                     key={suggestion.key}
-                    className="fluent-3d-popup pointer-events-auto w-full rounded-[22px] px-3.5 py-3 text-slate-900 transition-transform duration-200 hover:-translate-y-0.5"
+                    className="pa-glass-card pointer-events-auto w-full rounded-[22px] px-3.5 py-3 transition-transform duration-200 hover:-translate-y-0.5"
                   >
                     <div className="flex items-start gap-2">
                       <button
@@ -2311,23 +2305,41 @@ export function ProductionStage1Three({
                         >
                           <TopicBackdropIcon
                             icon={suggestion.topic.icon}
-                            color={suggestion.topic.glowHex}
+                            color={isDarkTheme ? suggestion.topic.accentHex : suggestion.topic.glowHex}
                             className="w-4 h-4"
                           />
-                          <span className="absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-sky-600 shadow-xs border border-sky-200">
+                          <span
+                            className={`absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full shadow-xs border ${
+                              isDarkTheme
+                                ? 'bg-slate-900 text-sky-300 border-sky-400/50'
+                                : 'bg-white text-sky-600 border-sky-200'
+                            }`}
+                          >
                             <Plus className="w-2.5 h-2.5 stroke-[2.75]" />
                           </span>
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold leading-snug text-slate-900">
+                          <p
+                            className={`text-xs font-semibold leading-snug ${
+                              isDarkTheme ? 'text-slate-100' : 'text-slate-900'
+                            }`}
+                          >
                             Do you want to try the same{' '}
-                            <span style={{ color: suggestion.topic.glowHex }}>
+                            <span
+                              style={{
+                                color: isDarkTheme ? suggestion.topic.accentHex : suggestion.topic.glowHex,
+                              }}
+                            >
                               {suggestion.topic.label}
                             </span>{' '}
                             question of {suggestion.monthName} from {sourceName} to {targetName}?
                           </p>
                           {suggestion.questionPreview && (
-                            <p className="mt-1 text-[11px] text-slate-600 truncate">
+                            <p
+                              className={`mt-1 text-[11px] truncate ${
+                                isDarkTheme ? 'text-slate-300/80' : 'text-slate-600'
+                              }`}
+                            >
                               &ldquo;{suggestion.questionPreview}&rdquo;
                             </p>
                           )}
@@ -2342,7 +2354,11 @@ export function ProductionStage1Three({
                         }
                         aria-label={`Dismiss ${suggestion.topic.label} suggestion`}
                         title="Dismiss suggestion"
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white/75 shrink-0 cursor-pointer"
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-lg shrink-0 cursor-pointer transition-colors ${
+                          isDarkTheme
+                            ? 'text-slate-400 hover:text-white hover:bg-white/10'
+                            : 'text-slate-500 hover:text-slate-900 hover:bg-white/75'
+                        }`}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -2354,7 +2370,7 @@ export function ProductionStage1Three({
           )}
       </AnimatePresence>
 
-      {/* Enlarged Read-Only Report Showcase Inside Clicked Bucket + Gentle Background Music */}
+      {/* Enlarged Read-Only Report Showcase Inside Clicked Bucket */}
       <AnimatePresence>
         {inspectedBucket && activeInspectedReport && (
           <motion.div
@@ -2375,14 +2391,20 @@ export function ProductionStage1Three({
               exit={{ scale: 0.48, y: -36, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 280, damping: 24 }}
               onClick={(e) => e.stopPropagation()}
-              className="fluent-3d-popup w-full max-w-lg max-h-[68vh] sm:max-h-[72vh] rounded-[30px] flex flex-col overflow-hidden text-slate-900"
+              className="pa-glass-card w-full max-w-lg max-h-[68vh] sm:max-h-[72vh] rounded-[28px] flex flex-col overflow-hidden"
             >
-              {/* Bucket Interior Header (Month Title + Soft Music Indicator) */}
-              <div className="px-5 py-3.5 border-b border-white/75 flex items-center justify-between gap-2 shrink-0">
+              {/* Bucket Interior Header */}
+              <div
+                className={`px-5 py-3.5 border-b flex items-center justify-between gap-2 shrink-0 ${
+                  isDarkTheme ? 'border-white/12' : 'border-white/75'
+                }`}
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <h2
                     id="bucket-readonly-title"
-                    className="font-display text-sm sm:text-base font-bold text-slate-900 truncate"
+                    className={`font-display text-sm sm:text-base font-bold truncate ${
+                      isDarkTheme ? 'text-white' : 'text-slate-900'
+                    }`}
                   >
                     {inspectedBucket.monthItem.fullLabel}
                   </h2>
@@ -2393,7 +2415,11 @@ export function ProductionStage1Three({
                     type="button"
                     onClick={() => setInspectedBucketKey(null)}
                     aria-label="Close bucket preview"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-colors ${
+                      isDarkTheme
+                        ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/75'
+                    }`}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -2402,7 +2428,13 @@ export function ProductionStage1Three({
 
               {/* Read-Only Selector Pills if Bucket Holds Multiple Reports */}
               {inspectedBucket.reports.length > 1 && (
-                <div className="px-5 py-2.5 border-b border-white/60 bg-white/35 flex flex-wrap items-center gap-1.5 shrink-0">
+                <div
+                  className={`px-5 py-2.5 border-b flex flex-wrap items-center gap-1.5 shrink-0 ${
+                    isDarkTheme
+                      ? 'border-white/10 bg-white/4'
+                      : 'border-white/60 bg-white/35'
+                  }`}
+                >
                   {inspectedBucket.reports.map((rep, idx) => {
                     const isSelected = idx === Math.min(selectedInspectReportIdx, inspectedBucket.reports.length - 1);
                     return (
@@ -2413,7 +2445,9 @@ export function ProductionStage1Three({
                         className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-sky-600 text-white shadow-xs'
-                            : 'bg-white/70 text-slate-700 hover:bg-white'
+                            : isDarkTheme
+                              ? 'bg-white/10 text-slate-200 hover:bg-white/16'
+                              : 'bg-white/70 text-slate-700 hover:bg-white'
                         }`}
                       >
                         <span
@@ -2423,7 +2457,11 @@ export function ProductionStage1Three({
                         <span>{rep.domainLabel}</span>
                         <span
                           className={`text-[10px] font-mono ${
-                            isSelected ? 'text-sky-100' : 'text-slate-500'
+                            isSelected
+                              ? 'text-sky-100'
+                              : isDarkTheme
+                                ? 'text-slate-300'
+                                : 'text-slate-500'
                           }`}
                         >
                           {rep.provider === 'fable' ? 'Fable' : 'Gemini'}
@@ -2444,52 +2482,88 @@ export function ProductionStage1Three({
                     >
                       <TopicBackdropIcon
                         icon={activeInspectedReport.topicDef.icon}
-                        color={activeInspectedReport.topicDef.glowHex}
+                        color={
+                          isDarkTheme
+                            ? activeInspectedReport.topicDef.accentHex
+                            : activeInspectedReport.topicDef.glowHex
+                        }
                         className="w-4 h-4"
                       />
                     </span>
-                    <span className="text-xs font-bold text-slate-900">
+                    <span
+                      className={`text-xs font-bold ${
+                        isDarkTheme ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
                       {activeInspectedReport.domainLabel}
                     </span>
                   </div>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
                       activeInspectedReport.provider === 'fable'
-                        ? 'border-amber-300/90 bg-amber-100/80 text-amber-800'
-                        : 'border-sky-300/90 bg-sky-100/80 text-sky-800'
+                        ? isDarkTheme
+                          ? 'border-amber-400/45 bg-amber-400/15 text-amber-200'
+                          : 'border-amber-300/90 bg-amber-100/80 text-amber-800'
+                        : isDarkTheme
+                          ? 'border-sky-400/45 bg-sky-400/15 text-sky-200'
+                          : 'border-sky-300/90 bg-sky-100/80 text-sky-800'
                     }`}
                   >
                     {activeInspectedReport.provider === 'fable' ? 'Fable' : 'Gemini'}
                   </span>
                 </div>
 
-                <div className="rounded-2xl border border-white/85 bg-white/60 px-4 py-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">
+                <div className="pa-glass-subwell rounded-2xl px-4 py-3">
+                  <div
+                    className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${
+                      isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                    }`}
+                  >
                     Question
                   </div>
-                  <p className="text-xs sm:text-[13px] font-semibold text-slate-900 leading-relaxed">
+                  <p
+                    className={`text-xs sm:text-[13px] font-semibold leading-relaxed ${
+                      isDarkTheme ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
                     {activeInspectedReport.question}
                   </p>
                 </div>
 
                 {activeInspectedReport.answer && (
-                  <div className="rounded-2xl border border-white/85 bg-white/65 px-4 py-3 space-y-1">
-                    <div className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
-                      <Sparkles className="w-3 h-3 text-sky-600" />
+                  <div className="pa-glass-subwell rounded-2xl px-4 py-3 space-y-1">
+                    <div
+                      className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${
+                        isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" />
                       <span>Answer</span>
                     </div>
-                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-800 whitespace-pre-line">
+                    <p
+                      className={`text-xs sm:text-[13px] leading-relaxed whitespace-pre-line ${
+                        isDarkTheme ? 'text-slate-200' : 'text-slate-800'
+                      }`}
+                    >
                       {activeInspectedReport.answer}
                     </p>
                   </div>
                 )}
 
                 {activeInspectedReport.summary && (
-                  <div className="rounded-2xl border border-white/85 bg-white/60 px-4 py-3 space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                  <div className="pa-glass-subwell rounded-2xl px-4 py-3 space-y-1">
+                    <div
+                      className={`text-[10px] font-bold uppercase tracking-wider ${
+                        isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                      }`}
+                    >
                       Summary
                     </div>
-                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-800 whitespace-pre-line">
+                    <p
+                      className={`text-xs sm:text-[13px] leading-relaxed whitespace-pre-line ${
+                        isDarkTheme ? 'text-slate-200' : 'text-slate-800'
+                      }`}
+                    >
                       {activeInspectedReport.summary}
                     </p>
                   </div>
@@ -2497,32 +2571,56 @@ export function ProductionStage1Three({
 
                 {activeInspectedReport.cards.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 px-1">
+                    <div
+                      className={`text-[10px] font-bold uppercase tracking-wider px-1 ${
+                        isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                      }`}
+                    >
                       Events in Report ({activeInspectedReport.cards.length})
                     </div>
                     {activeInspectedReport.cards.map((card) => (
                       <div
                         key={card.id}
-                        className="rounded-2xl border border-white/85 bg-white/65 px-4 py-3 space-y-1.5"
+                        className="pa-glass-subwell rounded-2xl px-4 py-3 space-y-1.5"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                          <h3
+                            className={`text-xs font-bold leading-snug ${
+                              isDarkTheme ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
                             {card.title}
                           </h3>
                           {card.probability && (
-                            <span className="rounded-full bg-sky-100/90 border border-sky-200 px-2 py-0.5 text-[10px] font-semibold text-sky-800 shrink-0">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 ${
+                                isDarkTheme
+                                  ? 'bg-sky-400/15 border-sky-400/35 text-sky-200'
+                                  : 'bg-sky-100/90 border-sky-200 text-sky-800'
+                              }`}
+                            >
                               {card.probability}
                             </span>
                           )}
                         </div>
                         {card.when && (
-                          <div className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 bg-amber-100/75 rounded-lg px-2 py-0.5">
-                            <Calendar className="w-3 h-3 text-amber-700 shrink-0" />
+                          <div
+                            className={`inline-flex items-center gap-1 text-[11px] font-medium rounded-lg px-2 py-0.5 ${
+                              isDarkTheme
+                                ? 'text-amber-200 bg-amber-400/15'
+                                : 'text-amber-800 bg-amber-100/75'
+                            }`}
+                          >
+                            <Calendar className="w-3 h-3 shrink-0" />
                             <span>{card.when}</span>
                           </div>
                         )}
                         {(card.summary || card.how) && (
-                          <p className="text-xs leading-relaxed text-slate-700">
+                          <p
+                            className={`text-xs leading-relaxed ${
+                              isDarkTheme ? 'text-slate-200/90' : 'text-slate-700'
+                            }`}
+                          >
                             {card.how || card.summary}
                           </p>
                         )}
@@ -2541,7 +2639,9 @@ export function ProductionStage1Three({
         <div className="absolute top-4 inset-x-0 z-20 flex justify-center px-4">
           <div
             role="alert"
-            className="fluent-3d-popup max-w-md rounded-2xl border border-rose-300/85 px-4 py-2.5 text-xs font-semibold text-rose-700 flex items-center justify-between gap-3"
+            className={`pa-glass-card max-w-md rounded-2xl border-rose-400/60 px-4 py-2.5 text-xs font-semibold flex items-center justify-between gap-3 ${
+              isDarkTheme ? 'text-rose-300' : 'text-rose-700'
+            }`}
           >
             <span>{monthSwitchError}</span>
             {onDismissMonthSwitchError && (
@@ -2549,7 +2649,9 @@ export function ProductionStage1Three({
                 type="button"
                 onClick={onDismissMonthSwitchError}
                 aria-label="Dismiss alert"
-                className="p-1 rounded-lg hover:bg-white/75"
+                className={`p-1 rounded-lg cursor-pointer ${
+                  isDarkTheme ? 'hover:bg-white/10' : 'hover:bg-white/75'
+                }`}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -2564,18 +2666,33 @@ export function ProductionStage1Three({
           <div
             role="alertdialog"
             aria-labelledby="blocked-drop-title"
-            className="fluent-3d-popup w-full max-w-md rounded-[28px] p-6 text-slate-900 space-y-4"
+            className="pa-glass-card w-full max-w-md rounded-[26px] p-6 space-y-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-400/45 text-amber-600 shrink-0">
+                <span
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border shrink-0 ${
+                    isDarkTheme
+                      ? 'bg-amber-400/15 border-amber-400/35 text-amber-300'
+                      : 'bg-amber-500/15 border-amber-400/45 text-amber-600'
+                  }`}
+                >
                   <ShieldAlert className="w-4 h-4" />
                 </span>
                 <div>
-                  <h2 id="blocked-drop-title" className="text-sm font-bold text-slate-900">
+                  <h2
+                    id="blocked-drop-title"
+                    className={`text-sm font-bold ${
+                      isDarkTheme ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
                     Report Already Exists
                   </h2>
-                  <p className="text-xs text-slate-600">
+                  <p
+                    className={`text-xs ${
+                      isDarkTheme ? 'text-slate-300' : 'text-slate-600'
+                    }`}
+                  >
                     {blockedDropNotice.topic.label} · {blockedDropNotice.month.fullLabel}
                   </p>
                 </div>
@@ -2584,16 +2701,34 @@ export function ProductionStage1Three({
                 type="button"
                 onClick={() => setBlockedDropNotice(null)}
                 aria-label="Dismiss notice"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/75 cursor-pointer"
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg cursor-pointer transition-colors ${
+                  isDarkTheme
+                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/75'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs leading-relaxed text-slate-700">
-              A <span className="font-semibold text-slate-900">{blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'}</span> report for{' '}
-              <span className="font-semibold text-slate-900">{blockedDropNotice.topic.label}</span> in{' '}
-              <span className="font-semibold text-slate-900">{blockedDropNotice.month.fullLabel}</span> has already been generated.{' '}
+            <p
+              className={`text-xs leading-relaxed ${
+                isDarkTheme ? 'text-slate-200' : 'text-slate-700'
+              }`}
+            >
+              A{' '}
+              <span className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-900'}`}>
+                {blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'}
+              </span>{' '}
+              report for{' '}
+              <span className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-900'}`}>
+                {blockedDropNotice.topic.label}
+              </span>{' '}
+              in{' '}
+              <span className={`font-semibold ${isDarkTheme ? 'text-white' : 'text-slate-900'}`}>
+                {blockedDropNotice.month.fullLabel}
+              </span>{' '}
+              has already been generated.{' '}
               {blockedDropNotice.otherProviderAvailable
                 ? `Only one ${blockedDropNotice.provider === 'fable' ? 'Fable' : 'Gemini'} report is allowed per domain each month—you can switch to ${blockedDropNotice.provider === 'fable' ? 'Gemini' : 'Fable'} in the bottom bar to add a second report.`
                 : 'Both Gemini and Fable reports (2/2) are already completed for this domain and month.'}
@@ -2603,7 +2738,7 @@ export function ProductionStage1Three({
               <button
                 type="button"
                 onClick={() => setBlockedDropNotice(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300/80 bg-white/65 text-xs font-semibold text-slate-700 hover:bg-white/95 cursor-pointer"
+                className="pa-glass-pill px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Close
               </button>
@@ -2624,12 +2759,12 @@ export function ProductionStage1Three({
         </div>
       )}
 
-      {/* Translucent Light-White 3D Fluent Question Panel after Dropping Icon into Month Bucket */}
+      {/* Translucent Frosted Glass Question Panel after Dropping Icon into Month Bucket */}
       {dockedTarget && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/30 backdrop-blur-xs">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/35 backdrop-blur-xs">
           <form
             onSubmit={handleSubmit}
-            className="fluent-3d-popup relative overflow-hidden w-full max-w-md rounded-[28px] p-6 sm:p-7 space-y-4 text-slate-900"
+            className="pa-glass-card relative overflow-hidden w-full max-w-md rounded-[26px] p-6 sm:p-7 space-y-4"
           >
             <div
               aria-hidden="true"
@@ -2637,20 +2772,24 @@ export function ProductionStage1Three({
             >
               <TopicBackdropIcon
                 icon={dockedTarget.topic.icon}
-                color={dockedTarget.topic.glowHex}
-                className="w-52 h-52 opacity-[0.13] -rotate-6"
+                color={isDarkTheme ? dockedTarget.topic.accentHex : dockedTarget.topic.glowHex}
+                className="w-52 h-52 opacity-[0.12] -rotate-6"
               />
             </div>
 
             <div className="relative z-10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
+              <div
+                className={`flex items-center gap-2 text-xs font-bold ${
+                  isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+                }`}
+              >
                 <span
                   className="inline-flex h-6 w-6 items-center justify-center rounded-full"
                   style={{ backgroundColor: `${dockedTarget.topic.accentHex}33` }}
                 >
                   <TopicBackdropIcon
                     icon={dockedTarget.topic.icon}
-                    color={dockedTarget.topic.glowHex}
+                    color={isDarkTheme ? dockedTarget.topic.accentHex : dockedTarget.topic.glowHex}
                     className="w-3.5 h-3.5"
                   />
                 </span>
@@ -2666,7 +2805,11 @@ export function ProductionStage1Three({
                   setValidationError(null);
                 }}
                 aria-label="Close question prompt"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-900/10 cursor-pointer"
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-colors ${
+                  isDarkTheme
+                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/10'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2675,7 +2818,9 @@ export function ProductionStage1Three({
             <div className="relative z-10">
               <label
                 htmlFor="prod-stage1-question"
-                className="block font-display text-lg font-bold text-slate-900 mb-2"
+                className={`block font-display text-lg font-bold mb-2 ${
+                  isDarkTheme ? 'text-white' : 'text-slate-900'
+                }`}
               >
                 What&apos;s on your mind?
               </label>
@@ -2698,10 +2843,14 @@ export function ProductionStage1Three({
                   }
                 }}
                 placeholder="Ask your question for this month..."
-                className="w-full resize-none rounded-2xl border border-sky-200/90 bg-white/70 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white/85 focus:outline-none"
+                className={`w-full resize-none rounded-2xl border px-4 py-3 text-sm focus:outline-none ${
+                  isDarkTheme
+                    ? 'border-white/18 bg-slate-950/55 text-white placeholder:text-slate-400 focus:border-sky-400'
+                    : 'border-sky-200/90 bg-white/80 text-slate-900 placeholder:text-slate-500 focus:border-sky-500 focus:bg-white'
+                }`}
               />
               {validationError && (
-                <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-600">
+                <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-500">
                   {validationError}
                 </p>
               )}
@@ -2714,7 +2863,7 @@ export function ProductionStage1Three({
                   setDockedTarget(null);
                   setValidationError(null);
                 }}
-                className="px-4 py-2 rounded-xl border border-slate-300/80 bg-white/60 text-xs font-semibold text-slate-700 hover:bg-white/90 cursor-pointer"
+                className="pa-glass-pill px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
