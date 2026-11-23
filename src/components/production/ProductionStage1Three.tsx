@@ -1019,6 +1019,100 @@ export function ProductionStage1Three({
     scene.add(stars);
     disposables.push(starGeo, starMat);
 
+    // Home-Screen Lake Tide & Breeze Lullaby Overlay Layers (color-neutral translucent sheen)
+    const lakeVertexShader = /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const lakeFragmentShader = /* glsl */ `
+      uniform float uTime;
+      uniform float uIntensity;
+      uniform float uIsDark;
+      uniform float uIsFrontVeil;
+      varying vec2 vUv;
+
+      void main() {
+        if (uIntensity <= 0.001) discard;
+
+        // Slow lullaby tide sweeping smoothly across the Home lake shore and receding back
+        float tideWave = sin(uTime * 0.58);
+        float shoreCurve =
+          0.055 * sin(vUv.x * 4.8 + uTime * 0.62) +
+          0.025 * cos(vUv.x * 9.2 - uTime * 0.78);
+        float shoreY = 0.50 + 0.36 * tideWave + shoreCurve;
+
+        // Gentle breeze-driven water ripples across the entire lake
+        float breezeA = sin(vUv.x * 14.0 + vUv.y * 7.0 - uTime * 1.25 + 0.85 * sin(vUv.y * 5.5 + uTime * 0.48));
+        float breezeB = cos(vUv.x * 10.0 - vUv.y * 11.5 + uTime * 0.92);
+        float breezeC = sin((vUv.x + vUv.y) * 18.0 - uTime * 1.45);
+        float rippleField = 0.5 + 0.5 * (0.50 * breezeA + 0.34 * breezeB + 0.16 * breezeC);
+
+        // Translucent water sheet + soft curved shoreline tide bands
+        float waterBody = 1.0 - smoothstep(shoreY - 0.12, shoreY + 0.04, vUv.y);
+        float crestPrimary = exp(-pow((vUv.y - shoreY) * 17.0, 2.0));
+        float crestTrail1 = exp(-pow((vUv.y - (shoreY - 0.13)) * 14.5, 2.0)) * 0.62;
+        float crestTrail2 = exp(-pow((vUv.y - (shoreY - 0.27)) * 12.0, 2.0)) * 0.38;
+        float crestTrail3 = exp(-pow((vUv.y - (shoreY - 0.41)) * 10.5, 2.0)) * 0.22;
+        float crests = crestPrimary + crestTrail1 + crestTrail2 + crestTrail3;
+
+        // Gentle cross-breeze wave gliding laterally across the lake
+        float crossPos = 0.5 + 0.42 * sin(uTime * 0.38 + 0.9) + 0.045 * sin(vUv.y * 6.0 - uTime * 0.75);
+        float crossTide = exp(-pow((vUv.x - crossPos) * 7.5, 2.0));
+
+        float shimmer = smoothstep(0.42, 0.95, rippleField) * (0.40 + 0.60 * waterBody);
+        float alpha = uIsFrontVeil > 0.5
+          ? (crests * 0.135 + shimmer * 0.068 + crossTide * 0.055)
+          : (waterBody * (0.09 + 0.075 * rippleField) + crests * 0.28 + shimmer * 0.095 + crossTide * 0.085);
+
+        vec3 tintDark = mix(vec3(0.76, 0.92, 1.0), vec3(1.0), crests * 0.72 + shimmer * 0.32);
+        vec3 tintLight = mix(vec3(0.38, 0.70, 0.95), vec3(1.0), crests * 0.68 + shimmer * 0.25);
+        vec3 col = mix(tintLight, tintDark, uIsDark);
+
+        gl_FragColor = vec4(col, clamp(alpha * uIntensity, 0.0, 0.44));
+      }
+    `;
+
+    const lakePlaneGeo = new THREE.PlaneGeometry(28, 17);
+    const lakeBackMat = new THREE.ShaderMaterial({
+      vertexShader: lakeVertexShader,
+      fragmentShader: lakeFragmentShader,
+      uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 1 },
+        uIsDark: { value: 1 },
+        uIsFrontVeil: { value: 0 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const lakeBackMesh = new THREE.Mesh(lakePlaneGeo, lakeBackMat);
+    lakeBackMesh.position.set(0, 0, -2.2);
+    lakeBackMesh.renderOrder = 1;
+    scene.add(lakeBackMesh);
+
+    const lakeFrontMat = new THREE.ShaderMaterial({
+      vertexShader: lakeVertexShader,
+      fragmentShader: lakeFragmentShader,
+      uniforms: {
+        uTime: { value: 0 },
+        uIntensity: { value: 1 },
+        uIsDark: { value: 1 },
+        uIsFrontVeil: { value: 1 },
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const lakeFrontMesh = new THREE.Mesh(lakePlaneGeo, lakeFrontMat);
+    lakeFrontMesh.position.set(0, 0, 1.95);
+    lakeFrontMesh.renderOrder = 12;
+    scene.add(lakeFrontMesh);
+    disposables.push(lakePlaneGeo, lakeBackMat, lakeFrontMat);
+
     // 6 Wide, Shallow Sculptural Crystal Bowls arched gracefully above the 6 jumping domain icons
     const bucketSlots: Array<{ x: number; y: number; z: number }> = [
       { x: -6.18, y: 1.18, z: -0.34 },
@@ -1678,6 +1772,35 @@ export function ProductionStage1Three({
     const onPointerUp = (e: PointerEvent) => finishDrag(e, false);
     const onPointerCancel = (e: PointerEvent) => finishDrag(e, true);
 
+    const lakeMountedAtMs = performance.now();
+    let lakeTideActive = true;
+    let lakeTideIntensity = 1;
+    let lakeFirstPointerPos: { x: number; y: number } | null = null;
+    const stopLakeTide = () => {
+      lakeTideActive = false;
+    };
+    const onLakePointerEnter = () => {
+      if (performance.now() - lakeMountedAtMs > 450) {
+        stopLakeTide();
+      }
+    };
+    const onLakePointerMove = (e: PointerEvent) => {
+      if (performance.now() - lakeMountedAtMs <= 450) return;
+      if (!lakeFirstPointerPos) {
+        lakeFirstPointerPos = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      if (
+        Math.hypot(e.clientX - lakeFirstPointerPos.x, e.clientY - lakeFirstPointerPos.y) >= 3
+      ) {
+        stopLakeTide();
+      }
+    };
+
+    mount.addEventListener('pointerenter', onLakePointerEnter, { passive: true });
+    mount.addEventListener('pointermove', onLakePointerMove, { passive: true });
+    mount.addEventListener('pointerdown', stopLakeTide, { passive: true });
+    mount.addEventListener('wheel', stopLakeTide, { passive: true });
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     renderer.domElement.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('pointermove', onPointerMove);
@@ -1855,6 +1978,43 @@ export function ProductionStage1Three({
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
       lastTime = now;
       elapsed += dt;
+
+      if (
+        stateRef.current.dockedTarget ||
+        stateRef.current.blockedDropNotice ||
+        stateRef.current.inspectedBucketKey ||
+        stateRef.current.isSending
+      ) {
+        lakeTideActive = false;
+      }
+
+      lakeTideIntensity = THREE.MathUtils.damp(
+        lakeTideIntensity,
+        lakeTideActive ? 1 : 0,
+        3.2,
+        dt,
+      );
+      const showLakeTide = lakeTideIntensity > 0.002;
+      lakeBackMesh.visible = showLakeTide;
+      lakeFrontMesh.visible = showLakeTide;
+      if (showLakeTide) {
+        const darkVal = stateRef.current.isDarkTheme ? 1 : 0;
+        lakeBackMat.uniforms.uTime.value = elapsed;
+        lakeBackMat.uniforms.uIntensity.value = lakeTideIntensity;
+        lakeBackMat.uniforms.uIsDark.value = darkVal;
+        lakeFrontMat.uniforms.uTime.value = elapsed;
+        lakeFrontMat.uniforms.uIntensity.value = lakeTideIntensity;
+        lakeFrontMat.uniforms.uIsDark.value = darkVal;
+      }
+
+      // Mild buoyant water-sway across the Home camera while the lake tide passes
+      const camTargetX = showLakeTide ? Math.sin(elapsed * 0.58) * 0.22 * lakeTideIntensity : 0;
+      const camTargetY =
+        0.02 + (showLakeTide ? Math.cos(elapsed * 0.52) * 0.13 * lakeTideIntensity : 0);
+      const camTargetRoll = showLakeTide ? Math.sin(elapsed * 0.54) * 0.015 * lakeTideIntensity : 0;
+      camera.position.x = THREE.MathUtils.damp(camera.position.x, camTargetX, 6, dt);
+      camera.position.y = THREE.MathUtils.damp(camera.position.y, camTargetY, 6, dt);
+      camera.rotation.z = THREE.MathUtils.damp(camera.rotation.z, camTargetRoll, 6, dt);
 
       stars.rotation.z = Math.sin(elapsed * 0.18) * 0.02;
       if (stateRef.current.isDarkTheme) {
@@ -2120,10 +2280,31 @@ export function ProductionStage1Three({
           -0.05 + Math.sin(elapsed * 1.25) * 0.045,
           b.inspectLerp,
         );
+        const tideWaveAtBucket = showLakeTide
+          ? (Math.sin(elapsed * 0.58 - b.basePos.x * 0.28) * 0.65 +
+              Math.sin(elapsed * 2.6 + b.basePos.x * 0.72) * 0.35) *
+            lakeTideIntensity
+          : 0;
+        const tideDriftX = showLakeTide
+          ? Math.cos(elapsed * 0.95 + i * 0.8) * 0.13 * lakeTideIntensity
+          : 0;
         const pullZ = THREE.MathUtils.lerp(demoFocusZ, 5.25, b.inspectLerp);
-        b.group.position.set(pullX, pullY, pullZ);
+        b.group.position.set(
+          pullX + tideDriftX * (1 - b.inspectLerp),
+          pullY + tideWaveAtBucket * 0.21 * (1 - b.inspectLerp),
+          pullZ,
+        );
         b.group.rotation.y =
           Math.sin(elapsed * 0.85) * 0.08 * Math.max(b.inspectLerp, b.demoSwellLerp * 0.65);
+        b.group.rotation.z = showLakeTide
+          ? (Math.cos(elapsed * 0.82 + b.basePos.x * 0.35) * 0.056 +
+              Math.sin(elapsed * 3.1 + i * 1.4) * 0.018) *
+            lakeTideIntensity *
+            (1 - b.inspectLerp)
+          : 0;
+        b.group.rotation.x = showLakeTide
+          ? Math.sin(elapsed * 1.05 + b.basePos.x * 0.28) * 0.048 * lakeTideIntensity * (1 - b.inspectLerp)
+          : 0;
 
         const baseScale =
           1 + activeHoverAmt * 0.58 - recedeBlend * (anyBucketInspected ? 0.22 : 0.1);
@@ -2290,13 +2471,31 @@ export function ProductionStage1Three({
             ? 0
             : Math.abs(Math.sin(elapsed * 2.4 + o.phase)) * 0.46;
           const inspectYOffset = anyBucketInspected ? -1.4 : 0;
-          _targetPos.set(o.homePos.x, o.homePos.y + bounce + inspectYOffset, o.homePos.z);
+          const orbTideSwayX =
+            showLakeTide && !anyBucketInspected
+              ? Math.sin(elapsed * 1.25 + o.homePos.x * 0.42) * 0.14 * lakeTideIntensity
+              : 0;
+          const orbTideWaveY =
+            showLakeTide && !anyBucketInspected
+              ? (Math.sin(elapsed * 0.58 - o.homePos.x * 0.28) * 0.11 +
+                  Math.sin(elapsed * 2.9 + o.phase) * 0.055) *
+                lakeTideIntensity
+              : 0;
+          _targetPos.set(
+            o.homePos.x + orbTideSwayX,
+            o.homePos.y + bounce + inspectYOffset + orbTideWaveY,
+            o.homePos.z,
+          );
           o.currentPos.x = THREE.MathUtils.damp(o.currentPos.x, _targetPos.x, 10, dt);
           o.currentPos.y = THREE.MathUtils.damp(o.currentPos.y, _targetPos.y, 12, dt);
           o.currentPos.z = THREE.MathUtils.damp(o.currentPos.z, _targetPos.z, 10, dt);
         }
 
         o.group.position.copy(o.currentPos);
+        o.group.rotation.z =
+          showLakeTide && !isDragged && !anyBucketInspected
+            ? Math.sin(elapsed * 1.55 + o.phase) * 0.085 * lakeTideIntensity
+            : 0;
 
         const targetScale = anyBucketInspected
           ? 0.45
@@ -2337,6 +2536,10 @@ export function ProductionStage1Three({
       resizeObserver.disconnect();
       window.removeEventListener('pointerdown', unlockIntroAudioOnce);
       window.removeEventListener('keydown', unlockIntroAudioOnce);
+      mount.removeEventListener('pointerenter', onLakePointerEnter);
+      mount.removeEventListener('pointermove', onLakePointerMove);
+      mount.removeEventListener('pointerdown', stopLakeTide);
+      mount.removeEventListener('wheel', stopLakeTide);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('pointermove', onPointerMove);
