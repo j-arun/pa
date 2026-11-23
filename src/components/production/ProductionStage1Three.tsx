@@ -521,17 +521,43 @@ function drawBucketLabelCanvas(
       }
     }
   } else {
-    // Clean resting label inside the shallow Sculptural Crystal Bowl
+    // Sleek frosted glass lens plaque inside the shallow Sculptural Crystal Bowl
     const monthYearText = `${shortMonth} ${year}`;
     const countText = isFull
       ? `FULL · ${BUCKET_CAPACITY}/${BUCKET_CAPACITY}`
       : `${count}/${BUCKET_CAPACITY}`;
 
+    const plaqueW = 356;
+    const plaqueH = 148;
+    const plaqueX = (width - plaqueW) / 2;
+    const plaqueY = height / 2 - 92;
+
+    ctx.save();
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = isDarkTheme ? 'rgba(2, 6, 23, 0.45)' : 'rgba(14, 165, 233, 0.16)';
+    const plaqueGrad = ctx.createLinearGradient(plaqueX, plaqueY, plaqueX + plaqueW, plaqueY + plaqueH);
+    if (isDarkTheme) {
+      plaqueGrad.addColorStop(0, isHovered || isActive ? 'rgba(56, 189, 248, 0.24)' : 'rgba(255, 255, 255, 0.14)');
+      plaqueGrad.addColorStop(1, 'rgba(15, 23, 42, 0.34)');
+      ctx.strokeStyle = isFull ? 'rgba(253, 230, 138, 0.68)' : isActive ? 'rgba(125, 211, 252, 0.72)' : 'rgba(255, 255, 255, 0.28)';
+    } else {
+      plaqueGrad.addColorStop(0, 'rgba(255, 255, 255, 0.78)');
+      plaqueGrad.addColorStop(1, 'rgba(224, 242, 254, 0.56)');
+      ctx.strokeStyle = isFull ? 'rgba(245, 158, 11, 0.65)' : isActive ? 'rgba(14, 165, 233, 0.65)' : 'rgba(255, 255, 255, 0.92)';
+    }
+    ctx.fillStyle = plaqueGrad;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.roundRect(plaqueX, plaqueY, plaqueW, plaqueH, 38);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
     ctx.lineJoin = 'round';
     if (isDarkTheme) {
-      ctx.lineWidth = 9;
-      ctx.strokeStyle = 'rgba(4, 12, 28, 0.72)';
-      ctx.font = '700 72px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = 'rgba(4, 12, 28, 0.68)';
+      ctx.font = '700 66px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.strokeText(monthYearText, width / 2, height / 2 - 42);
       ctx.fillStyle = isFull
         ? '#fef3c7'
@@ -540,21 +566,21 @@ function drawBucketLabelCanvas(
           : '#f0f9ff';
       ctx.fillText(monthYearText, width / 2, height / 2 - 42);
 
-      ctx.lineWidth = 6;
-      ctx.font = '600 42px "JetBrains Mono", monospace';
-      ctx.strokeText(countText, width / 2, height / 2 + 24);
+      ctx.lineWidth = 5;
+      ctx.font = '600 40px "JetBrains Mono", monospace';
+      ctx.strokeText(countText, width / 2, height / 2 + 20);
       ctx.fillStyle = isFull
         ? '#fde68a'
         : count > 0
           ? '#bae6fd'
-          : 'rgba(224, 242, 254, 0.72)';
-      ctx.fillText(countText, width / 2, height / 2 + 24);
+          : 'rgba(224, 242, 254, 0.8)';
+      ctx.fillText(countText, width / 2, height / 2 + 20);
     } else {
-      ctx.shadowColor = 'rgba(255, 255, 255, 0.85)';
-      ctx.shadowBlur = 10;
-      ctx.lineWidth = 7;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
-      ctx.font = '700 72px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.font = '700 66px "Plus Jakarta Sans", system-ui, sans-serif';
       ctx.strokeText(monthYearText, width / 2, height / 2 - 42);
       ctx.fillStyle = isFull
         ? '#b45309'
@@ -563,15 +589,15 @@ function drawBucketLabelCanvas(
           : '#0f172a';
       ctx.fillText(monthYearText, width / 2, height / 2 - 42);
 
-      ctx.lineWidth = 5;
-      ctx.font = '600 42px "JetBrains Mono", monospace';
-      ctx.strokeText(countText, width / 2, height / 2 + 24);
+      ctx.lineWidth = 4;
+      ctx.font = '600 40px "JetBrains Mono", monospace';
+      ctx.strokeText(countText, width / 2, height / 2 + 20);
       ctx.fillStyle = isFull
         ? '#d97706'
         : count > 0
           ? '#0284c7'
           : '#475569';
-      ctx.fillText(countText, width / 2, height / 2 + 24);
+      ctx.fillText(countText, width / 2, height / 2 + 20);
     }
   }
 
@@ -1098,16 +1124,21 @@ export function ProductionStage1Three({
       group.add(dishPivot);
 
       const wallMat = new THREE.MeshPhysicalMaterial({
-        color: 0x93c5fd,
+        color: 0xbae6fd,
         metalness: 0.04,
-        roughness: 0.08,
+        roughness: 0.06,
         clearcoat: 1.0,
-        clearcoatRoughness: 0.04,
+        clearcoatRoughness: 0.03,
+        iridescence: 0.55,
+        iridescenceIOR: 1.33,
+        sheen: 0.65,
+        sheenRoughness: 0.25,
+        sheenColor: new THREE.Color(0xe0f2fe),
         ior: 1.48,
-        reflectivity: 0.9,
-        envMapIntensity: 1.3,
+        reflectivity: 0.95,
+        envMapIntensity: 1.85,
         transparent: true,
-        opacity: 0.24,
+        opacity: 0.3,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
@@ -1118,11 +1149,11 @@ export function ProductionStage1Three({
       const footMat = new THREE.MeshStandardMaterial({
         color: 0x7dd3fc,
         emissive: 0x0369a1,
-        emissiveIntensity: 0.35,
-        metalness: 0.72,
-        roughness: 0.2,
+        emissiveIntensity: 0.45,
+        metalness: 0.78,
+        roughness: 0.16,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.68,
       });
       const footMesh = new THREE.Mesh(bucketFootGeo, footMat);
       footMesh.rotation.x = Math.PI / 2;
@@ -1130,11 +1161,11 @@ export function ProductionStage1Three({
       dishPivot.add(footMesh);
 
       const rimMat = new THREE.MeshStandardMaterial({
-        color: 0xbae6fd,
+        color: 0xe0f2fe,
         emissive: 0x38bdf8,
-        emissiveIntensity: 0.9,
-        metalness: 0.76,
-        roughness: 0.14,
+        emissiveIntensity: 1.05,
+        metalness: 0.8,
+        roughness: 0.12,
       });
       const rimMesh = new THREE.Mesh(bucketRimGeo, rimMat);
       rimMesh.rotation.x = Math.PI / 2;
@@ -1260,7 +1291,7 @@ export function ProductionStage1Three({
       };
     });
 
-    // 6 Jumping Core Domain Icons ONLY at the bottom (Career, Family, Finance, Love, Health, Litigation)
+    // 6 Jumping Frosted Crystal Domain Bubble Orbs ONLY at the bottom (Career, Family, Finance, Love, Health, Litigation)
     const orbSlots = [
       new THREE.Vector3(-4.75, -2.26, 0.24),
       new THREE.Vector3(-2.85, -2.38, 0.32),
@@ -1270,16 +1301,51 @@ export function ProductionStage1Three({
       new THREE.Vector3(4.75, -2.26, 0.24),
     ];
 
-    const orbIconPlaneGeo = new THREE.PlaneGeometry(1.18, 1.18);
-    const orbShadowGeo = new THREE.CircleGeometry(0.46, 24);
-    const orbHitGeo = new THREE.SphereGeometry(0.86, 14, 14);
-    disposables.push(orbIconPlaneGeo, orbShadowGeo, orbHitGeo);
+    // Translucent Frosted Crystal Dock Tray smoothly cradling the 6 bottom orbs
+    const dockPoints = [
+      new THREE.Vector3(-6.2, 0.16, -0.04),
+      new THREE.Vector3(-3.1, 0.04, 0.14),
+      new THREE.Vector3(0, -0.02, 0.24),
+      new THREE.Vector3(3.1, 0.04, 0.14),
+      new THREE.Vector3(6.2, 0.16, -0.04),
+    ];
+    const dockCurve = new THREE.CatmullRomCurve3(dockPoints);
+    const dockRibbonGeo = new THREE.TubeGeometry(dockCurve, 64, 0.12, 16, false);
+    const dockRibbonMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe0f2fe,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.28,
+      roughness: 0.12,
+      metalness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.04,
+      iridescence: 0.5,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+    });
+    const dockRibbonMesh = new THREE.Mesh(dockRibbonGeo, dockRibbonMat);
+    dockRibbonMesh.scale.set(1, 0.28, 2.9);
+    dockRibbonMesh.position.y = -3.14;
+    dockRibbonMesh.renderOrder = 1;
+    scene.add(dockRibbonMesh);
+    disposables.push(dockRibbonGeo, dockRibbonMat);
+
+    const orbIconPlaneGeo = new THREE.PlaneGeometry(0.96, 0.96);
+    const orbGlassSphereGeo = new THREE.SphereGeometry(0.64, isSoftwareGl ? 22 : 34, isSoftwareGl ? 22 : 34);
+    const orbGlassRingGeo = new THREE.TorusGeometry(0.65, 0.02, 12, 48);
+    const orbShadowGeo = new THREE.CircleGeometry(0.52, 28);
+    const orbHitGeo = new THREE.SphereGeometry(0.88, 14, 14);
+    disposables.push(orbIconPlaneGeo, orbGlassSphereGeo, orbGlassRingGeo, orbShadowGeo, orbHitGeo);
 
     interface OrbEntry {
       topic: ProductionTopicDef;
       group: THREE.Group;
       homePos: THREE.Vector3;
       iconTex: THREE.CanvasTexture;
+      glassMat: THREE.MeshPhysicalMaterial;
+      glassRingMesh: THREE.Mesh;
+      glassRingMat: THREE.MeshStandardMaterial;
       shadowMesh: THREE.Mesh;
       shadowMat: THREE.MeshBasicMaterial;
       hitMesh: THREE.Mesh;
@@ -1295,7 +1361,7 @@ export function ProductionStage1Three({
 
       const accentColor = new THREE.Color(topic.accentHex);
 
-      // Pure core domain icon sprite — no enclosing sphere or ring
+      // Core domain emblem centered crisply inside the crystal glass orb
       const iconTex = drawPureCoreIconCanvas(
         topic.icon,
         topic.accentHex,
@@ -1309,8 +1375,44 @@ export function ProductionStage1Three({
         side: THREE.DoubleSide,
       });
       const iconMesh = new THREE.Mesh(orbIconPlaneGeo, iconMat);
+      iconMesh.renderOrder = 2;
       group.add(iconMesh);
-      disposables.push(iconTex, iconMat);
+
+      // Encasing Frosted Liquid-Glass Bubble Shell
+      const glassMat = new THREE.MeshPhysicalMaterial({
+        color: accentColor,
+        emissive: accentColor,
+        emissiveIntensity: 0.14,
+        metalness: 0.05,
+        roughness: 0.08,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.03,
+        iridescence: 0.55,
+        iridescenceIOR: 1.33,
+        envMapIntensity: 1.85,
+        transparent: true,
+        opacity: 0.26,
+        depthWrite: false,
+      });
+      const glassSphereMesh = new THREE.Mesh(orbGlassSphereGeo, glassMat);
+      glassSphereMesh.renderOrder = 4;
+      group.add(glassSphereMesh);
+
+      const glassRingMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: accentColor,
+        emissiveIntensity: 0.65,
+        metalness: 0.72,
+        roughness: 0.16,
+        transparent: true,
+        opacity: 0.58,
+      });
+      const glassRingMesh = new THREE.Mesh(orbGlassRingGeo, glassRingMat);
+      glassRingMesh.rotation.x = Math.PI / 2.2;
+      glassRingMesh.renderOrder = 5;
+      group.add(glassRingMesh);
+
+      disposables.push(iconTex, iconMat, glassMat, glassRingMat);
 
       const hitMesh = new THREE.Mesh(orbHitGeo, invisibleHitMat);
       hitMesh.userData = { orbIndex: idx };
@@ -1319,11 +1421,11 @@ export function ProductionStage1Three({
       const shadowMat = new THREE.MeshBasicMaterial({
         color: accentColor,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.22,
       });
       const shadowMesh = new THREE.Mesh(orbShadowGeo, shadowMat);
       shadowMesh.rotation.x = -Math.PI / 2;
-      shadowMesh.position.set(homePos.x, homePos.y - 0.68, homePos.z);
+      shadowMesh.position.set(homePos.x, homePos.y - 0.72, homePos.z);
       scene.add(shadowMesh);
       scene.add(group);
       disposables.push(shadowMat);
@@ -1333,6 +1435,9 @@ export function ProductionStage1Three({
         group,
         homePos,
         iconTex,
+        glassMat,
+        glassRingMesh,
+        glassRingMat,
         shadowMesh,
         shadowMat,
         hitMesh,
@@ -2205,12 +2310,21 @@ export function ProductionStage1Three({
         o.scaleLerp = THREE.MathUtils.damp(o.scaleLerp, targetScale, 12, dt);
         o.group.scale.setScalar(o.scaleLerp);
 
+        o.glassMat.opacity = isDragged || isHovered ? 0.36 : stateRef.current.isDarkTheme ? 0.26 : 0.32;
+        o.glassMat.emissiveIntensity = isDragged || isHovered ? 0.26 : 0.14;
+        o.glassRingMesh.rotation.z = elapsed * 0.45 + o.phase;
+        o.glassRingMat.opacity = anyBucketInspected ? 0.12 : isDragged || isHovered ? 0.85 : 0.56;
+
         const heightAboveFloor = Math.max(0, o.currentPos.y - (o.homePos.y - 0.5));
         const shadowScale = THREE.MathUtils.clamp(1.08 - heightAboveFloor * 0.34, 0.44, 1.08);
-        o.shadowMesh.position.set(o.currentPos.x, o.homePos.y - 0.68, o.currentPos.z);
+        o.shadowMesh.position.set(o.currentPos.x, o.homePos.y - 0.72, o.currentPos.z);
         o.shadowMesh.scale.setScalar(anyBucketInspected ? 0.01 : isDragged ? 0.36 : shadowScale);
-        o.shadowMat.opacity = anyBucketInspected ? 0 : isDragged ? 0.1 : shadowScale * 0.28;
+        o.shadowMat.opacity = anyBucketInspected ? 0 : isDragged ? 0.1 : shadowScale * 0.22;
       }
+
+      dockRibbonMat.color.setHex(stateRef.current.isDarkTheme ? 0xbae6fd : 0xffffff);
+      dockRibbonMat.emissive.setHex(stateRef.current.isDarkTheme ? 0x38bdf8 : 0x7dd3fc);
+      dockRibbonMat.opacity = anyBucketInspected ? 0.1 : stateRef.current.isDarkTheme ? 0.3 : 0.48;
 
       renderer.render(scene, camera);
     };
@@ -2317,7 +2431,7 @@ export function ProductionStage1Three({
     : null;
 
   return (
-    <div className="pa-prod-backdrop relative flex-1 min-h-0 overflow-hidden transition-colors duration-300">
+    <div className="relative flex-1 min-h-0 overflow-hidden transition-colors duration-300 bg-transparent">
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
 
@@ -2467,10 +2581,10 @@ export function ProductionStage1Three({
                     type="button"
                     onClick={() => setInspectedBucketKey(null)}
                     aria-label="Close bucket preview"
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-colors ${
+                    className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-all ${
                       isDarkTheme
-                        ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/75'
+                        ? 'text-slate-200 hover:text-white'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <X className="w-4 h-4" />
@@ -2714,7 +2828,7 @@ export function ProductionStage1Three({
 
       {/* Blocked Duplicate Notice Modal (Max 1 Gemini + 1 Fable per domain per month) */}
       {blockedDropNotice && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/35 backdrop-blur-xs">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-md">
           <div
             role="alertdialog"
             aria-labelledby="blocked-drop-title"
@@ -2753,10 +2867,10 @@ export function ProductionStage1Three({
                 type="button"
                 onClick={() => setBlockedDropNotice(null)}
                 aria-label="Dismiss notice"
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg cursor-pointer transition-colors ${
+                className={`pa-glass-pill inline-flex h-7 w-7 items-center justify-center rounded-lg cursor-pointer transition-all ${
                   isDarkTheme
-                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/75'
+                    ? 'text-slate-200 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <X className="w-4 h-4" />
@@ -2813,7 +2927,7 @@ export function ProductionStage1Three({
 
       {/* Translucent Frosted Glass Question Panel after Dropping Icon into Month Bucket */}
       {dockedTarget && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/35 backdrop-blur-xs">
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-md">
           <form
             onSubmit={handleSubmit}
             className="pa-glass-card relative overflow-hidden w-full max-w-md rounded-[26px] p-6 sm:p-7 space-y-4"
@@ -2857,10 +2971,10 @@ export function ProductionStage1Three({
                   setValidationError(null);
                 }}
                 aria-label="Close question prompt"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-colors ${
+                className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl cursor-pointer transition-all ${
                   isDarkTheme
-                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/10'
+                    ? 'text-slate-200 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <X className="w-4 h-4" />

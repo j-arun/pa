@@ -2273,10 +2273,35 @@ export default function App() {
 
   return (
     <div
-      className={`h-screen w-screen overflow-hidden flex text-slate-900 dark:text-slate-100 select-none sm:select-auto ${
+      className={`relative h-screen w-screen overflow-hidden flex text-slate-900 dark:text-slate-100 select-none sm:select-auto ${
         isProductionApp ? 'pa-prod-backdrop' : 'mica-canvas'
       }`}
     >
+      {/* Living Twilight Bokeh Depth Field Behind All Production Liquid-Glass Surfaces */}
+      {isProductionApp && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+          <div
+            className={`pa-glass-orb-a absolute -top-28 -left-20 w-[44vw] max-w-[620px] aspect-square rounded-full blur-[95px] ${
+              isProdDarkTheme ? 'bg-sky-500/24' : 'bg-sky-300/45'
+            }`}
+          />
+          <div
+            className={`pa-glass-orb-b absolute -top-24 -right-24 w-[42vw] max-w-[580px] aspect-square rounded-full blur-[100px] ${
+              isProdDarkTheme ? 'bg-amber-400/18' : 'bg-amber-200/55'
+            }`}
+          />
+          <div
+            className={`pa-glass-orb-a absolute -bottom-36 left-1/3 w-[46vw] max-w-[660px] aspect-square rounded-full blur-[110px] ${
+              isProdDarkTheme ? 'bg-indigo-500/20' : 'bg-cyan-200/45'
+            }`}
+          />
+          <div
+            className={`pa-glass-orb-b absolute top-1/3 left-1/2 -translate-x-1/2 w-[36vw] max-w-[480px] aspect-square rounded-full blur-[90px] ${
+              isProdDarkTheme ? 'bg-cyan-400/12' : 'bg-white/65'
+            }`}
+          />
+        </div>
+      )}
       {/* Left WinUI 3 NavigationView Rail (Dev Mode ONLY — Hidden in Production Mode and while a report is running) */}
       {!isProductionApp && !isReportRunning && isLeftRailOpen && (
         <>
@@ -2349,16 +2374,10 @@ export default function App() {
       )}
 
       {/* Main Content Shell */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      <div className="relative z-10 flex-1 flex flex-col min-w-0 min-h-0">
         {isProductionApp ? (
           /* Minimal Production Header: Left Reports Toggle + Settings Icon (after toggle) + Right Watch Out Toggle */
-          <header
-            className={`relative h-14 shrink-0 px-4 sm:px-6 border-b backdrop-blur-2xl flex items-center justify-between gap-4 transition-colors ${
-              isProdDarkTheme
-                ? 'border-white/12 bg-[#0c1426]/60'
-                : 'border-white/80 bg-white/65'
-            }`}
-          >
+          <header className="pa-glass-chrome relative h-14 shrink-0 px-4 sm:px-6 border-b flex items-center justify-between gap-4 transition-colors">
             <div className="flex items-center gap-2 shrink-0">
               {!isReportRunning && (
                 <button
@@ -2373,14 +2392,14 @@ export default function App() {
                       ? `Hide Reports (${prodReportsDirDisplay})`
                       : `Show Reports (${prodReportsDirDisplay})`
                   }
-                  className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer backdrop-blur-md ${
+                  className={`pa-glass-pill inline-flex p-1.5 rounded-xl transition-all shrink-0 cursor-pointer ${
                     isProdDarkTheme
                       ? isProdReportsMenuOpen
-                        ? 'bg-sky-500/20 border-sky-400/70 text-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.22)]'
-                        : 'border-white/15 bg-white/8 text-sky-300 hover:bg-white/15 hover:border-white/25'
+                        ? '!border-sky-400/75 text-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.28)]'
+                        : 'text-sky-300 hover:brightness-115'
                       : isProdReportsMenuOpen
-                        ? 'bg-sky-500/15 border-sky-400 text-sky-700'
-                        : 'border-white/85 bg-white/75 text-sky-600 hover:bg-white/95 hover:border-sky-300'
+                        ? '!border-sky-400 text-sky-700 shadow-[0_0_14px_rgba(14,165,233,0.22)]'
+                        : 'text-sky-600 hover:brightness-105'
                   }`}
                 >
                   <PanelLeft className="w-4 h-4" />
@@ -2395,14 +2414,14 @@ export default function App() {
                 aria-pressed={isSettingsOpen}
                 aria-label="Settings"
                 title="Settings"
-                className={`inline-flex p-1.5 rounded-lg border transition-colors shrink-0 cursor-pointer backdrop-blur-md ${
+                className={`pa-glass-pill inline-flex p-1.5 rounded-xl transition-all shrink-0 cursor-pointer ${
                   isProdDarkTheme
                     ? isSettingsOpen
-                      ? 'bg-sky-500/20 border-sky-400/70 text-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.22)]'
-                      : 'border-white/15 bg-white/8 text-slate-200 hover:text-sky-300 hover:bg-white/15 hover:border-white/25'
+                      ? '!border-sky-400/75 text-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.28)]'
+                      : 'text-slate-200 hover:text-sky-300 hover:brightness-115'
                     : isSettingsOpen
-                      ? 'bg-sky-500/15 border-sky-400 text-sky-700'
-                      : 'border-white/85 bg-white/75 text-slate-700 hover:text-sky-600 hover:bg-white/95 hover:border-sky-300'
+                      ? '!border-sky-400 text-sky-700 shadow-[0_0_14px_rgba(14,165,233,0.22)]'
+                      : 'text-slate-700 hover:text-sky-600 hover:brightness-105'
                 }`}
               >
                 <Settings className="w-4 h-4" />
@@ -2416,14 +2435,14 @@ export default function App() {
                   onClick={() => setIsContextRailOpen((prev) => !prev)}
                   aria-label={isContextRailVisible ? 'Hide Watch Out Timeline' : 'Show Watch Out Timeline'}
                   aria-pressed={isContextRailVisible}
-                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer backdrop-blur-md ${
+                  className={`pa-glass-pill inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                     isProdDarkTheme
                       ? isContextRailVisible
-                        ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
-                        : 'border-white/15 bg-white/8 text-slate-100 hover:bg-white/15'
+                        ? '!border-amber-400/75 text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.24)]'
+                        : 'text-slate-100 hover:brightness-115'
                       : isContextRailVisible
-                        ? 'border-amber-400 bg-amber-50/90 text-amber-800'
-                        : 'border-white/85 bg-white/75 text-slate-800 hover:bg-white/95'
+                        ? '!border-amber-400 text-amber-800 shadow-[0_0_14px_rgba(245,158,11,0.22)]'
+                        : 'text-slate-800 hover:brightness-105'
                   }`}
                 >
                   <ShieldAlert
@@ -2437,7 +2456,7 @@ export default function App() {
                       className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
                         isProdDarkTheme
                           ? 'bg-amber-400/20 text-amber-200'
-                          : 'bg-amber-100 text-amber-800'
+                          : 'bg-amber-500/15 text-amber-800'
                       }`}
                     >
                       {activeCarefulDates.length}
@@ -2920,13 +2939,7 @@ export default function App() {
 
         {/* Bottom Panel Status Bar */}
         {isProductionApp ? (
-          <footer
-            className={`h-9 shrink-0 px-4 sm:px-6 border-t backdrop-blur-2xl flex items-center justify-between gap-3 text-xs transition-colors ${
-              isProdDarkTheme
-                ? 'border-white/12 bg-[#0c1426]/65'
-                : 'border-white/80 bg-white/65'
-            }`}
-          >
+          <footer className="pa-glass-chrome h-9 shrink-0 px-4 sm:px-6 border-t flex items-center justify-between gap-3 text-xs transition-colors">
             <div
               className={`flex items-center gap-2.5 min-w-0 ${
                 isProdDarkTheme ? 'text-slate-100' : 'text-slate-800'
@@ -2948,11 +2961,9 @@ export default function App() {
                     ? 'Switch Public provider between Gemini and Fable'
                     : 'Gemini / Fable switching is only available on Home before starting a report'
                 }
-                className={`inline-flex items-center p-0.5 rounded-md border shrink-0 transition-opacity backdrop-blur-md ${
-                  isProdDarkTheme
-                    ? 'bg-white/8 border-white/15'
-                    : 'bg-white/75 border-white/90'
-                } ${canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'}`}
+                className={`pa-glass-pill inline-flex items-center p-0.5 rounded-lg shrink-0 transition-opacity ${
+                  canSwitchScope ? '' : 'opacity-55 cursor-not-allowed'
+                }`}
               >
                 {(['gemini', 'fable'] as const).map((providerId) => {
                   const activeProdAdapter =
@@ -2975,15 +2986,15 @@ export default function App() {
                           },
                         }));
                       }}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
+                      className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold leading-none transition-colors whitespace-nowrap shrink-0 ${
                         !canSwitchScope ? 'cursor-not-allowed' : 'cursor-pointer'
                       } ${
                         isSelected
                           ? isProdDarkTheme
-                            ? 'bg-slate-950 text-sky-300 shadow-2xs'
-                            : 'bg-white text-sky-700 shadow-2xs'
+                            ? 'bg-sky-500/25 text-sky-200 border border-sky-400/40 shadow-2xs'
+                            : 'bg-white/95 text-sky-700 shadow-2xs'
                           : isProdDarkTheme
-                            ? 'text-slate-400 hover:text-slate-200'
+                            ? 'text-slate-300/80 hover:text-white'
                             : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
@@ -3021,14 +3032,14 @@ export default function App() {
                     ? 'Speaker On — click to mute'
                     : 'Speaker Off — click to unmute'
                 }
-                className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors shrink-0 cursor-pointer ${
+                className={`pa-glass-pill inline-flex items-center justify-center w-6 h-6 rounded-lg transition-all shrink-0 cursor-pointer ${
                   settings.voice.prodSummarySpeakerEnabled !== false
                     ? isProdDarkTheme
-                      ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
-                      : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
+                      ? '!border-sky-400/60 text-sky-300 hover:brightness-115'
+                      : '!border-sky-300 text-sky-700 hover:brightness-105'
                     : isProdDarkTheme
-                      ? 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                      : 'border-slate-200 bg-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-200'
+                      ? 'text-slate-400 hover:text-slate-200'
+                      : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
                 {settings.voice.prodSummarySpeakerEnabled !== false ? (
@@ -3045,7 +3056,7 @@ export default function App() {
                   />
                 )}
               </button>
-              <span className={isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'}>|</span>
+              <span className={isProdDarkTheme ? 'text-white/20' : 'text-slate-300'}>|</span>
               <button
                 type="button"
                 disabled={!canCopyPrompt}
@@ -3061,16 +3072,14 @@ export default function App() {
                       ? 'Copied outgoing prompt to clipboard'
                       : 'Copy captured prompt sent to LLM'
                 }
-                className={`inline-flex items-center justify-center w-6 h-6 rounded border transition-colors shrink-0 ${
+                className={`pa-glass-pill inline-flex items-center justify-center w-6 h-6 rounded-lg transition-all shrink-0 ${
                   canCopyPrompt
                     ? promptCopied
-                      ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-500 cursor-pointer'
+                      ? '!border-emerald-400/70 text-emerald-400 cursor-pointer'
                       : isProdDarkTheme
-                        ? 'border-slate-700/80 bg-slate-800/90 text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-800 cursor-pointer'
-                        : 'border-slate-200 bg-white text-slate-700 hover:text-sky-600 hover:border-sky-400 cursor-pointer'
-                    : isProdDarkTheme
-                      ? 'border-slate-800/80 bg-slate-900/60 text-slate-600 opacity-50 cursor-not-allowed'
-                      : 'border-slate-200/70 bg-slate-100 text-slate-400 opacity-55 cursor-not-allowed'
+                        ? 'text-slate-200 hover:text-sky-300 hover:brightness-115 cursor-pointer'
+                        : 'text-slate-700 hover:text-sky-600 hover:brightness-105 cursor-pointer'
+                    : 'opacity-45 cursor-not-allowed'
                 }`}
               >
                 {promptCopied ? (
@@ -3309,7 +3318,11 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-16 right-4 z-40 max-w-sm rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl px-4 py-3 flex items-start gap-3"
+          className={`fixed top-16 right-4 z-40 max-w-sm rounded-2xl px-4 py-3 flex items-start gap-3 ${
+            isProductionApp
+              ? 'pa-glass-card'
+              : 'border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl'
+          }`}
         >
           <div
             className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
@@ -3330,7 +3343,11 @@ export default function App() {
             type="button"
             onClick={() => setReplyToast(null)}
             aria-label="Dismiss notification"
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
+            className={`p-1 rounded-lg transition-colors shrink-0 ${
+              isProductionApp
+                ? 'pa-glass-pill'
+                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
           >
             <X className="w-3.5 h-3.5" />
           </button>

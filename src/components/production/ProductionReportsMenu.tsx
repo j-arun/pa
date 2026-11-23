@@ -343,10 +343,10 @@ export function ProductionReportsMenu({
           onClick={onClose}
           aria-label="Close reports window"
           title="Close"
-          className={`inline-flex h-5 w-5 items-center justify-center rounded-md transition-colors cursor-pointer shrink-0 ${
+          className={`pa-glass-pill inline-flex h-5 w-5 items-center justify-center rounded-md transition-colors cursor-pointer shrink-0 ${
             isDarkTheme
-              ? 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/70'
+              ? 'text-slate-300 hover:text-white'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <X className="w-3 h-3" />
@@ -357,8 +357,8 @@ export function ProductionReportsMenu({
       <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-2 space-y-1">
         {yearGroups.length === 0 ? (
           <div
-            className={`px-2 py-4 text-center text-[11px] ${
-              isDarkTheme ? 'text-slate-400' : 'text-slate-600'
+            className={`pa-glass-subwell rounded-xl px-2 py-4 text-center text-[11px] ${
+              isDarkTheme ? 'text-slate-300' : 'text-slate-600'
             }`}
           >
             No reports yet.
@@ -374,8 +374,8 @@ export function ProductionReportsMenu({
                   onClick={() => toggleNode(yearKey)}
                   className={`w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
                     isDarkTheme
-                      ? 'text-slate-100 hover:bg-slate-800/75'
-                      : 'text-slate-900 hover:bg-sky-900/5'
+                      ? 'text-slate-100 hover:bg-white/10'
+                      : 'text-slate-900 hover:bg-white/60'
                   }`}
                 >
                   <span className="flex items-center gap-1.5 min-w-0">
@@ -420,8 +420,8 @@ export function ProductionReportsMenu({
                             onClick={() => toggleNode(monthKey)}
                             className={`w-full flex items-center justify-between gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
                               isDarkTheme
-                                ? 'text-slate-200 hover:bg-slate-800/75'
-                                : 'text-slate-800 hover:bg-sky-900/5'
+                                ? 'text-slate-200 hover:bg-white/10'
+                                : 'text-slate-800 hover:bg-white/60'
                             }`}
                           >
                             <span className="flex items-center gap-1.5 min-w-0">
@@ -471,8 +471,8 @@ export function ProductionReportsMenu({
                                       onClick={() => toggleNode(provKey)}
                                       className={`w-full flex items-center justify-between gap-1.5 px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold cursor-pointer transition-colors ${
                                         isDarkTheme
-                                          ? 'text-slate-300 hover:bg-slate-800/65'
-                                          : 'text-slate-700 hover:bg-sky-900/5'
+                                          ? 'text-slate-300 hover:bg-white/10'
+                                          : 'text-slate-700 hover:bg-white/60'
                                       }`}
                                     >
                                       <span className="flex items-center gap-1.5 min-w-0">
@@ -510,7 +510,7 @@ export function ProductionReportsMenu({
                                         {prov.rows.length === 0 ? (
                                           <div
                                             className={`px-1.5 py-0.5 text-[10px] italic ${
-                                              isDarkTheme ? 'text-slate-500' : 'text-slate-500'
+                                              isDarkTheme ? 'text-slate-400/75' : 'text-slate-500'
                                             }`}
                                           >
                                             Empty
@@ -525,10 +525,10 @@ export function ProductionReportsMenu({
                                                   isSelected
                                                     ? isDarkTheme
                                                       ? 'bg-sky-500/20 text-sky-100 border-sky-400/55 shadow-2xs'
-                                                      : 'bg-sky-600/12 text-sky-950 border-sky-500/45 shadow-2xs'
+                                                      : 'bg-sky-500/15 text-sky-950 border-sky-400/55 shadow-2xs'
                                                     : isDarkTheme
-                                                      ? 'text-slate-200 hover:bg-slate-800/75 border-transparent'
-                                                      : 'text-slate-800 hover:bg-white/85 border-transparent'
+                                                      ? 'text-slate-200 hover:bg-white/10 border-transparent'
+                                                      : 'text-slate-800 hover:bg-white/65 border-transparent'
                                                 }`}
                                               >
                                                 <button

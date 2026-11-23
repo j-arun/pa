@@ -131,10 +131,10 @@ export function ProductionTimelinePanel({
           onClick={onClose}
           aria-label="Close Watch Out Timeline"
           title="Close"
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors shrink-0 cursor-pointer ${
+          className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all shrink-0 cursor-pointer ${
             isDarkTheme
-              ? 'text-slate-300 hover:text-white hover:bg-white/10'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/5'
+              ? 'text-slate-200 hover:text-white'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <X className="w-4 h-4" />
@@ -211,10 +211,8 @@ export function ProductionTimelinePanel({
               return (
                 <div key={item.id} className="relative flex items-start gap-3">
                   <div
-                    className={`relative z-10 shrink-0 w-9 h-9 rounded-full flex items-center justify-center mt-0.5 shadow-md ${
-                      isDarkTheme ? 'bg-slate-900/90' : 'bg-white/95'
-                    }`}
-                    style={{ border: `1.5px solid ${sev.ringBorder}` }}
+                    className="pa-glass-pill relative z-10 shrink-0 w-9 h-9 rounded-full flex items-center justify-center mt-0.5 shadow-md"
+                    style={{ borderColor: sev.ringBorder }}
                     title={`${item.domain} · ${sev.label}`}
                   >
                     <DomainNodeGlyph domain={item.domain} />

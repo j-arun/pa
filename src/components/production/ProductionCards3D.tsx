@@ -1191,7 +1191,7 @@ export function ProductionCards3D({
   };
 
   return (
-    <div className="pa-prod-backdrop relative flex-1 min-h-0 flex flex-col overflow-hidden select-none">
+    <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden select-none bg-transparent">
       {/* Stage 2 Waiting State: Three.js Spinning Orb + Jiggly Floating Question Words */}
       {isWaitingForReply && (
         <>
@@ -1199,12 +1199,12 @@ export function ProductionCards3D({
           <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-between py-10 px-4">
             <div className="text-center space-y-3 flex flex-col items-center">
               {(domain || periodLabel) && (
-                <div className="inline-flex items-center justify-center gap-2.5">
+                <div className="pa-glass-pill inline-flex items-center justify-center gap-2.5 rounded-full px-4 py-1.5">
                   {domain && <Stage2DomainEmblem domain={domain} />}
                   {waitingPeriod && (
                     <span
                       className={`text-xs sm:text-sm font-bold tracking-[0.16em] uppercase tabular-nums ${
-                        isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                        isDarkTheme ? 'text-sky-200' : 'text-sky-800'
                       }`}
                     >
                       {waitingPeriod}
@@ -1301,7 +1301,7 @@ export function ProductionCards3D({
             {/* Top-Left: Answer Window (Answer Alone) */}
             <section
               aria-label="Answer"
-              className="pa-glass-card rounded-[24px] p-4 sm:p-5 flex flex-col min-h-[180px] lg:min-h-[218px]"
+              className="pa-glass-card rounded-[26px] p-4 sm:p-5 flex flex-col min-h-[180px] lg:min-h-[218px]"
             >
               <div className="flex items-center justify-between gap-3 mb-2.5 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
@@ -1328,12 +1328,12 @@ export function ProductionCards3D({
                     }}
                     aria-label={isSpeakingSummary ? 'Stop reading answer' : 'Read answer aloud'}
                     title={isSpeakingSummary ? 'Stop reading answer' : 'Read answer aloud'}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all cursor-pointer shrink-0 ${
                       isSpeakingSummary
-                        ? 'border-sky-400 bg-sky-500 text-white shadow-[0_0_18px_rgba(14,165,233,0.65)] animate-pulse'
+                        ? '!border-sky-400 !bg-sky-500 text-white shadow-[0_0_18px_rgba(14,165,233,0.65)] animate-pulse'
                         : isDarkTheme
-                          ? 'border-white/15 bg-white/10 text-slate-200 hover:bg-white/20 hover:text-sky-300'
-                          : 'border-white/80 bg-white/70 text-slate-700 hover:bg-white hover:text-sky-600'
+                          ? 'text-slate-100 hover:text-sky-300'
+                          : 'text-slate-700 hover:text-sky-600'
                     }`}
                   >
                     <WindowsSpeakerIcon active={isSpeakingSummary} className="w-4 h-4" />
@@ -1342,7 +1342,7 @@ export function ProductionCards3D({
               </div>
 
               <div
-                className={`flex-1 min-h-0 overflow-y-auto fluent-scroll pr-1 select-text font-sans text-xs leading-relaxed ${
+                className={`pa-glass-subwell rounded-2xl px-4 py-3 flex-1 min-h-0 overflow-y-auto fluent-scroll select-text font-sans text-xs leading-relaxed ${
                   isDarkTheme ? 'text-slate-100/95' : 'text-slate-800'
                 }`}
               >
@@ -1361,7 +1361,7 @@ export function ProductionCards3D({
             {/* Top-Right: Smaller Timeline-Only Widget */}
             <section
               aria-label="Timeline"
-              className="pa-glass-card rounded-[22px] p-3.5 flex flex-col justify-between gap-2 relative w-full lg:max-w-[315px] justify-self-end"
+              className="pa-glass-card rounded-[26px] p-3.5 sm:p-4 flex flex-col justify-between gap-2 relative w-full lg:max-w-[315px] justify-self-end"
             >
               {/* Header: Timeline · Domain · Period + Provider + Options */}
               <div className="flex items-center justify-between gap-2">
@@ -1379,14 +1379,14 @@ export function ProductionCards3D({
 
                 <div className="relative flex items-center gap-1 shrink-0">
                   <span
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold border ${
+                    className={`pa-glass-pill rounded-lg px-2 py-0.5 text-[10px] font-semibold ${
                       providerAdapter === 'fable'
                         ? isDarkTheme
-                          ? 'border-amber-400/35 bg-amber-400/15 text-amber-200'
-                          : 'border-amber-300 bg-amber-50 text-amber-800'
+                          ? '!border-amber-400/40 text-amber-200'
+                          : '!border-amber-300 text-amber-800'
                         : isDarkTheme
-                          ? 'border-sky-400/35 bg-sky-400/15 text-sky-200'
-                          : 'border-sky-300 bg-sky-50 text-sky-800'
+                          ? '!border-sky-400/40 text-sky-200'
+                          : '!border-sky-300 text-sky-800'
                     }`}
                   >
                     {providerAdapter === 'fable' ? 'Fable' : 'Gemini'}
@@ -1395,10 +1395,10 @@ export function ProductionCards3D({
                     type="button"
                     onClick={() => setIsOverviewMenuOpen((prev) => !prev)}
                     aria-label="Timeline options"
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                    className={`pa-glass-pill inline-flex h-6 w-6 items-center justify-center rounded-lg transition-all cursor-pointer ${
                       isDarkTheme
-                        ? 'text-slate-300 hover:bg-white/10 hover:text-white'
-                        : 'text-slate-600 hover:bg-slate-900/5 hover:text-slate-900'
+                        ? 'text-slate-200 hover:text-white'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
@@ -1418,7 +1418,7 @@ export function ProductionCards3D({
                         className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left cursor-pointer ${
                           isDarkTheme
                             ? 'text-slate-100 hover:bg-white/10'
-                            : 'text-slate-800 hover:bg-slate-900/5'
+                            : 'text-slate-800 hover:bg-white/75'
                         }`}
                       >
                         <FileText className="w-3.5 h-3.5 text-sky-400" />
@@ -1434,7 +1434,7 @@ export function ProductionCards3D({
                           className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left cursor-pointer ${
                             isDarkTheme
                               ? 'text-amber-200 hover:bg-white/10'
-                              : 'text-amber-800 hover:bg-slate-900/5'
+                              : 'text-amber-800 hover:bg-white/75'
                           }`}
                         >
                           <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
@@ -1447,7 +1447,7 @@ export function ProductionCards3D({
               </div>
 
               {/* Inner Timeline Bar Chart Well Only */}
-              <div className="pa-glass-subwell relative rounded-[16px] p-2.5 min-h-[126px] flex flex-col justify-between">
+              <div className="pa-glass-subwell relative rounded-2xl p-2.5 min-h-[126px] flex flex-col justify-between">
                 {timelineBars.length === 0 ? (
                   <div
                     className={`flex-1 flex items-center justify-center text-xs ${
@@ -1469,10 +1469,8 @@ export function ProductionCards3D({
                             )
                           }
                           aria-label="Previous timeline window"
-                          className={`absolute left-1 top-1/2 -translate-y-1/2 z-20 inline-flex h-5 w-5 items-center justify-center rounded-md border transition-colors cursor-pointer ${
-                            isDarkTheme
-                              ? 'border-white/15 bg-slate-900/75 text-slate-200 hover:bg-slate-800'
-                              : 'border-slate-200 bg-white/90 text-slate-700 hover:bg-white'
+                          className={`pa-glass-pill absolute left-1 top-1/2 -translate-y-1/2 z-20 inline-flex h-5 w-5 items-center justify-center rounded-md transition-all cursor-pointer ${
+                            isDarkTheme ? 'text-slate-100 hover:brightness-115' : 'text-slate-700'
                           }`}
                         >
                           <ChevronLeft className="w-3 h-3" />
@@ -1485,10 +1483,8 @@ export function ProductionCards3D({
                             )
                           }
                           aria-label="Next timeline window"
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 z-20 inline-flex h-5 w-5 items-center justify-center rounded-md border transition-colors cursor-pointer ${
-                            isDarkTheme
-                              ? 'border-white/15 bg-slate-900/75 text-slate-200 hover:bg-slate-800'
-                              : 'border-slate-200 bg-white/90 text-slate-700 hover:bg-white'
+                          className={`pa-glass-pill absolute right-1 top-1/2 -translate-y-1/2 z-20 inline-flex h-5 w-5 items-center justify-center rounded-md transition-all cursor-pointer ${
+                            isDarkTheme ? 'text-slate-100 hover:brightness-115' : 'text-slate-700'
                           }`}
                         >
                           <ChevronRight className="w-3 h-3" />
@@ -1496,7 +1492,7 @@ export function ProductionCards3D({
                       </>
                     )}
 
-                    {/* Floating White Tooltip for Active Bar */}
+                    {/* Floating Frosted Glass Tooltip for Active Bar */}
                     {activeTimelineBar && (
                       <div className="mb-1 flex justify-center px-5">
                         <button
@@ -1505,12 +1501,20 @@ export function ProductionCards3D({
                             focusPriorityCardAndFlip(activeTimelineBar.priorityIdx)
                           }
                           title="Click to jump to this event card"
-                          className="relative z-10 rounded-xl bg-white px-2.5 py-1 text-left shadow-[0_8px_20px_-6px_rgba(2,6,23,0.45)] border border-slate-100 hover:scale-[1.02] transition-transform cursor-pointer max-w-full"
+                          className="pa-glass-pill relative z-10 rounded-xl px-2.5 py-1 text-left hover:scale-[1.02] transition-transform cursor-pointer max-w-full"
                         >
-                          <div className="text-[10px] font-medium text-slate-500 truncate">
+                          <div
+                            className={`text-[10px] font-medium truncate ${
+                              isDarkTheme ? 'text-sky-200/85' : 'text-slate-600'
+                            }`}
+                          >
                             {activeTimelineBar.whenInfo.fullWindow}
                           </div>
-                          <div className="text-[11px] font-bold text-slate-900 truncate">
+                          <div
+                            className={`text-[11px] font-bold truncate ${
+                              isDarkTheme ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
                             {activeTimelineBar.pct}%, {activeTimelineBar.card.title}
                           </div>
                         </button>
@@ -1623,11 +1627,7 @@ export function ProductionCards3D({
                 <button
                   type="button"
                   onClick={() => setIsFullReportOpen(true)}
-                  className={`rounded-full border px-2.5 py-0.5 text-[10.5px] font-medium transition-colors cursor-pointer ${
-                    isDarkTheme
-                      ? 'border-white/25 bg-white/8 text-slate-100 hover:bg-white/16'
-                      : 'border-slate-300/85 bg-white/80 text-slate-800 hover:bg-white'
-                  }`}
+                  className="pa-glass-pill rounded-full px-3 py-0.5 text-[10.5px] font-semibold hover:brightness-110 transition-all cursor-pointer"
                 >
                   See full report
                 </button>
@@ -1701,7 +1701,7 @@ export function ProductionCards3D({
                                 }
                               }}
                               aria-label={`${card.title}, ${pct}%. Click to view how it will happen.`}
-                              className="pa-flip-face pa-glass-card rounded-[20px] p-4 flex flex-col justify-between gap-2 cursor-pointer group hover:border-sky-400/55 transition-colors text-left"
+                              className="pa-flip-face pa-glass-card rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between gap-2 cursor-pointer group hover:border-sky-400/65 transition-all text-left"
                             >
                               <div className="flex items-center justify-between gap-2 shrink-0">
                                 <div className="flex items-center gap-2.5 min-w-0">
@@ -1716,17 +1716,15 @@ export function ProductionCards3D({
                                 </div>
                                 <span
                                   aria-hidden="true"
-                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-transform duration-200 group-hover:translate-x-0.5 shrink-0 ${
-                                    isDarkTheme
-                                      ? 'text-slate-300 group-hover:bg-white/10 group-hover:text-white'
-                                      : 'text-slate-600 group-hover:bg-slate-900/5 group-hover:text-slate-900'
+                                  className={`pa-glass-pill inline-flex h-7 w-7 items-center justify-center rounded-xl transition-transform duration-200 group-hover:translate-x-0.5 shrink-0 ${
+                                    isDarkTheme ? 'text-slate-200' : 'text-slate-700'
                                   }`}
                                 >
                                   <ChevronRight className="w-4 h-4" />
                                 </span>
                               </div>
 
-                              <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll pr-0.5 flex flex-col justify-end gap-1">
+                              <div className="pa-glass-subwell rounded-2xl px-3.5 py-2.5 flex-1 min-h-0 overflow-y-auto fluent-scroll flex flex-col justify-center gap-1">
                                 <h3
                                   className={`font-display text-[13.5px] sm:text-[14px] font-bold leading-snug break-words ${
                                     isDarkTheme ? 'text-white' : 'text-slate-900'
@@ -1758,7 +1756,7 @@ export function ProductionCards3D({
                                 }
                               }}
                               aria-label={`${card.title} explanation. Automatically flips back in ${secondsLeft} seconds.`}
-                              className="pa-flip-face pa-flip-back pa-glass-card rounded-[20px] p-3.5 sm:p-4 flex flex-col justify-between cursor-pointer text-left"
+                              className="pa-flip-face pa-flip-back pa-glass-card rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between cursor-pointer text-left"
                             >
                               <div className="flex items-start justify-between gap-2 shrink-0 mb-1.5">
                                 <div className="min-w-0 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
@@ -1814,7 +1812,7 @@ export function ProductionCards3D({
                               </div>
 
                               <div
-                                className="flex-1 min-h-0 overflow-y-auto fluent-scroll pr-1 select-text"
+                                className="pa-glass-subwell rounded-2xl px-3.5 py-2.5 flex-1 min-h-0 overflow-y-auto fluent-scroll select-text"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div
@@ -1996,20 +1994,22 @@ export function ProductionCards3D({
                 type="button"
                 onClick={() => setIsFullReportOpen(false)}
                 aria-label="Close full report"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+                className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all cursor-pointer ${
                   isDarkTheme
-                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/5'
+                    ? 'text-slate-200 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-5 sm:p-6 select-text">
-              <CleanMarkdownReader
-                markdown={rawReportMarkdown || monthlySummaryText}
-                isDarkTheme={isDarkTheme}
-              />
+            <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-4 sm:p-5 select-text">
+              <div className="pa-glass-subwell rounded-2xl p-4 sm:p-5">
+                <CleanMarkdownReader
+                  markdown={rawReportMarkdown || monthlySummaryText}
+                  isDarkTheme={isDarkTheme}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -2018,7 +2018,7 @@ export function ProductionCards3D({
       {/* Ask for Follow-up Dialog (Triggered from Bottom Control Bar Only) */}
       {isFollowUpOpen && canAskFollowUp && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="prod-followup-title"
@@ -2052,10 +2052,10 @@ export function ProductionCards3D({
                   setFollowUpError(null);
                 }}
                 aria-label="Close follow-up dialog"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
+                className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all cursor-pointer ${
                   isDarkTheme
-                    ? 'text-slate-300 hover:text-white hover:bg-white/10'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-900/5'
+                    ? 'text-slate-200 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <X className="w-4 h-4" />
