@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { EventCardItem, PromptDomain } from '../../types/workbench';
@@ -93,6 +93,93 @@ function Stage2DomainEmblem({ domain }: { domain: PromptDomain }) {
         <Scale className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
       ) : (
         <ShieldPlus className="w-3.5 h-3.5 text-white drop-shadow" strokeWidth={2.3} />
+      )}
+    </span>
+  );
+}
+
+function Stage2ProviderIcon({
+  provider,
+  isDarkTheme,
+}: {
+  provider: 'gemini' | 'fable';
+  isDarkTheme: boolean;
+}) {
+  const gradId = useId();
+  const isFable = provider === 'fable';
+  const label = isFable ? 'Fable' : 'Gemini';
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`pa-glass-pill inline-flex h-6 w-6 items-center justify-center rounded-full shrink-0 ${
+        isFable
+          ? isDarkTheme
+            ? '!border-amber-400/55 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
+            : '!border-amber-400/80 shadow-[0_0_10px_rgba(245,158,11,0.22)]'
+          : isDarkTheme
+            ? '!border-sky-400/55 shadow-[0_0_12px_rgba(56,189,248,0.3)]'
+            : '!border-sky-400/80 shadow-[0_0_10px_rgba(14,165,233,0.22)]'
+      }`}
+      style={{
+        background: isFable
+          ? isDarkTheme
+            ? 'radial-gradient(circle at 32% 28%, rgba(253,224,71,0.28), rgba(168,85,247,0.28) 70%, rgba(30,14,48,0.75))'
+            : 'radial-gradient(circle at 32% 28%, rgba(254,240,138,0.92), rgba(244,114,182,0.24) 75%, rgba(255,255,255,0.9))'
+          : isDarkTheme
+            ? 'radial-gradient(circle at 32% 28%, rgba(186,230,253,0.3), rgba(56,189,248,0.24) 70%, rgba(10,24,52,0.75))'
+            : 'radial-gradient(circle at 32% 28%, rgba(224,242,254,0.95), rgba(125,211,252,0.38) 75%, rgba(255,255,255,0.9))',
+      }}
+    >
+      {isFable ? (
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id={gradId} x1="3" y1="5" x2="21" y2="20" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor={isDarkTheme ? '#fef08a' : '#d97706'} />
+              <stop offset="55%" stopColor={isDarkTheme ? '#f472b6' : '#db2777'} />
+              <stop offset="100%" stopColor={isDarkTheme ? '#c084fc' : '#7c3aed'} />
+            </linearGradient>
+          </defs>
+          <path
+            d="M12 7.5C9.8 5.4 6.2 5.4 4.2 6.8V17.4C6.2 16 9.8 16 12 18.2C14.2 16 17.8 16 19.8 17.4V6.8C17.8 5.4 14.2 5.4 12 7.5Z"
+            fill={`url(#${gradId})`}
+            stroke={isDarkTheme ? '#ffffff' : '#7c3aed'}
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 7.5V18.2"
+            stroke={isDarkTheme ? '#ffffff' : '#7c3aed'}
+            strokeWidth="1.3"
+            strokeLinecap="round"
+          />
+          <path
+            d="M12 2L12.7 3.8L14.5 4.5L12.7 5.2L12 7L11.3 5.2L9.5 4.5L11.3 3.8L12 2Z"
+            fill={isDarkTheme ? '#fde047' : '#d97706'}
+          />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id={gradId} x1="3" y1="3" x2="21" y2="21" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor={isDarkTheme ? '#ffffff' : '#0284c7'} />
+              <stop offset="50%" stopColor={isDarkTheme ? '#7dd3fc' : '#2563eb'} />
+              <stop offset="100%" stopColor={isDarkTheme ? '#818cf8' : '#6366f1'} />
+            </linearGradient>
+          </defs>
+          <path
+            d="M11 3C11.8 7.5 14.5 10.2 19 11C14.5 11.8 11.8 14.5 11 19C10.2 14.5 7.5 11.8 3 11C7.5 10.2 10.2 7.5 11 3Z"
+            fill={`url(#${gradId})`}
+            stroke={isDarkTheme ? '#e0f2fe' : '#0369a1'}
+            strokeWidth="1"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M18.5 3.5C18.8 5 19.8 6 21.3 6.3C19.8 6.6 18.8 7.6 18.5 9.1C18.2 7.6 17.2 6.6 15.7 6.3C17.2 6 18.2 5 18.5 3.5Z"
+            fill={isDarkTheme ? '#bae6fd' : '#38bdf8'}
+          />
+        </svg>
       )}
     </span>
   );
@@ -1317,6 +1404,10 @@ export function ProductionCards3D({
                   >
                     Answer
                   </h2>
+                  <Stage2ProviderIcon
+                    provider={providerAdapter}
+                    isDarkTheme={isDarkTheme}
+                  />
                 </div>
 
                 {isSpeakerEnabled && Boolean(answerText || summaryText) && (
@@ -1378,19 +1469,10 @@ export function ProductionCards3D({
                 </div>
 
                 <div className="relative flex items-center gap-1 shrink-0">
-                  <span
-                    className={`pa-glass-pill rounded-lg px-2 py-0.5 text-[10px] font-semibold ${
-                      providerAdapter === 'fable'
-                        ? isDarkTheme
-                          ? '!border-amber-400/40 text-amber-200'
-                          : '!border-amber-300 text-amber-800'
-                        : isDarkTheme
-                          ? '!border-sky-400/40 text-sky-200'
-                          : '!border-sky-300 text-sky-800'
-                    }`}
-                  >
-                    {providerAdapter === 'fable' ? 'Fable' : 'Gemini'}
-                  </span>
+                  <Stage2ProviderIcon
+                    provider={providerAdapter}
+                    isDarkTheme={isDarkTheme}
+                  />
                   <button
                     type="button"
                     onClick={() => setIsOverviewMenuOpen((prev) => !prev)}

@@ -2376,7 +2376,7 @@ export default function App() {
       {/* Main Content Shell */}
       <div className="relative z-10 flex-1 flex flex-col min-w-0 min-h-0">
         {isProductionApp ? (
-          /* Minimal Production Header: Left Reports Toggle + Settings Icon (after toggle) + Right Watch Out Toggle */
+          /* Minimal Production Header: Left Reports Toggle + Right Watch Out Toggle / Home Settings Icon */
           <header className="pa-glass-chrome relative h-14 shrink-0 px-4 sm:px-6 border-b flex items-center justify-between gap-4 transition-colors">
             <div className="flex items-center gap-2 shrink-0">
               {!isReportRunning && (
@@ -2405,27 +2405,6 @@ export default function App() {
                   <PanelLeft className="w-4 h-4" />
                 </button>
               )}
-
-              <button
-                type="button"
-                data-prod-settings-toggle="true"
-                onClick={() => setIsSettingsOpen((prev) => !prev)}
-                aria-expanded={isSettingsOpen}
-                aria-pressed={isSettingsOpen}
-                aria-label="Settings"
-                title="Settings"
-                className={`pa-glass-pill inline-flex p-1.5 rounded-xl transition-all shrink-0 cursor-pointer ${
-                  isProdDarkTheme
-                    ? isSettingsOpen
-                      ? '!border-sky-400/75 text-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.28)]'
-                      : 'text-slate-200 hover:text-sky-300 hover:brightness-115'
-                    : isSettingsOpen
-                      ? '!border-sky-400 text-sky-700 shadow-[0_0_14px_rgba(14,165,233,0.22)]'
-                      : 'text-slate-700 hover:text-sky-600 hover:brightness-105'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-              </button>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -2462,6 +2441,29 @@ export default function App() {
                       {activeCarefulDates.length}
                     </span>
                   )}
+                </button>
+              )}
+
+              {turns.length === 0 && (
+                <button
+                  type="button"
+                  data-prod-settings-toggle="true"
+                  onClick={() => setIsSettingsOpen((prev) => !prev)}
+                  aria-expanded={isSettingsOpen}
+                  aria-pressed={isSettingsOpen}
+                  aria-label="Settings"
+                  title="Settings"
+                  className={`pa-glass-pill inline-flex p-1.5 rounded-xl transition-all shrink-0 cursor-pointer ${
+                    isProdDarkTheme
+                      ? isSettingsOpen
+                        ? '!border-sky-400/75 text-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.28)]'
+                        : 'text-slate-200 hover:text-sky-300 hover:brightness-115'
+                      : isSettingsOpen
+                        ? '!border-sky-400 text-sky-700 shadow-[0_0_14px_rgba(14,165,233,0.22)]'
+                        : 'text-slate-700 hover:text-sky-600 hover:brightness-105'
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
                 </button>
               )}
             </div>
@@ -2950,8 +2952,7 @@ export default function App() {
                 aria-hidden="true"
               />
               <span className="truncate font-medium text-xs">
-                Public ·{' '}
-                {(settings.publicLlm.activeAdapter === 'fable' ? 'Fable' : 'Gemini')}
+                {settings.publicLlm.activeAdapter === 'fable' ? 'Fable' : 'Gemini'}
               </span>
               <div
                 role="group"
@@ -3098,13 +3099,9 @@ export default function App() {
                       ? isProdDarkTheme
                         ? 'text-red-400 font-semibold'
                         : 'text-rose-600 font-semibold'
-                      : displayedTelemetry.phase === 'Ready'
-                        ? isProdDarkTheme
-                          ? 'text-emerald-400 font-semibold'
-                          : 'text-emerald-600 font-semibold'
-                        : isProdDarkTheme
-                          ? 'text-slate-400'
-                          : 'text-slate-500'
+                      : isProdDarkTheme
+                        ? 'text-yellow-400 font-semibold'
+                        : 'text-yellow-600 font-semibold'
                 }`}
               >
                 {displayedTelemetry.isThinking && displayedTelemetry.startedAtMs
