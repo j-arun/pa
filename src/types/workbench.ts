@@ -190,6 +190,7 @@ export interface VoiceConfig {
   rate: number;
   pitch: number;
   prodSummarySpeakerEnabled?: boolean;
+  prodBackgroundMusicEnabled?: boolean;
 }
 
 export type ThemeMode =

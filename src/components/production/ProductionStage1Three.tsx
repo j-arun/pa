@@ -129,6 +129,8 @@ interface ProductionStage1ThreeProps {
   activePromptDomain: PromptDomain;
   activeProvider: 'gemini' | 'fable';
   isDarkTheme?: boolean;
+  isBackgroundMusicEnabled?: boolean;
+  onToggleBackgroundMusic?: () => void;
   ratedThreads: RatedThreadRecord[];
   isSending: boolean;
   switchingMonthKey?: string | null;
@@ -555,6 +557,8 @@ export function ProductionStage1Three({
   activePromptDomain,
   activeProvider,
   isDarkTheme = true,
+  isBackgroundMusicEnabled,
+  onToggleBackgroundMusic,
   ratedThreads,
   isSending,
   switchingMonthKey: _switchingMonthKey,
@@ -583,7 +587,17 @@ export function ProductionStage1Three({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [inspectedBucketKey, setInspectedBucketKey] = useState<string | null>(null);
   const [selectedInspectReportIdx, setSelectedInspectReportIdx] = useState(0);
-  const [isMusicMuted, setIsMusicMuted] = useState(false);
+  const [localMusicMuted, setLocalMusicMuted] = useState(false);
+
+  const isMusicMuted =
+    isBackgroundMusicEnabled !== undefined ? !isBackgroundMusicEnabled : localMusicMuted;
+  const handleToggleMusic = () => {
+    if (onToggleBackgroundMusic) {
+      onToggleBackgroundMusic();
+    } else {
+      setLocalMusicMuted((prev) => !prev);
+    }
+  };
 
   const stageQuickMonths = useMemo<ProductionMonthItem[]>(() => {
     const now = new Date();
@@ -750,7 +764,8 @@ export function ProductionStage1Three({
   }, [blockedDropNotice, dockedTarget, isSending]);
 
   useEffect(() => {
-    if (!inspectedBucketKey || isMusicMuted) {
+    if (isBackgroundMusicEnabled !== undefined) return;
+    if (localMusicMuted) {
       stopBucketAmbientMusic();
       return;
     }
@@ -758,7 +773,7 @@ export function ProductionStage1Three({
     return () => {
       stopMusic();
     };
-  }, [inspectedBucketKey, isMusicMuted]);
+  }, [isBackgroundMusicEnabled, localMusicMuted]);
 
   useEffect(() => {
     if (!dockedTarget && !blockedDropNotice && !inspectedBucketKey) return;
@@ -1458,7 +1473,7 @@ export function ProductionStage1Three({
       return next;
     };
 
-    // Silent Two-Step Idle Navigation Loop State (Step 1: glowing ghost arc drop -> Step 2: filled bucket + balls swell big)
+    // Silent Connected Two-Step Idle Navigation Loop (Step 1 drops ghost -> bucket gets +1 extra ball -> Step 2 swells that SAME bucket big showing balls + extra ball -> returns to normal)
     let demoPhase: 'idle_wait' | 'step1_drag' | 'step2_swell' | 'rest' = 'idle_wait';
     let demoPhaseElapsed = 0;
     let idleWaitElapsed = 0;
@@ -1468,20 +1483,36 @@ export function ProductionStage1Three({
     let demoTargetBucketIdx = 0;
     let lastDemoTargetBucketIdx = -1;
     let demoStep2BucketKey: string | null = null;
-    let lastDemoStep2BucketKey: string | null = null;
     let demoHoverBucketKey: string | null = null;
     let demoSwellBucketKey: string | null = null;
+    let demoExtraBallBucketKey: string | null = null;
+    let demoExtraBallAccent = '#38bdf8';
+    let demoExtraBallPop = 0;
     let dropRippleBucketIdx: number | null = null;
     let dropRippleElapsed = 0;
 
     const STEP1_FLIGHT_SEC = 2.15;
-    const STEP1_TOTAL_SEC = 2.65;
-    const STEP2_TOTAL_SEC = 3.35;
+    const STEP1_TOTAL_SEC = 2.7;
+    const STEP2_TOTAL_SEC = 3.45;
     const REST_TOTAL_SEC = 0.75;
 
     const beginStep1 = () => {
       demoOrbIdx = pickRandomOtherIdx(orbEntries.length, lastDemoOrbIdx);
-      demoTargetBucketIdx = pickRandomOtherIdx(bucketEntries.length, lastDemoTargetBucketIdx);
+
+      // Prefer any bucket with room for +1 extra ball (< BUCKET_CAPACITY) and avoid repeating the immediate previous bucket
+      const availableIndices = bucketEntries
+        .map((b, idx) => ({
+          idx,
+          count: (bucketReportsRef.current.get(b.monthItem.key) ?? []).length,
+        }))
+        .filter((item) => item.count < BUCKET_CAPACITY)
+        .map((item) => item.idx);
+      const pool = availableIndices.length > 0 ? availableIndices : bucketEntries.map((_, i) => i);
+      const filteredPool =
+        pool.length > 1 ? pool.filter((i) => i !== lastDemoTargetBucketIdx) : pool;
+      demoTargetBucketIdx =
+        filteredPool[Math.floor(Math.random() * filteredPool.length)] ?? pool[0] ?? 0;
+
       lastDemoOrbIdx = demoOrbIdx;
       lastDemoTargetBucketIdx = demoTargetBucketIdx;
 
@@ -1491,31 +1522,29 @@ export function ProductionStage1Three({
       ghostHaloMat.color.set(orb.topic.accentHex);
       dropRippleMat.color.set(orb.topic.accentHex);
 
+      demoExtraBallBucketKey = null;
+      demoExtraBallAccent = orb.topic.accentHex;
+      demoExtraBallPop = 0;
+      demoStep2BucketKey = null;
       demoHoverBucketKey = null;
       demoSwellBucketKey = null;
       demoPhase = 'step1_drag';
       demoPhaseElapsed = 0;
     };
 
-    const beginStep2OrRest = () => {
-      const filledBuckets = bucketEntries.filter(
-        (b) => (bucketReportsRef.current.get(b.monthItem.key) ?? []).length > 0,
-      );
-      if (filledBuckets.length === 0) {
+    const beginStep2ForTargetBucket = () => {
+      const targetBucket = bucketEntries[demoTargetBucketIdx];
+      if (!targetBucket) {
         demoSwellBucketKey = null;
+        demoExtraBallBucketKey = null;
         demoPhase = 'rest';
         demoPhaseElapsed = 0;
         return;
       }
-      const candidates =
-        filledBuckets.length > 1 && lastDemoStep2BucketKey
-          ? filledBuckets.filter((b) => b.monthItem.key !== lastDemoStep2BucketKey)
-          : filledBuckets;
-      const chosen = candidates[Math.floor(Math.random() * candidates.length)] ?? filledBuckets[0];
-      demoStep2BucketKey = chosen.monthItem.key;
-      lastDemoStep2BucketKey = chosen.monthItem.key;
+      demoStep2BucketKey = targetBucket.monthItem.key;
+      demoExtraBallBucketKey = targetBucket.monthItem.key;
       demoHoverBucketKey = null;
-      demoSwellBucketKey = chosen.monthItem.key;
+      demoSwellBucketKey = targetBucket.monthItem.key;
       demoPhase = 'step2_swell';
       demoPhaseElapsed = 0;
     };
@@ -1549,7 +1578,7 @@ export function ProductionStage1Three({
         starMat.opacity = 0.25;
       }
 
-      // Advance Silent Idle Navigation Demo (Pauses instantly on hover, drag, or open modals; resumes cleanly after idle)
+      // Advance Silent Connected Idle Navigation Demo (Pauses on hover/drag/modals; resumes after idle)
       const userInteractingOrModal =
         draggingOrbIdx !== null ||
         pointerHoverOrbIdx !== null ||
@@ -1565,6 +1594,9 @@ export function ProductionStage1Three({
         idleWaitElapsed = 0;
         demoHoverBucketKey = null;
         demoSwellBucketKey = null;
+        demoStep2BucketKey = null;
+        demoExtraBallBucketKey = null;
+        demoExtraBallPop = 0;
         demoGhostGroup.visible = false;
         ghostIconMat.opacity = 0;
         ghostHaloMat.opacity = 0;
@@ -1625,47 +1657,57 @@ export function ProductionStage1Three({
             demoGhostGroup.scale.setScalar(THREE.MathUtils.lerp(1.04, 0.26, dropU));
             ghostIconMat.opacity = (1 - dropU) * 0.9;
             ghostHaloMat.opacity = (1 - dropU) * 0.8;
-            if (dropU > 0.45 && dropRippleBucketIdx !== demoTargetBucketIdx) {
-              dropRippleBucketIdx = demoTargetBucketIdx;
-              dropRippleElapsed = 0.001;
+            if (dropU > 0.45) {
+              if (dropRippleBucketIdx !== demoTargetBucketIdx) {
+                dropRippleBucketIdx = demoTargetBucketIdx;
+                dropRippleElapsed = 0.001;
+              }
+              // Drop spawns the +1 extra ball inside THIS exact bucket
+              demoExtraBallBucketKey = dstBucket.monthItem.key;
             }
           }
         } else {
           demoGhostGroup.visible = false;
           ghostIconMat.opacity = 0;
           ghostHaloMat.opacity = 0;
+          demoExtraBallBucketKey = dstBucket.monthItem.key;
           if (demoPhaseElapsed >= STEP1_TOTAL_SEC - 0.2) {
             demoHoverBucketKey = null;
           }
           if (demoPhaseElapsed >= STEP1_TOTAL_SEC) {
-            beginStep2OrRest();
+            beginStep2ForTargetBucket();
           }
         }
       } else if (demoPhase === 'step2_swell') {
         demoPhaseElapsed += dt;
-        const targetCount = demoStep2BucketKey
-          ? (bucketReportsRef.current.get(demoStep2BucketKey) ?? []).length
-          : 0;
-        if (targetCount === 0) {
+        // Hold swelled big (~2.35s) showing existing balls + the newly dropped extra ball, then shrink back to normal (~1.1s)
+        if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 1.1) {
           demoSwellBucketKey = null;
+        }
+        if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 0.25) {
+          demoExtraBallBucketKey = null;
+        }
+        if (demoPhaseElapsed >= STEP2_TOTAL_SEC) {
+          demoExtraBallBucketKey = null;
+          demoStep2BucketKey = null;
           demoPhase = 'rest';
           demoPhaseElapsed = 0;
-        } else {
-          // Hold swelled big (~2.25s), then smoothly shrink back to resting size (~1.1s) before transitioning
-          if (demoPhaseElapsed >= STEP2_TOTAL_SEC - 1.1) {
-            demoSwellBucketKey = null;
-          }
-          if (demoPhaseElapsed >= STEP2_TOTAL_SEC) {
-            demoPhase = 'rest';
-            demoPhaseElapsed = 0;
-          }
         }
       } else if (demoPhase === 'rest') {
         demoPhaseElapsed += dt;
+        demoExtraBallBucketKey = null;
+        demoStep2BucketKey = null;
         if (demoPhaseElapsed >= REST_TOTAL_SEC) {
           beginStep1();
         }
       }
+
+      demoExtraBallPop = THREE.MathUtils.damp(
+        demoExtraBallPop,
+        demoExtraBallBucketKey !== null ? 1 : 0,
+        10,
+        dt,
+      );
 
       // Silent visual drop ripple at target bucket mouth
       if (dropRippleBucketIdx !== null) {
@@ -1688,7 +1730,7 @@ export function ProductionStage1Three({
         }
       }
 
-      // Animate 6 Month Buckets + Swell Big on Hover/Inspect/Demo + Floating Interior Reports
+      // Animate 6 Month Buckets + Swell Big on Hover/Inspect/Demo + Floating Interior Reports + Connected Extra Ball
       const anyBucketHovered = hoveredBucketKeyLocal !== null;
       const activeInspectKey = stateRef.current.inspectedBucketKey;
       const anyBucketInspected = activeInspectKey !== null;
@@ -1698,6 +1740,14 @@ export function ProductionStage1Three({
         const b = bucketEntries[i];
         const reportsInBucket = bucketReportsRef.current.get(b.monthItem.key) ?? [];
         const reportCount = reportsInBucket.length;
+        const hasExtraDemoBall =
+          !anyBucketInspected &&
+          reportCount < BUCKET_CAPACITY &&
+          ((demoExtraBallBucketKey === b.monthItem.key) ||
+            (demoStep2BucketKey === b.monthItem.key && demoExtraBallPop > 0.04));
+        const visualBallCount = hasExtraDemoBall
+          ? Math.min(BUCKET_CAPACITY, reportCount + 1)
+          : reportCount;
         const isFull = reportCount >= BUCKET_CAPACITY;
 
         const isActive =
@@ -1788,8 +1838,8 @@ export function ProductionStage1Three({
         b.footMat.color.setHex(isFull ? 0xfde68a : 0x7dd3fc);
         b.footMat.emissive.setHex(isFull ? 0xb45309 : 0x0369a1);
 
-        // Dynamic fill surface rising cleanly inside the bucket as reports accumulate (capacity 12)
-        const fillRatio = Math.min(1, reportCount / BUCKET_CAPACITY);
+        // Dynamic fill surface rising cleanly inside the bucket (including +1 extra demo ball)
+        const fillRatio = Math.min(1, visualBallCount / BUCKET_CAPACITY);
         b.liquidMesh.position.y = THREE.MathUtils.damp(
           b.liquidMesh.position.y,
           -0.52 + fillRatio * 0.84,
@@ -1825,7 +1875,7 @@ export function ProductionStage1Three({
           b.sealRimMat.emissiveIntensity = b.sealBlend * 1.1;
         }
 
-        // Interior domain balls swell bigger and linger/float noticeably inside the hovered/inspected/demo-swelled bucket
+        // Interior domain balls (existing + Step 1 connected extra ball) swell bigger and float inside the bucket
         for (let bi = 0; bi < b.reportBalls.length; bi += 1) {
           const ball = b.reportBalls[bi];
           if (bi < reportCount) {
@@ -1844,6 +1894,23 @@ export function ProductionStage1Three({
               ball.baseOffset.z * (1 + emphasized * 0.22),
             );
             const ballScale = 1 + emphasized * 0.95;
+            ball.mesh.scale.setScalar(ballScale);
+          } else if (hasExtraDemoBall && bi === reportCount) {
+            // The +1 extra ball added by Step 1's drop into this exact bucket
+            ball.mesh.visible = true;
+            ball.mat.color.set(demoExtraBallAccent);
+            ball.mat.emissive.set(demoExtraBallAccent);
+            ball.mat.emissiveIntensity = 1.05 + emphasized * 0.65;
+            const lingerWave =
+              Math.sin(elapsed * 2.5 + bi * 0.85) * (0.025 + emphasized * 0.085);
+            const swayX = Math.cos(elapsed * 1.6 + bi * 1.1) * emphasized * 0.085;
+            const dropLiftY = (1 - demoExtraBallPop) * 0.45;
+            ball.mesh.position.set(
+              ball.baseOffset.x * (1 + emphasized * 0.28) + swayX,
+              ball.baseOffset.y + emphasized * 0.38 + lingerWave + dropLiftY,
+              ball.baseOffset.z * (1 + emphasized * 0.22),
+            );
+            const ballScale = (1 + emphasized * 1.02) * Math.max(0.05, demoExtraBallPop);
             ball.mesh.scale.setScalar(ballScale);
           } else {
             ball.mesh.visible = false;
@@ -2061,9 +2128,9 @@ export function ProductionStage1Three({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsMusicMuted((prev) => !prev)}
+                    onClick={handleToggleMusic}
                     aria-label={isMusicMuted ? 'Unmute background music' : 'Mute background music'}
-                    title={isMusicMuted ? 'Unmute ambient music' : 'Mute ambient music'}
+                    title={isMusicMuted ? 'Turn background music On' : 'Turn background music Off'}
                     className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
                       isMusicMuted
                         ? 'text-slate-500 hover:text-slate-800 hover:bg-white/75'

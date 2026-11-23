@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Home,
   Lock,
+  Music,
   PanelLeft,
   PanelRight,
   Settings,
@@ -82,7 +83,10 @@ import {
 import {
   playReplyChime,
   requestDesktopNotificationPermission,
+  setBucketAmbientMusicDucked,
   showDesktopNotification,
+  startBucketAmbientMusic,
+  stopBucketAmbientMusic,
 } from './utils/notify';
 import { fetchReferenceContextFromApi } from './utils/referenceContextFetch';
 import { parseMarkdownReportImport } from './utils/markdownImport';
@@ -1244,6 +1248,32 @@ export default function App() {
   );
 
   const isProdDarkTheme = (settings.prodTheme ?? 'dark') !== 'light';
+  const isProdMusicEnabled = settings.voice.prodBackgroundMusicEnabled !== false;
+
+  const toggleProdMusic = useCallback(() => {
+    setSettings((previous) => ({
+      ...previous,
+      voice: {
+        ...previous.voice,
+        prodBackgroundMusicEnabled: previous.voice.prodBackgroundMusicEnabled === false,
+      },
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (!isProductionApp || !isProdMusicEnabled) {
+      stopBucketAmbientMusic();
+      return;
+    }
+    const stopMusic = startBucketAmbientMusic();
+    return () => {
+      stopMusic();
+    };
+  }, [isProductionApp, isProdMusicEnabled]);
+
+  useEffect(() => {
+    setBucketAmbientMusicDucked(Boolean(speech.speakingTurnId));
+  }, [speech.speakingTurnId]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -2567,6 +2597,8 @@ export default function App() {
                   settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini'
                 }
                 isDarkTheme={isProdDarkTheme}
+                isBackgroundMusicEnabled={isProdMusicEnabled}
+                onToggleBackgroundMusic={toggleProdMusic}
                 ratedThreads={ratedThreads}
                 isSending={isSending}
                 switchingMonthKey={switchingMonthKey}
@@ -2939,6 +2971,39 @@ export default function App() {
               >
                 |
               </span>
+              <button
+                type="button"
+                aria-pressed={isProdMusicEnabled}
+                onClick={toggleProdMusic}
+                title={
+                  isProdMusicEnabled
+                    ? 'Background music is On — click to turn Off'
+                    : 'Background music is Off — click to turn On'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[11px] font-semibold leading-none transition-colors shrink-0 cursor-pointer ${
+                  isProdMusicEnabled
+                    ? isProdDarkTheme
+                      ? 'border-sky-500/50 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                      : 'border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100'
+                    : isProdDarkTheme
+                      ? 'border-slate-700/80 bg-slate-800/90 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+              >
+                <Music
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isProdMusicEnabled
+                      ? isProdDarkTheme
+                        ? 'text-sky-300'
+                        : 'text-sky-600'
+                      : isProdDarkTheme
+                        ? 'text-slate-400'
+                        : 'text-slate-500'
+                  }`}
+                />
+                <span>{isProdMusicEnabled ? 'Music On' : 'Music Off'}</span>
+              </button>
+              <span className={isProdDarkTheme ? 'text-slate-700' : 'text-slate-300'}>|</span>
               <button
                 type="button"
                 aria-pressed={settings.voice.prodSummarySpeakerEnabled !== false}

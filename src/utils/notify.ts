@@ -93,17 +93,108 @@ export function playBucketExpandCue(): void {
 
 interface ActiveAmbientSession {
   stop: () => void;
+  setDucked: (ducked: boolean) => void;
 }
 
 let activeAmbientSession: ActiveAmbientSession | null = null;
+let desiredAmbientDucked = false;
 
-// Lush dreamy progression: Cmaj9 -> Fmaj7 -> Am9 -> G6
-const AMBIENT_CHORDS: ReadonlyArray<ReadonlyArray<number>> = [
-  [261.63, 329.63, 392.0, 493.88, 587.33],
-  [220.0, 261.63, 349.23, 440.0, 523.25],
-  [220.0, 261.63, 329.63, 493.88, 659.25],
-  [196.0, 246.94, 329.63, 392.0, 587.33],
+interface ScoreStep {
+  mel?: number;
+  hold?: number; // seconds
+  scoop?: number; // frequency multiplier for playful Mickey upward scoop (e.g. 0.944 = -1 semitone)
+  bass?: number;
+  chord?: readonly [number, number, number];
+}
+
+// 8-bar (64 eighth-note steps) gentle, lighthearted Mickey-style cartoon stroll in C Major
+// Warm midrange marimba/woodwind voices, tiptoe bass, cozy chord cushions, and natural phrasing rests
+const MICKEY_STROLL_SCORE: readonly ScoreStep[] = [
+  // Bar 1: Cmaj6 cheerful tiptoe pickup ("step-hop-wink!")
+  { mel: 329.63, hold: 0.24, bass: 130.81, chord: [130.81, 196.0, 329.63] },
+  { mel: 392.0, hold: 0.22 },
+  { mel: 440.0, hold: 0.34, scoop: 0.94387, bass: 196.0 },
+  {}, // breathing rest
+  { mel: 392.0, hold: 0.24, bass: 164.81 },
+  { mel: 329.63, hold: 0.24 },
+  { mel: 261.63, hold: 0.34, bass: 196.0 },
+  {},
+
+  // Bar 2: Fmaj7 -> G7 playful raised-eyebrow chromatic wink
+  { mel: 293.66, hold: 0.24, bass: 174.61, chord: [174.61, 220.0, 329.63] },
+  { mel: 349.23, hold: 0.24 },
+  { mel: 440.0, hold: 0.28, bass: 130.81 },
+  { mel: 392.0, hold: 0.24 },
+  { mel: 369.99, hold: 0.22, bass: 146.83 }, // playful F#4 chuckle
+  { mel: 392.0, hold: 0.26, scoop: 0.94387 },
+  { mel: 329.63, hold: 0.38, bass: 98.0 },
+  {},
+
+  // Bar 3: Am7 -> Dm7 warm & meaningful optimistic turn
+  { mel: 329.63, hold: 0.24, bass: 110.0, chord: [110.0, 196.0, 261.63] },
+  { mel: 523.25, hold: 0.32, scoop: 0.94387 },
+  { mel: 493.88, hold: 0.24, bass: 164.81 },
+  { mel: 440.0, hold: 0.26 },
+  { mel: 392.0, hold: 0.24, bass: 146.83, chord: [146.83, 220.0, 261.63] },
+  { mel: 349.23, hold: 0.24 },
+  { mel: 329.63, hold: 0.24, bass: 174.61 },
+  { mel: 293.66, hold: 0.28 },
+
+  // Bar 4: G13 -> C cozy turnaround bounce
+  { mel: 293.66, hold: 0.24, bass: 98.0, chord: [98.0, 196.0, 293.66] },
+  { mel: 329.63, hold: 0.24 },
+  { mel: 392.0, hold: 0.24, bass: 146.83 },
+  { mel: 493.88, hold: 0.24 },
+  { mel: 523.25, hold: 0.4, bass: 130.81, chord: [130.81, 196.0, 329.63] },
+  {},
+  { bass: 98.0 },
+  { mel: 392.0, hold: 0.22 },
+
+  // Bar 5: Light celesta skip (Section B)
+  { mel: 392.0, hold: 0.24, bass: 130.81, chord: [130.81, 196.0, 329.63] },
+  { mel: 523.25, hold: 0.26 },
+  { mel: 587.33, hold: 0.28, scoop: 0.94387, bass: 196.0 },
+  { mel: 523.25, hold: 0.24 },
+  { mel: 440.0, hold: 0.24, bass: 164.81 },
+  { mel: 392.0, hold: 0.24 },
+  { mel: 329.63, hold: 0.34, bass: 130.81 },
+  {},
+
+  // Bar 6: Funny cartoon "oops-tiptoe" step
+  { mel: 329.63, hold: 0.3, scoop: 0.94387, bass: 174.61, chord: [174.61, 220.0, 349.23] },
+  { mel: 392.0, hold: 0.24 },
+  { mel: 440.0, hold: 0.26, bass: 146.83 },
+  { mel: 349.23, hold: 0.24 },
+  { mel: 293.66, hold: 0.24, bass: 98.0, chord: [98.0, 196.0, 293.66] },
+  { mel: 493.88, hold: 0.26, scoop: 0.8909 },
+  { mel: 392.0, hold: 0.36, bass: 146.83 },
+  {},
+
+  // Bar 7: Heartwarming rising bridge
+  { mel: 523.25, hold: 0.26, bass: 110.0, chord: [110.0, 196.0, 329.63] },
+  { mel: 440.0, hold: 0.24 },
+  { mel: 392.0, hold: 0.24, bass: 164.81 },
+  { mel: 329.63, hold: 0.24 },
+  { mel: 349.23, hold: 0.24, bass: 174.61, chord: [174.61, 220.0, 261.63] },
+  { mel: 440.0, hold: 0.26 },
+  { mel: 392.0, hold: 0.24, bass: 146.83 },
+  { mel: 349.23, hold: 0.24 },
+
+  // Bar 8: Gentle Mickey wink home + cozy silence before looping
+  { mel: 329.63, hold: 0.24, bass: 98.0, chord: [98.0, 196.0, 293.66] },
+  { mel: 293.66, hold: 0.24 },
+  { mel: 246.94, hold: 0.24, bass: 196.0 },
+  { mel: 293.66, hold: 0.24 },
+  { mel: 261.63, hold: 0.44, bass: 130.81, chord: [130.81, 196.0, 329.63] },
+  { mel: 523.25, hold: 0.34, scoop: 0.94387 },
+  {},
+  {},
 ];
+
+export function setBucketAmbientMusicDucked(ducked: boolean): void {
+  desiredAmbientDucked = ducked;
+  activeAmbientSession?.setDucked(ducked);
+}
 
 export function stopBucketAmbientMusic(): void {
   if (activeAmbientSession) {
@@ -114,37 +205,44 @@ export function stopBucketAmbientMusic(): void {
 }
 
 export function startBucketAmbientMusic(): () => void {
-  stopBucketAmbientMusic();
+  if (activeAmbientSession) {
+    return activeAmbientSession.stop;
+  }
 
   try {
     const ctx = getAudioContext();
     if (!ctx) return () => undefined;
 
     let stopped = false;
+    let fadeStarted = false;
     const now = ctx.currentTime;
 
+    // Warm lowpass rolls off any shrill harmonics so listening stays pleasant indefinitely
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(860, now);
-    filter.Q.setValueAtTime(0.7, now);
+    filter.frequency.setValueAtTime(1120, now);
+    filter.Q.setValueAtTime(0.55, now);
+
+    const duckGain = ctx.createGain();
+    duckGain.gain.setValueAtTime(desiredAmbientDucked ? 0.16 : 1.0, now);
 
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0.0001, now);
-    masterGain.gain.linearRampToValueAtTime(0.075, now + 0.75);
 
-    filter.connect(masterGain);
+    filter.connect(duckGain);
+    duckGain.connect(masterGain);
     masterGain.connect(ctx.destination);
 
-    // Subtle warm sustained pad voices
+    // Whisper-soft warm sine harmony pad underneath
     const padOscs: OscillatorNode[] = [];
     const padGains: GainNode[] = [];
-    const padInitialFreqs = [130.81, 196.0, 246.94];
-    for (const freq of padInitialFreqs) {
+    const initialPad: readonly [number, number, number] = [130.81, 196.0, 329.63];
+    for (const freq of initialPad) {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, now);
-      g.gain.setValueAtTime(0.24, now);
+      g.gain.setValueAtTime(0.055, now);
       osc.connect(g);
       g.connect(filter);
       osc.start(now);
@@ -152,64 +250,191 @@ export function startBucketAmbientMusic(): () => void {
       padGains.push(g);
     }
 
-    let step = 0;
-    const playSoftPluck = () => {
-      if (stopped) return;
-      if (ctx.state === 'suspended') {
-        void ctx.resume().catch(() => undefined);
-      }
-
-      const chordIndex = Math.floor(step / 4) % AMBIENT_CHORDS.length;
-      const chord = AMBIENT_CHORDS[chordIndex];
-      const noteFreq = chord[(step * 2 + (step % 3)) % chord.length];
+    const ensureFadeIn = () => {
+      if (fadeStarted || stopped || ctx.state !== 'running') return;
+      fadeStarted = true;
       const t = ctx.currentTime;
-
-      // Gently shift warm pad root on bar transitions
-      if (step % 4 === 0) {
-        const rootScale = chord[0] * 0.5;
-        const fifthScale = chord[2] * 0.5;
-        const ninthScale = chord[3] * 0.5;
-        padOscs[0]?.frequency.setTargetAtTime(rootScale, t, 0.45);
-        padOscs[1]?.frequency.setTargetAtTime(fifthScale, t, 0.45);
-        padOscs[2]?.frequency.setTargetAtTime(ninthScale, t, 0.45);
-      }
-
-      const osc = ctx.createOscillator();
-      const overtone = ctx.createOscillator();
-      const noteGain = ctx.createGain();
-      const overtoneGain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(noteFreq, t);
-
-      overtone.type = 'triangle';
-      overtone.frequency.setValueAtTime(noteFreq * 2, t);
-      overtoneGain.gain.setValueAtTime(0.12, t);
-
-      noteGain.gain.setValueAtTime(0.0001, t);
-      noteGain.gain.linearRampToValueAtTime(0.32, t + 0.09);
-      noteGain.gain.exponentialRampToValueAtTime(0.0001, t + 1.95);
-
-      osc.connect(noteGain);
-      overtone.connect(overtoneGain);
-      overtoneGain.connect(noteGain);
-      noteGain.connect(filter);
-
-      osc.start(t);
-      overtone.start(t);
-      osc.stop(t + 2.05);
-      overtone.stop(t + 2.05);
-
-      step += 1;
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(Math.max(0.0001, masterGain.gain.value), t);
+      masterGain.gain.linearRampToValueAtTime(0.052, t + 0.9);
     };
 
-    playSoftPluck();
-    const intervalId = window.setInterval(playSoftPluck, 780);
+    const handleVisibilityChange = () => {
+      if (stopped || ctx.state !== 'running') return;
+      const t = ctx.currentTime;
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(Math.max(0.0001, masterGain.gain.value), t);
+      if (document.visibilityState === 'hidden') {
+        masterGain.gain.linearRampToValueAtTime(0.0001, t + 0.25);
+      } else {
+        masterGain.gain.linearRampToValueAtTime(0.052, t + 0.65);
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    if (ctx.state === 'running') {
+      ensureFadeIn();
+    }
+
+    const detachUnlock = () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+
+    const unlockAudio = () => {
+      if (stopped) return;
+      if (ctx.state === 'suspended') {
+        void ctx.resume()
+          .then(() => {
+            if (stopped) return;
+            ensureFadeIn();
+            if (ctx.state === 'running') {
+              detachUnlock();
+            }
+          })
+          .catch(() => undefined);
+      } else {
+        ensureFadeIn();
+        detachUnlock();
+      }
+    };
+
+    if (ctx.state === 'suspended') {
+      window.addEventListener('pointerdown', unlockAudio, { passive: true });
+      window.addEventListener('keydown', unlockAudio, { passive: true });
+      window.addEventListener('touchstart', unlockAudio, { passive: true });
+    }
+
+    let step = 0;
+    let timerId: number | null = null;
+
+    const scheduleStep = () => {
+      if (stopped) return;
+
+      const isOdd = step % 2 === 1;
+      // Gentle cartoon swing: ~107 BPM lilt without rushing
+      const stepDelayMs = isOdd ? 295 : 262;
+      timerId = window.setTimeout(scheduleStep, stepDelayMs);
+
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      if (ctx.state !== 'running') {
+        return;
+      }
+
+      ensureFadeIn();
+      const s = MICKEY_STROLL_SCORE[step % MICKEY_STROLL_SCORE.length];
+      const t = ctx.currentTime;
+
+      if (s.chord) {
+        padOscs[0]?.frequency.setTargetAtTime(s.chord[0], t, 0.32);
+        padOscs[1]?.frequency.setTargetAtTime(s.chord[1], t, 0.32);
+        padOscs[2]?.frequency.setTargetAtTime(s.chord[2], t, 0.32);
+      }
+
+      // Tiptoe pizzicato cartoon bass
+      if (s.bass) {
+        const bOsc = ctx.createOscillator();
+        const bHarm = ctx.createOscillator();
+        const bHarmGain = ctx.createGain();
+        const bGain = ctx.createGain();
+
+        bOsc.type = 'sine';
+        bOsc.frequency.setValueAtTime(s.bass, t);
+
+        bHarm.type = 'triangle';
+        bHarm.frequency.setValueAtTime(s.bass * 2, t);
+        bHarmGain.gain.setValueAtTime(0.11, t);
+
+        bGain.gain.setValueAtTime(0.0001, t);
+        bGain.gain.linearRampToValueAtTime(0.24, t + 0.012);
+        bGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.165);
+
+        bOsc.connect(bGain);
+        bHarm.connect(bHarmGain);
+        bHarmGain.connect(bGain);
+        bGain.connect(filter);
+
+        bOsc.start(t);
+        bHarm.start(t);
+        bOsc.stop(t + 0.185);
+        bHarm.stop(t + 0.185);
+      }
+
+      // Warm marimba / woodwind-whistle melody with playful upward Mickey scoops
+      if (s.mel) {
+        const dur = s.hold ?? 0.25;
+        const mOsc = ctx.createOscillator();
+        const mOver = ctx.createOscillator();
+        const mOverGain = ctx.createGain();
+        const mGain = ctx.createGain();
+
+        mOsc.type = 'sine';
+        if (s.scoop) {
+          mOsc.frequency.setValueAtTime(s.mel * s.scoop, t);
+          mOsc.frequency.exponentialRampToValueAtTime(s.mel, t + 0.044);
+        } else {
+          mOsc.frequency.setValueAtTime(s.mel, t);
+        }
+
+        mOver.type = 'triangle';
+        if (s.scoop) {
+          mOver.frequency.setValueAtTime(s.mel * 2 * s.scoop, t);
+          mOver.frequency.exponentialRampToValueAtTime(s.mel * 2, t + 0.044);
+        } else {
+          mOver.frequency.setValueAtTime(s.mel * 2, t);
+        }
+        mOverGain.gain.setValueAtTime(0.085, t);
+
+        mGain.gain.setValueAtTime(0.0001, t);
+        mGain.gain.linearRampToValueAtTime(0.28, t + 0.018);
+        mGain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+        mOsc.connect(mGain);
+        mOver.connect(mOverGain);
+        mOverGain.connect(mGain);
+        mGain.connect(filter);
+
+        mOsc.start(t);
+        mOver.start(t);
+        mOsc.stop(t + dur + 0.03);
+        mOver.stop(t + dur + 0.03);
+      }
+
+      step = (step + 1) % MICKEY_STROLL_SCORE.length;
+    };
+
+    scheduleStep();
+
+    const setDucked = (ducked: boolean) => {
+      if (stopped) return;
+      try {
+        const t = ctx.currentTime;
+        duckGain.gain.setTargetAtTime(ducked ? 0.16 : 1.0, t, 0.14);
+      } catch {
+        // ignore
+      }
+    };
 
     const cleanup = () => {
       if (stopped) return;
       stopped = true;
-      window.clearInterval(intervalId);
+      if (activeAmbientSession?.stop === cleanup) {
+        activeAmbientSession = null;
+      }
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+        timerId = null;
+      }
+      detachUnlock();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       try {
         const t = ctx.currentTime;
         masterGain.gain.cancelScheduledValues(t);
@@ -233,6 +458,7 @@ export function startBucketAmbientMusic(): () => void {
           }
           try {
             filter.disconnect();
+            duckGain.disconnect();
             masterGain.disconnect();
           } catch {
             // ignore
@@ -243,7 +469,7 @@ export function startBucketAmbientMusic(): () => void {
       }
     };
 
-    activeAmbientSession = { stop: cleanup };
+    activeAmbientSession = { stop: cleanup, setDucked };
     return cleanup;
   } catch {
     return () => undefined;
