@@ -2860,6 +2860,7 @@ export default function App() {
               <ProductionReportsMenu
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
+                isDarkTheme={isProdDarkTheme}
                 onSelectReport={handleOpenProductionReport}
                 onDeleteReport={handleDeleteSidebarReport}
                 onClose={() => setIsProdReportsMenuOpen(false)}

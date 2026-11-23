@@ -12,8 +12,6 @@ import {
   Shield,
   ShieldAlert,
   Sparkles,
-  Volume2,
-  VolumeX,
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -41,7 +39,6 @@ import {
   playIntroPopInMusic,
   playIntroPopOutMusic,
   playLaunchTransitionCue,
-  startBucketAmbientMusic,
   stopBucketAmbientMusic,
   warmAudioContext,
 } from '../../utils/notify';
@@ -566,7 +563,7 @@ export function ProductionStage1Three({
   activeProvider,
   isDarkTheme = true,
   isBackgroundMusicEnabled,
-  onToggleBackgroundMusic,
+  onToggleBackgroundMusic: _onToggleBackgroundMusic,
   ratedThreads,
   isSending,
   switchingMonthKey: _switchingMonthKey,
@@ -597,18 +594,9 @@ export function ProductionStage1Three({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [inspectedBucketKey, setInspectedBucketKey] = useState<string | null>(null);
   const [selectedInspectReportIdx, setSelectedInspectReportIdx] = useState(0);
-  const [localMusicMuted, setLocalMusicMuted] = useState(false);
   const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<string[]>([]);
 
-  const isMusicMuted =
-    isBackgroundMusicEnabled !== undefined ? !isBackgroundMusicEnabled : localMusicMuted;
-  const handleToggleMusic = () => {
-    if (onToggleBackgroundMusic) {
-      onToggleBackgroundMusic();
-    } else {
-      setLocalMusicMuted((prev) => !prev);
-    }
-  };
+  const isMusicMuted = isBackgroundMusicEnabled === false;
 
   const stageQuickMonths = useMemo<ProductionMonthItem[]>(() => {
     const now = new Date();
@@ -875,15 +863,8 @@ export function ProductionStage1Three({
   }, [blockedDropNotice, dockedTarget, isSending]);
 
   useEffect(() => {
-    if (!inspectedBucketKey || isMusicMuted) {
-      stopBucketAmbientMusic();
-      return;
-    }
-    const stopMusic = startBucketAmbientMusic();
-    return () => {
-      stopMusic();
-    };
-  }, [inspectedBucketKey, isMusicMuted]);
+    stopBucketAmbientMusic();
+  }, [inspectedBucketKey]);
 
   useEffect(() => {
     if (!dockedTarget && !blockedDropNotice && !inspectedBucketKey) return;
@@ -1440,7 +1421,9 @@ export function ProductionStage1Three({
           const monthEntries = bucketReportsRef.current.get(key) ?? [];
           if (monthEntries.length > 0) {
             // Read-only animated showcase inside enlarged bucket (no network/LLM requests raised)
-            playBucketExpandCue();
+            if (!stateRef.current.isMusicMuted) {
+              playBucketExpandCue();
+            }
             callbacksRef.current.setSelectedInspectReportIdx(0);
             callbacksRef.current.setInspectedBucketKey(key);
           } else {
@@ -2406,23 +2389,6 @@ export function ProductionStage1Three({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleToggleMusic}
-                    aria-label={isMusicMuted ? 'Unmute background music' : 'Mute background music'}
-                    title={isMusicMuted ? 'Turn background music On' : 'Turn background music Off'}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-xl transition-colors cursor-pointer ${
-                      isMusicMuted
-                        ? 'text-slate-500 hover:text-slate-800 hover:bg-white/75'
-                        : 'text-sky-700 bg-sky-500/12 hover:bg-sky-500/20'
-                    }`}
-                  >
-                    {isMusicMuted ? (
-                      <VolumeX className="w-4 h-4" />
-                    ) : (
-                      <Volume2 className="w-4 h-4" />
-                    )}
-                  </button>
                   <button
                     type="button"
                     onClick={() => setInspectedBucketKey(null)}
