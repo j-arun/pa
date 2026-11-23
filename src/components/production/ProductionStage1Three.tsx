@@ -6,6 +6,7 @@ import {
   Heart,
   Home,
   Loader2,
+  Plus,
   Scale,
   Send,
   Shield,
@@ -142,6 +143,7 @@ interface ProductionStage1ThreeProps {
   monthSwitchError?: string | null;
   onDismissMonthSwitchError?: () => void;
   onPromptDomainChange: (domain: PromptDomain) => void;
+  onProviderChange?: (provider: 'gemini' | 'fable') => void;
   onSelectQuickMonth?: (month: number, year: number) => void;
   onOpenExistingReport: (record: RatedThreadRecord) => void;
   onSubmitQuestion: (payload: {
@@ -150,6 +152,7 @@ interface ProductionStage1ThreeProps {
     threadName: string;
     month: number;
     year: number;
+    provider?: 'gemini' | 'fable';
   }) => void;
 }
 
@@ -570,6 +573,7 @@ export function ProductionStage1Three({
   monthSwitchError,
   onDismissMonthSwitchError,
   onPromptDomainChange,
+  onProviderChange,
   onSelectQuickMonth,
   onOpenExistingReport,
   onSubmitQuestion,
@@ -580,6 +584,7 @@ export function ProductionStage1Three({
   const [dockedTarget, setDockedTarget] = useState<{
     topic: ProductionTopicDef;
     month: ProductionMonthItem;
+    providerOverride?: 'gemini' | 'fable';
   } | null>(null);
   const [blockedDropNotice, setBlockedDropNotice] = useState<{
     topic: ProductionTopicDef;
@@ -593,6 +598,7 @@ export function ProductionStage1Three({
   const [inspectedBucketKey, setInspectedBucketKey] = useState<string | null>(null);
   const [selectedInspectReportIdx, setSelectedInspectReportIdx] = useState(0);
   const [localMusicMuted, setLocalMusicMuted] = useState(false);
+  const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<string[]>([]);
 
   const isMusicMuted =
     isBackgroundMusicEnabled !== undefined ? !isBackgroundMusicEnabled : localMusicMuted;
@@ -675,8 +681,91 @@ export function ProductionStage1Three({
     return map;
   }, [ratedThreads, stageQuickMonths]);
 
+  // Current-month-only cross-provider suggestions (max 2):
+  // Suggests running a current-month domain query on Fable if ran only on Gemini (or vice versa).
+  const currentMonthSuggestions = useMemo(() => {
+    const currentMonthItem = stageQuickMonths[0];
+    if (!currentMonthItem) return [];
+    const currentEntries = bucketReportsByKey.get(currentMonthItem.key) ?? [];
+    if (currentEntries.length === 0) return [];
+
+    const currentMonthName =
+      getMonthNameFromNumber(currentMonthItem.month) ?? currentMonthItem.shortMonth;
+
+    const candidates: Array<{
+      key: string;
+      topic: ProductionTopicDef;
+      month: ProductionMonthItem;
+      monthName: string;
+      sourceProvider: 'gemini' | 'fable';
+      targetProvider: 'gemini' | 'fable';
+      questionText: string;
+      questionPreview: string;
+      sortTimeMs: number;
+    }> = [];
+
+    for (const topic of TOPICS) {
+      const geminiEntry = currentEntries.find(
+        (entry) => entry.domain === topic.domain && entry.provider === 'gemini',
+      );
+      const fableEntry = currentEntries.find(
+        (entry) => entry.domain === topic.domain && entry.provider === 'fable',
+      );
+      if (Boolean(geminiEntry) === Boolean(fableEntry)) continue;
+
+      const sourceEntry = (geminiEntry ?? fableEntry)!;
+      const sourceProvider: 'gemini' | 'fable' = geminiEntry ? 'gemini' : 'fable';
+      const targetProvider: 'gemini' | 'fable' = geminiEntry ? 'fable' : 'gemini';
+      const key = `${currentMonthItem.key}|${topic.domain}|${targetProvider}`;
+      if (dismissedSuggestionKeys.includes(key)) continue;
+
+      const qTurn = sourceEntry.record.turns.find((t) => t.role === 'user');
+      const fullQuestion = (qTurn?.content || '').replace(/\s+/g, ' ').trim();
+      const questionPreview =
+        fullQuestion.length > 68 ? `${fullQuestion.slice(0, 66).trim()}…` : fullQuestion;
+
+      const lastTurn = sourceEntry.record.turns[sourceEntry.record.turns.length - 1];
+      const rawTimestamp =
+        lastTurn?.timestamp ||
+        sourceEntry.record.ratedAt ||
+        '';
+      const parsedMs = rawTimestamp ? Date.parse(rawTimestamp) : 0;
+
+      candidates.push({
+        key,
+        topic,
+        month: currentMonthItem,
+        monthName: currentMonthName,
+        sourceProvider,
+        targetProvider,
+        questionText: fullQuestion,
+        questionPreview,
+        sortTimeMs: Number.isFinite(parsedMs) ? parsedMs : 0,
+      });
+    }
+
+    candidates.sort((a, b) => b.sortTimeMs - a.sortTimeMs);
+    return candidates.slice(0, 2);
+  }, [bucketReportsByKey, dismissedSuggestionKeys, stageQuickMonths]);
+
   const bucketReportsRef = useRef(bucketReportsByKey);
   bucketReportsRef.current = bucketReportsByKey;
+
+  const handleAcceptSuggestion = (suggestion: (typeof currentMonthSuggestions)[number]) => {
+    playBucketDropCue();
+    setBlockedDropNotice(null);
+    setInspectedBucketKey(null);
+    onProviderChange?.(suggestion.targetProvider);
+    onPromptDomainChange(suggestion.topic.domain);
+    onSelectQuickMonth?.(suggestion.month.month, suggestion.month.year);
+    setQuestionText(suggestion.questionText);
+    setValidationError(null);
+    setDockedTarget({
+      topic: suggestion.topic,
+      month: suggestion.month,
+      providerOverride: suggestion.targetProvider,
+    });
+  };
 
   const attemptOpenForTopicAndMonth = (
     topic: ProductionTopicDef,
@@ -2112,6 +2201,7 @@ export function ProductionStage1Three({
       return;
     }
     const chosen = dockedTarget;
+    const chosenProvider = chosen.providerOverride ?? activeProvider;
     playLaunchTransitionCue();
     setDockedTarget(null);
     setQuestionText('');
@@ -2122,6 +2212,7 @@ export function ProductionStage1Three({
       threadName: chosen.topic.label,
       month: chosen.month.month,
       year: chosen.month.year,
+      provider: chosenProvider,
     });
   };
 
@@ -2185,6 +2276,85 @@ export function ProductionStage1Three({
     >
       {/* Real Three.js 3D WebGL Canvas */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Right-Hand Current-Month Cross-Model Suggestions (Max 2, Follow-up Glass Pop-up Style) */}
+      <AnimatePresence>
+        {!dockedTarget &&
+          !blockedDropNotice &&
+          !inspectedBucketKey &&
+          !isSending &&
+          currentMonthSuggestions.length > 0 && (
+            <motion.aside
+              key="stage1-right-suggestions"
+              aria-label="Current month suggestions"
+              initial={{ opacity: 0, x: 18 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 18 }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+              className="pointer-events-none absolute right-4 bottom-4 sm:right-5 sm:bottom-5 z-10 flex flex-col items-end gap-2.5 w-[min(320px,calc(100vw-2rem))]"
+            >
+              {currentMonthSuggestions.map((suggestion) => {
+                const sourceName = suggestion.sourceProvider === 'fable' ? 'Fable' : 'Gemini';
+                const targetName = suggestion.targetProvider === 'fable' ? 'Fable' : 'Gemini';
+                return (
+                  <div
+                    key={suggestion.key}
+                    className="fluent-3d-popup pointer-events-auto w-full rounded-[22px] px-3.5 py-3 text-slate-900 transition-transform duration-200 hover:-translate-y-0.5"
+                  >
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptSuggestion(suggestion)}
+                        className="flex-1 min-w-0 flex items-start gap-2.5 text-left cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                      >
+                        <span
+                          className="relative mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-xl shrink-0"
+                          style={{ backgroundColor: `${suggestion.topic.accentHex}26` }}
+                        >
+                          <TopicBackdropIcon
+                            icon={suggestion.topic.icon}
+                            color={suggestion.topic.glowHex}
+                            className="w-4 h-4"
+                          />
+                          <span className="absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white text-sky-600 shadow-xs border border-sky-200">
+                            <Plus className="w-2.5 h-2.5 stroke-[2.75]" />
+                          </span>
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold leading-snug text-slate-900">
+                            Do you want to try the same{' '}
+                            <span style={{ color: suggestion.topic.glowHex }}>
+                              {suggestion.topic.label}
+                            </span>{' '}
+                            question of {suggestion.monthName} from {sourceName} to {targetName}?
+                          </p>
+                          {suggestion.questionPreview && (
+                            <p className="mt-1 text-[11px] text-slate-600 truncate">
+                              &ldquo;{suggestion.questionPreview}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDismissedSuggestionKeys((prev) =>
+                            prev.includes(suggestion.key) ? prev : [...prev, suggestion.key],
+                          )
+                        }
+                        aria-label={`Dismiss ${suggestion.topic.label} suggestion`}
+                        title="Dismiss suggestion"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white/75 shrink-0 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </motion.aside>
+          )}
+      </AnimatePresence>
 
       {/* Enlarged Read-Only Report Showcase Inside Clicked Bucket + Gentle Background Music */}
       <AnimatePresence>
@@ -2504,7 +2674,8 @@ export function ProductionStage1Three({
                   />
                 </span>
                 <span className="tabular-nums">
-                  {dockedTarget.month.fullLabel} · {activeProvider === 'fable' ? 'Fable' : 'Gemini'}
+                  {dockedTarget.month.fullLabel} ·{' '}
+                  {(dockedTarget.providerOverride ?? activeProvider) === 'fable' ? 'Fable' : 'Gemini'}
                 </span>
               </div>
               <button

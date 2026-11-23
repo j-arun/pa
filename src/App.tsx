@@ -1966,6 +1966,7 @@ export default function App() {
     isFollowUp,
     targetMonth,
     targetYear,
+    targetProvider,
   }: SendThreadMessagePayload) => {
     const rootUserTurn = turns.find((t) => t.role === 'user');
     if (isFollowUp && rootUserTurn?.isFinalized) {
@@ -1975,7 +1976,11 @@ export default function App() {
       ? 'public'
       : ((isFollowUp ? rootUserTurn?.scope : undefined) ?? scope);
     const activeProdPublicAdapter: PublicAdapterId =
-      settings.publicLlm.activeAdapter === 'fable' ? 'fable' : 'gemini';
+      targetProvider === 'fable' || targetProvider === 'gemini'
+        ? targetProvider
+        : settings.publicLlm.activeAdapter === 'fable'
+          ? 'fable'
+          : 'gemini';
     const selectedPublicAdapter: PublicAdapterId = isProductionApp
       ? activeProdPublicAdapter
       : settings.publicLlm.activeAdapter;
@@ -2610,6 +2615,15 @@ export default function App() {
                     },
                   }))
                 }
+                onProviderChange={(provider) =>
+                  setSettings((previous) => ({
+                    ...previous,
+                    publicLlm: {
+                      ...previous.publicLlm,
+                      activeAdapter: provider,
+                    },
+                  }))
+                }
                 onSelectQuickMonth={(month, year) => void handleQuickSelectMonth(month, year)}
                 onOpenExistingReport={handleOpenProductionReport}
                 onSubmitQuestion={(payload) =>
@@ -2621,6 +2635,7 @@ export default function App() {
                     isFollowUp: false,
                     targetMonth: payload.month,
                     targetYear: payload.year,
+                    targetProvider: payload.provider,
                   })
                 }
               />

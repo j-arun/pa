@@ -236,6 +236,7 @@ export interface SendThreadMessagePayload {
   isFollowUp: boolean;
   targetMonth?: number;
   targetYear?: number;
+  targetProvider?: 'gemini' | 'fable';
 }
 
 export interface ThreadMetadataPatch {
