@@ -880,15 +880,15 @@ function run() {
             matchedEvent = candidates[c];
             break;
           }
-          if (
-            normText(candSummary) === targetSummaryNorm &&
-            (
-              (ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1) ||
-              sameCalendarDay(candStart, sDate)
-            )
-          ) {
-            matchedEvent = candidates[c];
-            break;
+          if (normText(candSummary) === targetSummaryNorm) {
+            var hasWindowLine = desc.indexOf('WatchOut Window: ') !== -1;
+            var windowMatched = Boolean(
+              ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1,
+            );
+            if (windowMatched || ((!hasWindowLine || !ev.rawDateLabel) && sameCalendarDay(candStart, sDate))) {
+              matchedEvent = candidates[c];
+              break;
+            }
           }
         }
       } catch (errQ) {}
@@ -1060,6 +1060,28 @@ function sameCalendarDay(a, b) {
   );
 }
 
+function prioritizeNamedItems(items, primaryLower, commonNames) {
+  var ranked = [];
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    var nm = '';
+    try { nm = (item.name() || '').trim().toLowerCase(); } catch (e) { nm = ''; }
+    var score = 3;
+    if (primaryLower && nm === primaryLower) {
+      score = 0;
+    } else if (nm === 'gemini' || nm === 'fable') {
+      score = 1;
+    } else if (commonNames.indexOf(nm) !== -1) {
+      score = 2;
+    }
+    ranked.push({ item: item, score: score, idx: i });
+  }
+  ranked.sort(function(a, b) {
+    return a.score !== b.score ? a.score - b.score : a.idx - b.idx;
+  });
+  return ranked.map(function(entry) { return entry.item; });
+}
+
 function run() {
   var rawEnv = $.NSProcessInfo.processInfo.environment.objectForKey('PA_SYNC_PAYLOAD');
   var payload = JSON.parse(ObjC.unwrap(rawEnv));
@@ -1076,6 +1098,8 @@ function run() {
         if (allCals[i].writable()) writableCals.push(allCals[i]);
       } catch (e) {}
     }
+    var desiredCalLower = (payload.calendarName || '').trim().toLowerCase();
+    writableCals = prioritizeNamedItems(writableCals, desiredCalLower, ['home', 'personal', 'calendar', 'work']);
 
     for (var w = 0; w < payload.watchOutEvents.length; w++) {
       var ev = payload.watchOutEvents[w];
@@ -1097,24 +1121,26 @@ function run() {
             ]
           })();
           for (var c = 0; c < candidates.length; c++) {
-            var desc = '';
             var candSummary = '';
-            var candStart = null;
-            try { desc = candidates[c].description() || ''; } catch (errD) { desc = ''; }
             try { candSummary = candidates[c].summary() || ''; } catch (errS) { candSummary = ''; }
-            try { candStart = candidates[c].startDate(); } catch (errDt) { candStart = null; }
+            var summaryMatched = normText(candSummary) === targetSummaryNorm;
+
+            var desc = '';
+            try { desc = candidates[c].description() || ''; } catch (errD) { desc = ''; }
             if (desc.indexOf(uidTag) !== -1) {
               toDelete.push(candidates[c]);
               continue;
             }
-            if (
-              normText(candSummary) === targetSummaryNorm &&
-              (
-                (ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1) ||
-                sameCalendarDay(candStart, sDate)
-              )
-            ) {
-              toDelete.push(candidates[c]);
+            if (summaryMatched) {
+              var hasWindowLine = desc.indexOf('WatchOut Window: ') !== -1;
+              var windowMatched = Boolean(
+                ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1,
+              );
+              var candStart = null;
+              try { candStart = candidates[c].startDate(); } catch (errDt) { candStart = null; }
+              if (windowMatched || ((!hasWindowLine || !ev.rawDateLabel) && sameCalendarDay(candStart, sDate))) {
+                toDelete.push(candidates[c]);
+              }
             }
           }
         } catch (errQ) {}
@@ -1137,35 +1163,57 @@ function run() {
   if (payload.reminderCards && payload.reminderCards.length > 0) {
     var remApp = Application('Reminders');
     var allLists = remApp.lists();
+    var desiredListLower = (payload.remindersListName || '').trim().toLowerCase();
+    allLists = prioritizeNamedItems(allLists, desiredListLower, ['reminders', 'home', 'personal', 'tasks', 'work']);
 
     for (var li = 0; li < allLists.length; li++) {
       var remList = allLists[li];
-      var existingRems = [];
-      try {
-        existingRems = remList.reminders();
-      } catch (e) {
-        existingRems = [];
-      }
-      if (!existingRems || existingRems.length === 0) continue;
+      var incompleteFallback = null;
 
-      var remsToDelete = [];
-      for (var er = 0; er < existingRems.length; er++) {
-        var rBody = '';
-        var rName = '';
-        try { rBody = existingRems[er].body() || ''; } catch (e) { rBody = ''; }
-        try { rName = existingRems[er].name() || ''; } catch (e) { rName = ''; }
-        var rNameNorm = normText(rName);
+      for (var r = 0; r < payload.reminderCards.length; r++) {
+        var card = payload.reminderCards[r];
+        var remUidTag = '[PA-UID:' + card.uid + ']';
+        var cardTitleNorm = normText(card.title);
+        var candidates = [];
+        var usedWhose = false;
 
-        for (var r = 0; r < payload.reminderCards.length; r++) {
-          var card = payload.reminderCards[r];
-          var remUidTag = '[PA-UID:' + card.uid + ']';
-          var cardTitleNorm = normText(card.title);
+        try {
+          candidates = remList.reminders.whose({ name: card.title })();
+          usedWhose = true;
+        } catch (eWhose) {
+          usedWhose = false;
+        }
+
+        if (!usedWhose) {
+          if (incompleteFallback === null) {
+            try {
+              incompleteFallback = remList.reminders.whose({ completed: false })();
+            } catch (eFallback) {
+              incompleteFallback = [];
+            }
+          }
+          candidates = incompleteFallback;
+        }
+
+        var remsToDelete = [];
+        for (var er = 0; er < candidates.length; er++) {
+          var cand = candidates[er];
+          var rName = '';
+          if (usedWhose) {
+            rName = card.title;
+          } else {
+            try { rName = cand.name() || ''; } catch (eN) { rName = ''; }
+            if (normText(rName) !== cardTitleNorm) continue;
+          }
+
+          var rBody = '';
+          try { rBody = cand.body() || ''; } catch (eB) { rBody = ''; }
+
           if (rBody.indexOf(remUidTag) !== -1) {
-            remsToDelete.push(existingRems[er]);
-            break;
+            remsToDelete.push(cand);
+            continue;
           }
           if (
-            rNameNorm === cardTitleNorm &&
             rBody.indexOf('Provider: ') !== -1 &&
             (
               (!card.whenLabel && !card.category) ||
@@ -1173,21 +1221,20 @@ function run() {
               (card.category && rBody.indexOf('Domain: ' + card.category) !== -1)
             )
           ) {
-            remsToDelete.push(existingRems[er]);
-            break;
+            remsToDelete.push(cand);
           }
         }
-      }
 
-      for (var ri = remsToDelete.length - 1; ri >= 0; ri--) {
-        try {
-          remApp.delete(remsToDelete[ri]);
-          remindersRemoved++;
-        } catch (delR1) {
+        for (var ri = remsToDelete.length - 1; ri >= 0; ri--) {
           try {
-            remsToDelete[ri].delete();
+            remApp.delete(remsToDelete[ri]);
             remindersRemoved++;
-          } catch (delR2) {}
+          } catch (delR1) {
+            try {
+              remsToDelete[ri].delete();
+              remindersRemoved++;
+            } catch (delR2) {}
+          }
         }
       }
     }
@@ -1656,21 +1703,23 @@ async function syncViaICloudCalDav(params: {
       warnings.push('No writable VEVENT calendar collection was returned by iCloud CalDAV.');
     } else {
       usedCalName = targetCal.displayName;
-      for (const ev of watchOutEvents) {
-        const icsUrl = `${targetCal.url}${encodeURIComponent(ev.uid)}.ics`;
-        const putRes = await calDavFetch(icsUrl, authHeader, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'text/calendar; charset=utf-8',
-          },
-          body: buildVEventIcs(ev),
-        });
-        if (putRes.status >= 200 && putRes.status < 300) {
-          watchOutSynced += 1;
-        } else {
-          warnings.push(`Calendar PUT for "${ev.summary}" returned HTTP ${putRes.status}.`);
-        }
-      }
+      await Promise.all(
+        watchOutEvents.map(async (ev) => {
+          const icsUrl = `${targetCal!.url}${encodeURIComponent(ev.uid)}.ics`;
+          const putRes = await calDavFetch(icsUrl, authHeader, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'text/calendar; charset=utf-8',
+            },
+            body: buildVEventIcs(ev),
+          });
+          if (putRes.status >= 200 && putRes.status < 300) {
+            watchOutSynced += 1;
+          } else {
+            warnings.push(`Calendar PUT for "${ev.summary}" returned HTTP ${putRes.status}.`);
+          }
+        }),
+      );
     }
   }
 
@@ -1700,21 +1749,23 @@ async function syncViaICloudCalDav(params: {
       );
     } else {
       usedRemName = targetRem.displayName;
-      for (const card of reminderCards) {
-        const icsUrl = `${targetRem.url}${encodeURIComponent(card.uid)}.ics`;
-        const putRes = await calDavFetch(icsUrl, authHeader, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'text/calendar; charset=utf-8',
-          },
-          body: buildVTodoIcs(card),
-        });
-        if (putRes.status >= 200 && putRes.status < 300) {
-          remindersSynced += 1;
-        } else {
-          warnings.push(`Reminders PUT for "${card.title}" returned HTTP ${putRes.status}.`);
-        }
-      }
+      await Promise.all(
+        reminderCards.map(async (card) => {
+          const icsUrl = `${targetRem!.url}${encodeURIComponent(card.uid)}.ics`;
+          const putRes = await calDavFetch(icsUrl, authHeader, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'text/calendar; charset=utf-8',
+            },
+            body: buildVTodoIcs(card),
+          });
+          if (putRes.status >= 200 && putRes.status < 300) {
+            remindersSynced += 1;
+          } else {
+            warnings.push(`Reminders PUT for "${card.title}" returned HTTP ${putRes.status}.`);
+          }
+        }),
+      );
     }
   }
 
@@ -1960,6 +2011,193 @@ export async function syncReportToApple(params: {
   };
 }
 
+function normalizeCompareText(raw: string): string {
+  return String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function unescapeIcsPropertyValue(raw: string): string {
+  return raw
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function extractIcsProperty(unfoldedBlock: string, propName: string): string {
+  const regex = new RegExp(`^${propName}(?:;[^:]*)?:(.*)$`, 'im');
+  const match = unfoldedBlock.match(regex);
+  return match ? unescapeIcsPropertyValue(match[1].trim()) : '';
+}
+
+function parseIcsDateToLocalDate(rawVal: string): Date | null {
+  const cleaned = rawVal.trim();
+  const m = cleaned.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/i);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  if (m[4] !== undefined) {
+    const hour = Number(m[4]);
+    const min = Number(m[5]);
+    const sec = Number(m[6]);
+    if (m[7]) {
+      return new Date(Date.UTC(year, month, day, hour, min, sec));
+    }
+    return new Date(year, month, day, hour, min, sec);
+  }
+  return new Date(year, month, day, 0, 0, 0);
+}
+
+function isSameOrAdjacentCalendarDay(a: Date | null, b: Date): boolean {
+  if (!a) return false;
+  if (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  ) {
+    return true;
+  }
+  return Math.abs(a.getTime() - b.getTime()) <= 24 * 3600 * 1000;
+}
+
+interface CalDavQueryResource {
+  url: string;
+  uid: string;
+  summary: string;
+  description: string;
+  dtStartRaw: string;
+}
+
+function parseCalDavReportResources(
+  xmlText: string,
+  collectionUrl: string,
+  componentName: 'VEVENT' | 'VTODO',
+): CalDavQueryResource[] {
+  const blocks =
+    xmlText.match(/<(?:[a-z0-9_-]+:)?response\b[\s\S]*?<\/(?:[a-z0-9_-]+:)?response>/gi) || [];
+  const results: CalDavQueryResource[] = [];
+
+  for (const block of blocks) {
+    const hrefMatch = block.match(
+      /<(?:[a-z0-9_-]+:)?href\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_-]+:)?href>/i,
+    );
+    const calDataMatch = block.match(
+      /<(?:[a-z0-9_-]+:)?calendar-data\b[^>]*>([\s\S]*?)<\/(?:[a-z0-9_-]+:)?calendar-data>/i,
+    );
+    if (!hrefMatch || !calDataMatch) continue;
+
+    const rawHref = decodeXmlEntities(hrefMatch[1].trim());
+    if (!rawHref) continue;
+    let resourceUrl = '';
+    try {
+      resourceUrl = new URL(rawHref, collectionUrl).toString();
+    } catch {
+      continue;
+    }
+
+    let icsRaw = calDataMatch[1].trim();
+    const cdataMatch = icsRaw.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/i);
+    if (cdataMatch) {
+      icsRaw = cdataMatch[1];
+    } else {
+      icsRaw = decodeXmlEntities(icsRaw);
+    }
+
+    const unfolded = icsRaw.replace(/\r?\n[ \t]/g, '');
+    const compRegex = new RegExp(`BEGIN:${componentName}[\\s\\S]*?END:${componentName}`, 'i');
+    const compMatch = unfolded.match(compRegex);
+    const targetBlock = compMatch ? compMatch[0] : unfolded;
+
+    results.push({
+      url: resourceUrl,
+      uid: extractIcsProperty(targetBlock, 'UID'),
+      summary: extractIcsProperty(targetBlock, 'SUMMARY'),
+      description: extractIcsProperty(targetBlock, 'DESCRIPTION'),
+      dtStartRaw: extractIcsProperty(targetBlock, 'DTSTART'),
+    });
+  }
+
+  return results;
+}
+
+async function queryCalDavEventsInRange(
+  collectionUrl: string,
+  authHeader: string,
+  events: WatchOutSyncPayloadItem[],
+): Promise<CalDavQueryResource[]> {
+  if (events.length === 0) return [];
+  let minMs = Infinity;
+  let maxMs = -Infinity;
+  for (const ev of events) {
+    const s = new Date(ev.startIso).getTime();
+    const e = new Date(ev.endIso).getTime();
+    if (Number.isFinite(s) && s < minMs) minMs = s;
+    if (Number.isFinite(e) && e > maxMs) maxMs = e;
+  }
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return [];
+  const startUtc = formatIcsUtcStamp(new Date(minMs - 48 * 3600 * 1000));
+  const endUtc = formatIcsUtcStamp(new Date(maxMs + 48 * 3600 * 1000));
+
+  const reportBody = `<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VEVENT">
+        <c:time-range start="${startUtc}" end="${endUtc}"/>
+      </c:comp-filter>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>`;
+
+  const res = await calDavFetch(collectionUrl, authHeader, {
+    method: 'REPORT',
+    headers: {
+      Depth: '1',
+      'Content-Type': 'application/xml; charset=utf-8',
+    },
+    body: reportBody,
+  });
+  if (res.status < 200 || res.status >= 300) {
+    return [];
+  }
+  return parseCalDavReportResources(res.text, collectionUrl, 'VEVENT');
+}
+
+async function queryCalDavTodos(
+  collectionUrl: string,
+  authHeader: string,
+): Promise<CalDavQueryResource[]> {
+  const reportBody = `<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VTODO"/>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>`;
+
+  const res = await calDavFetch(collectionUrl, authHeader, {
+    method: 'REPORT',
+    headers: {
+      Depth: '1',
+      'Content-Type': 'application/xml; charset=utf-8',
+    },
+    body: reportBody,
+  });
+  if (res.status < 200 || res.status >= 300) {
+    return [];
+  }
+  return parseCalDavReportResources(res.text, collectionUrl, 'VTODO');
+}
+
 async function unsyncViaICloudCalDav(params: {
   appleId: string;
   appPassword: string;
@@ -2006,41 +2244,156 @@ async function unsyncViaICloudCalDav(params: {
 
   if (watchOutEvents.length > 0 && calendarCollections.length > 0) {
     const orderedCals = sortCollections(calendarCollections, explicitCalName, providerCalName);
-    for (const ev of watchOutEvents) {
-      let deletedThis = false;
-      for (const col of orderedCals) {
-        const icsUrl = `${col.url}${encodeURIComponent(ev.uid)}.ics`;
-        const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
-        if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
-          watchOutRemoved += 1;
-          deletedThis = true;
-          break;
-        }
-        if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
-          warnings.push(
-            `Calendar DELETE for "${ev.summary}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
-          );
+    let remainingEvents = [...watchOutEvents];
+    for (const col of orderedCals) {
+      if (remainingEvents.length === 0) break;
+      const stillRemaining: WatchOutSyncPayloadItem[] = [];
+      await Promise.all(
+        remainingEvents.map(async (ev) => {
+          const icsUrl = `${col.url}${encodeURIComponent(ev.uid)}.ics`;
+          const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
+          if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+            watchOutRemoved += 1;
+            return;
+          }
+          if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
+            warnings.push(
+              `Calendar DELETE for "${ev.summary}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
+            );
+          }
+          stillRemaining.push(ev);
+        }),
+      );
+
+      // Fallback via CalDAV REPORT for events originally synced by MacBook Calendar.app
+      // (which uses Apple-generated UUID .ics filenames instead of pa-watchout-*.ics).
+      if (stillRemaining.length > 0) {
+        const queried = await queryCalDavEventsInRange(col.url, authHeader, stillRemaining);
+        if (queried.length > 0) {
+          const urlsToDelete = new Set<string>();
+          const matchedEventUids = new Set<string>();
+          for (const ev of stillRemaining) {
+            const targetSummaryNorm = normalizeCompareText(ev.summary);
+            const targetStart = new Date(ev.startIso);
+            const uidTag = `[PA-UID:${ev.uid}]`;
+            for (const resItem of queried) {
+              const uidMatch =
+                resItem.uid === ev.uid ||
+                resItem.uid.startsWith(`${ev.uid}@`) ||
+                resItem.description.includes(uidTag);
+              let contentMatch = false;
+              if (!uidMatch && normalizeCompareText(resItem.summary) === targetSummaryNorm) {
+                const hasWindowLine = resItem.description.includes('WatchOut Window: ');
+                const windowMatched = Boolean(
+                  ev.rawDateLabel &&
+                    resItem.description.includes(`WatchOut Window: ${ev.rawDateLabel}`),
+                );
+                if (windowMatched) {
+                  contentMatch = true;
+                } else if (!hasWindowLine || !ev.rawDateLabel) {
+                  const candStart = parseIcsDateToLocalDate(resItem.dtStartRaw);
+                  if (isSameOrAdjacentCalendarDay(candStart, targetStart)) {
+                    contentMatch = true;
+                  }
+                }
+              }
+              if (uidMatch || contentMatch) {
+                urlsToDelete.add(resItem.url);
+                matchedEventUids.add(ev.uid);
+              }
+            }
+          }
+
+          if (urlsToDelete.size > 0) {
+            await Promise.all(
+              Array.from(urlsToDelete).map(async (targetUrl) => {
+                const delRes = await calDavFetch(targetUrl, authHeader, { method: 'DELETE' });
+                if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+                  watchOutRemoved += 1;
+                }
+              }),
+            );
+          }
+          remainingEvents = stillRemaining.filter((ev) => !matchedEventUids.has(ev.uid));
+          continue;
         }
       }
-      void deletedThis;
+
+      remainingEvents = stillRemaining;
     }
   }
 
-  if (reminderCards.length > 0 && reminderCollections.length > 0) {
-    const orderedRems = sortCollections(reminderCollections, explicitRemName, providerCalName);
-    for (const card of reminderCards) {
+  if (reminderCards.length > 0) {
+    if (reminderCollections.length === 0) {
+      warnings.push(
+        'Apple restricts CalDAV access to upgraded iCloud Reminders on Windows; Calendar WatchOut events were removed, while Event Cards in iPhone Reminders must be removed on Mac or iPhone.',
+      );
+    } else {
+      const orderedRems = sortCollections(reminderCollections, explicitRemName, providerCalName);
+      let remainingCards = [...reminderCards];
       for (const col of orderedRems) {
-        const icsUrl = `${col.url}${encodeURIComponent(card.uid)}.ics`;
-        const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
-        if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
-          remindersRemoved += 1;
-          break;
+        if (remainingCards.length === 0) break;
+        const stillRemaining: ReminderCardSyncPayloadItem[] = [];
+        await Promise.all(
+          remainingCards.map(async (card) => {
+            const icsUrl = `${col.url}${encodeURIComponent(card.uid)}.ics`;
+            const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
+            if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+              remindersRemoved += 1;
+              return;
+            }
+            if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
+              warnings.push(
+                `Reminders DELETE for "${card.title}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
+              );
+            }
+            stillRemaining.push(card);
+          }),
+        );
+
+        if (stillRemaining.length > 0) {
+          const queried = await queryCalDavTodos(col.url, authHeader);
+          if (queried.length > 0) {
+            const urlsToDelete = new Set<string>();
+            const matchedCardUids = new Set<string>();
+            for (const card of stillRemaining) {
+              const targetTitleNorm = normalizeCompareText(card.title);
+              const uidTag = `[PA-UID:${card.uid}]`;
+              for (const resItem of queried) {
+                const uidMatch =
+                  resItem.uid === card.uid ||
+                  resItem.uid.startsWith(`${card.uid}@`) ||
+                  resItem.description.includes(uidTag);
+                const contentMatch =
+                  !uidMatch &&
+                  normalizeCompareText(resItem.summary) === targetTitleNorm &&
+                  resItem.description.includes('Provider: ') &&
+                  ((!card.whenLabel && !card.category) ||
+                    (card.whenLabel && resItem.description.includes(`When: ${card.whenLabel}`)) ||
+                    (card.category && resItem.description.includes(`Domain: ${card.category}`)));
+                if (uidMatch || contentMatch) {
+                  urlsToDelete.add(resItem.url);
+                  matchedCardUids.add(card.uid);
+                }
+              }
+            }
+
+            if (urlsToDelete.size > 0) {
+              await Promise.all(
+                Array.from(urlsToDelete).map(async (targetUrl) => {
+                  const delRes = await calDavFetch(targetUrl, authHeader, { method: 'DELETE' });
+                  if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+                    remindersRemoved += 1;
+                  }
+                }),
+              );
+            }
+            remainingCards = stillRemaining.filter((c) => !matchedCardUids.has(c.uid));
+            continue;
+          }
         }
-        if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
-          warnings.push(
-            `Reminders DELETE for "${card.title}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
-          );
-        }
+
+        remainingCards = stillRemaining;
       }
     }
   }
@@ -2070,6 +2423,9 @@ export async function unsyncReportFromApple(params: {
   const useMacOsNative =
     resolved.mode === 'macos' ||
     (resolved.mode === 'auto' && process.platform === 'darwin');
+  const providerStyle = resolveProviderCalendarStyle(extracted.providerLabel);
+  const targetCalendarName = resolved.calendarName || providerStyle?.targetName || '';
+  const targetRemindersListName = resolved.remindersListName || providerStyle?.targetName || '';
 
   if (useMacOsNative) {
     if (process.platform !== 'darwin') {
@@ -2090,6 +2446,9 @@ export async function unsyncReportFromApple(params: {
       remindersRemoved?: number;
       warnings?: string[];
     }>(JXA_UNSYNC_SCRIPT, {
+      providerLabel: extracted.providerLabel,
+      calendarName: targetCalendarName,
+      remindersListName: targetRemindersListName,
       watchOutEvents: extracted.watchOutEvents,
       reminderCards: extracted.reminderCards,
     });
@@ -2142,6 +2501,9 @@ export async function unsyncReportFromApple(params: {
         remindersRemoved?: number;
         warnings?: string[];
       }>(JXA_UNSYNC_SCRIPT, {
+        providerLabel: extracted.providerLabel,
+        calendarName: targetCalendarName,
+        remindersListName: targetRemindersListName,
         watchOutEvents: [],
         reminderCards: extracted.reminderCards,
       });

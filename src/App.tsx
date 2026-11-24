@@ -1029,10 +1029,11 @@ export default function App() {
         }
 
         setSyncedReportIds((prev) => ({ ...prev, [targetId]: true }));
-        const summaryLine = `Calendar: ${data.watchOutSyncedCount} WatchOut · Reminders: ${data.eventCardsSyncedCount} Cards (${data.providerLabel || providerLabel})`;
+        const syncNote = data.warnings?.length ? ` · ${data.warnings[0]}` : '';
+        const summaryLine = `Calendar: ${data.watchOutSyncedCount} WatchOut · Reminders: ${data.eventCardsSyncedCount} Cards (${data.providerLabel || providerLabel})${syncNote}`;
         pushContextLog(
           data.warnings && data.warnings.length > 0 ? 'info' : 'success',
-          `${summaryLine}${data.warnings?.length ? ` · Note: ${data.warnings[0]}` : ''}`,
+          summaryLine,
         );
         setReplyToast({
           title: 'Synced to Apple Calendar & Reminders',
@@ -1040,7 +1041,10 @@ export default function App() {
           isError: false,
         });
         if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+        replyToastTimerRef.current = window.setTimeout(
+          () => setReplyToast(null),
+          data.warnings?.length ? 7500 : 5000,
+        );
       } catch (err) {
         const errMessage =
           err instanceof Error ? err.message : 'Unable to reach Apple Calendar & Reminders sync API.';
@@ -1200,10 +1204,12 @@ export default function App() {
 
         const totalRemoved =
           (data.watchOutRemovedCount || 0) + (data.eventCardsRemovedCount || 0);
+        const unsyncNote = data.warnings?.length ? ` · ${data.warnings[0]}` : '';
         const summaryLine =
-          totalRemoved > 0
+          (totalRemoved > 0
             ? `Removed ${data.watchOutRemovedCount} Calendar & ${data.eventCardsRemovedCount} Reminders (${data.providerLabel || providerLabel})`
-            : `No matching Calendar or Reminders entries found on Mac/iPhone (${data.providerLabel || providerLabel})`;
+            : `No matching Calendar or Reminders entries found on Mac/iPhone (${data.providerLabel || providerLabel})`) +
+          unsyncNote;
         pushContextLog('info', summaryLine);
         setReplyToast({
           title: 'Unsynced from Apple Calendar & Reminders',
@@ -1211,7 +1217,10 @@ export default function App() {
           isError: false,
         });
         if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
-        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+        replyToastTimerRef.current = window.setTimeout(
+          () => setReplyToast(null),
+          data.warnings?.length ? 7500 : 5000,
+        );
       } catch (err) {
         const errMessage =
           err instanceof Error
