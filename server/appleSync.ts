@@ -59,6 +59,7 @@ export interface AppleSyncCapabilities {
 export interface WatchOutSyncPayloadItem {
   uid: string;
   summary: string;
+  legacySummary?: string;
   description: string;
   startIso: string;
   endIso: string;
@@ -414,6 +415,94 @@ function parsePriorityFromProbability(probText: string): number {
   return 9; // Low
 }
 
+function trimClauseAtWordBoundary(text: string, maxChars: number): string {
+  const cleaned = text.replace(/[\s,;:\-–—]+$/g, '').trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  const sliced = cleaned.slice(0, maxChars);
+  const lastSpace = sliced.lastIndexOf(' ');
+  const cut = lastSpace >= Math.floor(maxChars * 0.55) ? sliced.slice(0, lastSpace) : sliced;
+  return `${cut.replace(/[\s,;:\-–—]+$/g, '').trim()}…`;
+}
+
+function compactAvoidClause(rawClause: string, maxChars: number): string {
+  let text = rawClause
+    .replace(/\s+/g, ' ')
+    .replace(/^(?:any|certain|some|making\s+(?:any|speculative|impulsive|hasty|major|risky)|sending\s+any|taking\s+any|pushing\s+through)\s+/i, (m) => {
+      const keepAdj = m.match(/\b(speculative|impulsive|hasty|major|risky)\b/i);
+      return keepAdj ? `${keepAdj[1].toLowerCase()} ` : '';
+    })
+    .replace(/\b(?:during\s+this\s+(?:window|period|time)|right\s+now|at\s+all\s+costs)\b/gi, '')
+    .replace(/\b(impulsive|hasty|sudden)\s+decision(?:s)?\s+to\s+/gi, '$1 ')
+    .replace(/\bdecision(?:s)?\s+to\s+/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s,;:.!?]+$/g, '')
+    .trim();
+
+  if (text.length <= maxChars) return text;
+
+  const prepCut = text
+    .replace(/\s+(?:to|with|for|on|in|about|around|during|from)\s+(?:the\s+|your\s+|a\s+|an\s+)?[^,;]{4,}$/i, '')
+    .trim();
+  if (prepCut.length >= 12) {
+    text = prepCut;
+  }
+
+  if (text.length <= maxChars) return text;
+
+  text = text
+    .replace(/\s+or\s+[a-z-]+(?=\s+[a-z-]+)/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return trimClauseAtWordBoundary(text, maxChars);
+}
+
+export function buildWatchOutAvoidHeadline(rawNote: string): string {
+  const cleaned = (rawNote || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return 'Exercise extra care';
+
+  const firstSentence = (cleaned.split(/(?<=[.!?])\s+/)[0] || cleaned)
+    .replace(/[.!?]+$/g, '')
+    .trim();
+
+  if (/^exercise\s+(?:extra\s+)?care\s+(?:around|during)\b/i.test(firstSentence)) {
+    return 'Exercise extra care';
+  }
+
+  const core = firstSentence
+    .replace(
+      /^(?:what\s+to\s+avoid|things?\s+to\s+avoid|please\s+avoid|strictly\s+avoid|best\s+to\s+avoid|avoid|do\s+not|don't|refrain\s+from|never|watch\s+out\s+for|be\s+careful\s+(?:not\s+to|with|of|around)|exercise\s+(?:extra\s+)?care\s+(?:with|around|during))\s*[:\-–—]?\s*/i,
+      '',
+    )
+    .trim();
+
+  if (!core) return 'Exercise extra care';
+
+  const normalizedCore = /^[A-Z][a-z]/.test(core)
+    ? core.charAt(0).toLowerCase() + core.slice(1)
+    : core;
+
+  const MAX_BODY_CHARS = 56;
+  if (normalizedCore.length <= MAX_BODY_CHARS) {
+    return `Avoid ${normalizedCore}`;
+  }
+
+  const parts = normalizedCore
+    .split(/\s+(?:and|;)\s+|\s+or\s+(?=(?:[a-z]+ing|make|making|take|taking|send|sending|sign|signing|push|pushing|skip|skipping|ignore|ignoring|start|starting|stop|stopping|buy|buying|sell|selling|rush|rushing|react|reacting|bring|bringing|say|saying|do|doing|any)\b)/i)
+    .filter((p) => p.trim().length >= 8);
+  if (parts.length >= 2) {
+    const firstPart = compactAvoidClause(parts[0], 26);
+    const secondPart = compactAvoidClause(parts[1], 26);
+    const combined = `${firstPart} & ${secondPart}`.replace(/\s+/g, ' ').trim();
+    if (combined.length <= MAX_BODY_CHARS) {
+      return `Avoid ${combined}`;
+    }
+    return `Avoid ${trimClauseAtWordBoundary(combined, MAX_BODY_CHARS)}`;
+  }
+
+  return `Avoid ${compactAvoidClause(normalizedCore, MAX_BODY_CHARS)}`;
+}
+
 export function buildSyncItemsFromReport(
   record: RatedThreadRecord | null,
   fallback?: AppleSyncFallbackPayload,
@@ -519,12 +608,15 @@ export function buildSyncItemsFromReport(
       'pa-watchout',
       `${reportId}|${idx}|${itemDomain}|${rawDateLabel}|${item.note}`,
     );
-    const summary = `[${sevLabel}] ${itemDomain} (${providerLabel}) — WatchOut`;
     const description = (item.note || 'Exercise extra care during this window.').trim();
+    const avoidHeadline = buildWatchOutAvoidHeadline(description);
+    const summary = `[${sevLabel}] ${itemDomain} — ${avoidHeadline}`;
+    const legacySummary = `[${sevLabel}] ${itemDomain} (${providerLabel}) — WatchOut`;
 
     return {
       uid,
       summary,
+      legacySummary,
       description,
       startIso: startDate.toISOString(),
       endIso: endDate.toISOString(),
@@ -853,6 +945,7 @@ function run() {
       var dayBefore = new Date(sDate.getTime() - 36 * 3600 * 1000);
       var dayAfter = new Date(eDate.getTime() + 36 * 3600 * 1000);
       var targetSummaryNorm = normText(ev.summary);
+      var legacySummaryNorm = ev.legacySummary ? normText(ev.legacySummary) : '';
       var matchedEvent = null;
       try {
         var candidates = targetCal.events.whose({
@@ -872,7 +965,11 @@ function run() {
             matchedEvent = candidates[c];
             break;
           }
-          if (normText(candSummary) === targetSummaryNorm) {
+          var candSumNorm = normText(candSummary);
+          var summaryMatches =
+            candSumNorm === targetSummaryNorm ||
+            (legacySummaryNorm && candSumNorm === legacySummaryNorm);
+          if (summaryMatches) {
             var hasWindowLine = desc.indexOf('WatchOut Window: ') !== -1;
             var windowMatched = Boolean(
               ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1,
@@ -1108,6 +1205,7 @@ function run() {
       var dayBefore = new Date(sDate.getTime() - 36 * 3600 * 1000);
       var dayAfter = new Date(eDate.getTime() + 36 * 3600 * 1000);
       var targetSummaryNorm = normText(ev.summary);
+      var legacySummaryNorm = ev.legacySummary ? normText(ev.legacySummary) : '';
 
       for (var ci = 0; ci < writableCals.length; ci++) {
         var cal = writableCals[ci];
@@ -1122,7 +1220,10 @@ function run() {
           for (var c = 0; c < candidates.length; c++) {
             var candSummary = '';
             try { candSummary = candidates[c].summary() || ''; } catch (errS) { candSummary = ''; }
-            var summaryMatched = normText(candSummary) === targetSummaryNorm;
+            var candSumNorm = normText(candSummary);
+            var summaryMatched =
+              candSumNorm === targetSummaryNorm ||
+              (legacySummaryNorm && candSumNorm === legacySummaryNorm);
 
             var desc = '';
             try { desc = candidates[c].description() || ''; } catch (errD) { desc = ''; }
@@ -2278,6 +2379,9 @@ async function unsyncViaICloudCalDav(params: {
           const matchedEventUids = new Set<string>();
           for (const ev of stillRemaining) {
             const targetSummaryNorm = normalizeCompareText(ev.summary);
+            const legacySummaryNorm = ev.legacySummary
+              ? normalizeCompareText(ev.legacySummary)
+              : '';
             const targetStart = new Date(ev.startIso);
             const uidTag = `[PA-UID:${ev.uid}]`;
             for (const resItem of queried) {
@@ -2285,8 +2389,12 @@ async function unsyncViaICloudCalDav(params: {
                 resItem.uid === ev.uid ||
                 resItem.uid.startsWith(`${ev.uid}@`) ||
                 resItem.description.includes(uidTag);
+              const resSummaryNorm = normalizeCompareText(resItem.summary);
+              const summaryMatches =
+                resSummaryNorm === targetSummaryNorm ||
+                (Boolean(legacySummaryNorm) && resSummaryNorm === legacySummaryNorm);
               let contentMatch = false;
-              if (!uidMatch && normalizeCompareText(resItem.summary) === targetSummaryNorm) {
+              if (!uidMatch && summaryMatches) {
                 const hasWindowLine = resItem.description.includes('WatchOut Window: ');
                 const windowMatched = Boolean(
                   ev.rawDateLabel &&
