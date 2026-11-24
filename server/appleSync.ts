@@ -11,7 +11,10 @@ import type {
   PromptDomain,
   RatedThreadRecord,
 } from '../src/types/workbench.ts';
-import { parseResponseEventsAndReport } from '../src/utils/eventParser.ts';
+import {
+  normalizeEventCardItem,
+  parseResponseEventsAndReport,
+} from '../src/utils/eventParser.ts';
 
 const MONTHS = [
   'january',
@@ -71,6 +74,7 @@ export interface ReminderCardSyncPayloadItem {
   title: string;
   body: string;
   dueIso: string | null;
+  remindIso: string | null;
   priority: number;
   category: string;
   providerLabel: string;
@@ -446,36 +450,59 @@ export function buildSyncItemsFromReport(
     ? `${providerLabel} (${modelName})`
     : providerLabel;
 
-  let carefulDates: CarefulDateItem[] = [];
-  let eventCards: EventCardItem[] = [];
+  const carefulDates: CarefulDateItem[] = [];
+  const eventCards: EventCardItem[] = [];
+  const seenCarefulKeys = new Set<string>();
+  const seenEventKeys = new Set<string>();
 
   for (const reply of assistantReplies) {
-    if (Array.isArray(reply.carefulDates) && reply.carefulDates.length > 0) {
-      carefulDates.push(...reply.carefulDates);
+    const parsed =
+      typeof reply.content === 'string' && reply.content.trim().length > 40
+        ? parseResponseEventsAndReport(reply.content, domainCode)
+        : { events: [], carefulDates: [] };
+
+    const replyCareful =
+      parsed.carefulDates.length > 0
+        ? parsed.carefulDates
+        : Array.isArray(reply.carefulDates)
+          ? reply.carefulDates
+          : [];
+    for (const item of replyCareful) {
+      const key = `${item.domain}|${item.date}|${item.note}`.toLowerCase();
+      if (seenCarefulKeys.has(key)) continue;
+      seenCarefulKeys.add(key);
+      carefulDates.push(item);
     }
-    if (Array.isArray(reply.eventCards) && reply.eventCards.length > 0) {
-      eventCards.push(...reply.eventCards);
-    }
-    if (
-      (!reply.carefulDates || reply.carefulDates.length === 0 || !reply.eventCards || reply.eventCards.length === 0) &&
-      typeof reply.content === 'string' &&
-      reply.content.trim().length > 40
-    ) {
-      const parsed = parseResponseEventsAndReport(reply.content, domainCode);
-      if (carefulDates.length === 0 && parsed.carefulDates.length > 0) {
-        carefulDates.push(...parsed.carefulDates);
-      }
-      if (eventCards.length === 0 && parsed.events.length > 0) {
-        eventCards.push(...parsed.events);
-      }
+
+    const replyEvents =
+      parsed.events.length > 0
+        ? parsed.events
+        : Array.isArray(reply.eventCards)
+          ? reply.eventCards.map((evt, idx) => normalizeEventCardItem(evt, idx))
+          : [];
+    for (const evt of replyEvents) {
+      const key = `${evt.title}|${evt.when || evt.dateRange || ''}`.toLowerCase();
+      if (seenEventKeys.has(key)) continue;
+      seenEventKeys.add(key);
+      eventCards.push(evt);
     }
   }
 
-  if (carefulDates.length === 0 && Array.isArray(fallback?.carefulDates)) {
-    carefulDates = fallback.carefulDates;
+  if (Array.isArray(fallback?.carefulDates)) {
+    for (const item of fallback.carefulDates) {
+      const key = `${item.domain}|${item.date}|${item.note}`.toLowerCase();
+      if (seenCarefulKeys.has(key)) continue;
+      seenCarefulKeys.add(key);
+      carefulDates.push(item);
+    }
   }
-  if (eventCards.length === 0 && Array.isArray(fallback?.eventCards)) {
-    eventCards = fallback.eventCards;
+  if (Array.isArray(fallback?.eventCards)) {
+    for (const evt of fallback.eventCards) {
+      const key = `${evt.title}|${evt.when || evt.dateRange || ''}`.toLowerCase();
+      if (seenEventKeys.has(key)) continue;
+      seenEventKeys.add(key);
+      eventCards.push(evt);
+    }
   }
 
   const watchOutEvents: WatchOutSyncPayloadItem[] = carefulDates.map((item, idx) => {
@@ -530,6 +557,17 @@ export function buildSyncItemsFromReport(
       ? parseEventWindow(whenLabel, threadMonth, threadYear)
       : null;
 
+    let dueIso: string | null = null;
+    let remindIso: string | null = null;
+    if (parsedWindow) {
+      const targetDt = new Date(parsedWindow.startDate.getTime());
+      if (parsedWindow.allDay) {
+        targetDt.setHours(9, 0, 0, 0);
+      }
+      dueIso = targetDt.toISOString();
+      remindIso = targetDt.toISOString();
+    }
+
     const title = `${card.title.trim()} (${providerLabel})`;
     const body = [
       whenLabel ? `When: ${whenLabel}` : '',
@@ -548,7 +586,8 @@ export function buildSyncItemsFromReport(
       uid,
       title,
       body,
-      dueIso: parsedWindow ? parsedWindow.startDate.toISOString() : null,
+      dueIso,
+      remindIso,
       priority: parsePriorityFromProbability(probabilityLabel),
       category,
       providerLabel,
@@ -973,6 +1012,9 @@ function run() {
         if (card.dueIso) {
           matchedRem.dueDate = new Date(card.dueIso);
         }
+        if (card.remindIso) {
+          try { matchedRem.remindMeDate = new Date(card.remindIso); } catch (e) {}
+        }
       } else {
         var props = {
           name: card.title,
@@ -984,6 +1026,9 @@ function run() {
         }
         var newRem = remApp.Reminder(props);
         targetList.reminders.push(newRem);
+        if (card.remindIso) {
+          try { newRem.remindMeDate = new Date(card.remindIso); } catch (e) {}
+        }
       }
       remindersSynced++;
     }
@@ -1437,7 +1482,14 @@ function buildVTodoIcs(card: ReminderCardSyncPayloadItem): string {
 
   if (card.dueIso) {
     const due = new Date(card.dueIso);
-    lines.push(`DUE;VALUE=DATE:${formatIcsLocalDate(due)}`);
+    lines.push(`DUE:${formatIcsLocalDateTime(due)}`);
+    lines.push(
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${escapeIcsText(card.title)}`,
+      'TRIGGER;RELATED=START:PT0S',
+      'END:VALARM',
+    );
   }
 
   lines.push('END:VTODO', 'END:VCALENDAR', '');
