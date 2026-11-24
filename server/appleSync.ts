@@ -520,15 +520,7 @@ export function buildSyncItemsFromReport(
       `${reportId}|${idx}|${itemDomain}|${rawDateLabel}|${item.note}`,
     );
     const summary = `[${sevLabel}] ${itemDomain} (${providerLabel}) — WatchOut`;
-    const description = [
-      `Care Level: ${sevLabel}`,
-      `Domain: ${itemDomain}`,
-      `WatchOut Window: ${rawDateLabel}`,
-      `Provider: ${providerAttribution}`,
-      '',
-      'Guidance:',
-      (item.note || 'Exercise extra care during this window.').trim(),
-    ].join('\n');
+    const description = (item.note || 'Exercise extra care during this window.').trim();
 
     return {
       uid,
@@ -885,7 +877,14 @@ function run() {
             var windowMatched = Boolean(
               ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1,
             );
-            if (windowMatched || ((!hasWindowLine || !ev.rawDateLabel) && sameCalendarDay(candStart, sDate))) {
+            var descMatched = normText(desc) === normText(ev.description);
+            var sameTimeSlot = Boolean(
+              candStart && Math.abs(candStart.getTime() - sDate.getTime()) < 60 * 60 * 1000,
+            );
+            if (
+              windowMatched ||
+              (!hasWindowLine && (descMatched || (sameCalendarDay(candStart, sDate) && sameTimeSlot)))
+            ) {
               matchedEvent = candidates[c];
               break;
             }
@@ -1136,9 +1135,14 @@ function run() {
               var windowMatched = Boolean(
                 ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1,
               );
+              var descMatched = normText(desc) === normText(ev.description);
               var candStart = null;
               try { candStart = candidates[c].startDate(); } catch (errDt) { candStart = null; }
-              if (windowMatched || ((!hasWindowLine || !ev.rawDateLabel) && sameCalendarDay(candStart, sDate))) {
+              if (
+                windowMatched ||
+                descMatched ||
+                ((!hasWindowLine || !ev.rawDateLabel) && sameCalendarDay(candStart, sDate))
+              ) {
                 toDelete.push(candidates[c]);
               }
             }
@@ -2288,7 +2292,9 @@ async function unsyncViaICloudCalDav(params: {
                   ev.rawDateLabel &&
                     resItem.description.includes(`WatchOut Window: ${ev.rawDateLabel}`),
                 );
-                if (windowMatched) {
+                const descMatched =
+                  normalizeCompareText(resItem.description) === normalizeCompareText(ev.description);
+                if (windowMatched || descMatched) {
                   contentMatch = true;
                 } else if (!hasWindowLine || !ev.rawDateLabel) {
                   const candStart = parseIcsDateToLocalDate(resItem.dtStartRaw);
