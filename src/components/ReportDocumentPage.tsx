@@ -4,9 +4,12 @@ import {
   ArrowUp,
   ArrowUpDown,
   Calendar,
+  CalendarPlus,
+  Check,
   Clock,
   FileDown,
   Layers,
+  Loader2,
   MessageSquare,
   MessageSquareText,
   Pencil,
@@ -36,6 +39,9 @@ interface ReportDocumentPageProps {
   reportsDir?: string;
   isExternalFile?: boolean;
   comment?: string;
+  isSyncing?: boolean;
+  isSynced?: boolean;
+  onSyncReport?: (exchangeId: string) => void;
   onUpdateComment?: (exchangeId: string, comment: string) => void;
   onViewEventCards: (exchangeId: string) => void;
   onClose: () => void;
@@ -303,6 +309,9 @@ export function ReportDocumentPage({
   reportsDir,
   isExternalFile,
   comment,
+  isSyncing = false,
+  isSynced = false,
+  onSyncReport,
   onUpdateComment,
   onViewEventCards,
   onClose,
@@ -534,6 +543,28 @@ export function ReportDocumentPage({
 
         {/* Document Actions */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
+          {onSyncReport && (
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={() => onSyncReport(exchangeId)}
+              title="Sync WatchOut items to Calendar and Event Cards to Reminders"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
+                isSynced
+                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              {isSyncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--pa-accent)' }} />
+              ) : isSynced ? (
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <CalendarPlus className="w-3.5 h-3.5" style={{ color: 'var(--pa-accent)' }} />
+              )}
+              <span>{isSyncing ? 'Syncing…' : isSynced ? 'Synced' : 'Sync'}</span>
+            </button>
+          )}
           {!isExternalFile && (
             <button
               type="button"

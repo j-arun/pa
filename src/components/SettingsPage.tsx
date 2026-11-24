@@ -1,6 +1,8 @@
 import {
   ArrowLeft,
   Bell,
+  Calendar,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   FolderOpen,
@@ -13,12 +15,14 @@ import {
   User,
   Volume2,
   X,
+  XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
   AdapterHealthResult,
   AdapterWireSummary,
   AnyAdapterId,
+  AppleSyncMode,
   FontOption,
   OllamaModelInfo,
   PublicAdapterId,
@@ -130,12 +134,22 @@ export function SettingsPage({
   } | null>(null);
   const [reportsRescanning, setReportsRescanning] = useState(false);
   const [reportsFolderStatus, setReportsFolderStatus] = useState<string | null>(null);
+  const [appleSyncTesting, setAppleSyncTesting] = useState(false);
+  const [appleSyncFeedback, setAppleSyncFeedback] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [appleCapabilities, setAppleCapabilities] = useState<{
+    platform: string;
+    isMacOs: boolean;
+  } | null>(null);
   const [expandedSections, setExpandedSections] = useState<{
     appearance: boolean;
     privateLlm: boolean;
     publicLlm: boolean;
     voice: boolean;
     referenceApi: boolean;
+    appleSync: boolean;
     storage: boolean;
   }>({
     appearance: true,
@@ -143,6 +157,7 @@ export function SettingsPage({
     publicLlm: true,
     voice: true,
     referenceApi: true,
+    appleSync: true,
     storage: true,
   });
 
@@ -153,6 +168,7 @@ export function SettingsPage({
       | 'publicLlm'
       | 'voice'
       | 'referenceApi'
+      | 'appleSync'
       | 'storage',
   ) => {
     setExpandedSections((prev) => ({
@@ -170,6 +186,7 @@ export function SettingsPage({
       publicLlm: nextValue,
       voice: nextValue,
       referenceApi: nextValue,
+      appleSync: nextValue,
       storage: nextValue,
     });
   };
@@ -206,6 +223,18 @@ export function SettingsPage({
       .then((data: { adapters?: AdapterWireSummary[] }) => {
         if (Array.isArray(data.adapters)) {
           setAdapterSummaries(data.adapters);
+        }
+      })
+      .catch(() => undefined);
+
+    void fetch('/api/apple-sync/capabilities')
+      .then((res) => res.json())
+      .then((data: { platform?: string; isMacOs?: boolean }) => {
+        if (data && typeof data.platform === 'string') {
+          setAppleCapabilities({
+            platform: data.platform,
+            isMacOs: Boolean(data.isMacOs),
+          });
         }
       })
       .catch(() => undefined);
@@ -1737,7 +1766,323 @@ export function SettingsPage({
           )}
         </section>
 
-        {/* Section 6: Local Configuration File & Report Storage */}
+        {/* Section 6: Apple Calendar & Reminders Sync (MacBook / iCloud CalDAV) */}
+        <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => toggleSection('appleSync')}
+            aria-expanded={expandedSections.appleSync}
+            className="w-full px-5 py-3.5 flex items-center justify-between gap-4 text-left bg-slate-50/75 dark:bg-slate-950/50 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <h2 className="font-display text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Calendar className="w-4 h-4 shrink-0" style={{ color: 'var(--pa-accent)' }} />
+                <span>Apple Calendar &amp; Reminders Sync (MacBook / iCloud CalDAV)</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                Manual per-report Sync sends WatchOut alerts to Calendar and Event Cards to Reminders with LLM provider attribution
+              </p>
+            </div>
+            {expandedSections.appleSync ? (
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+            )}
+          </button>
+
+          {expandedSections.appleSync && (
+            <div className="p-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
+              <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 px-3.5 py-2.5 text-xs text-slate-600 dark:text-slate-300 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Running on{' '}
+                  <strong className="font-semibold text-slate-900 dark:text-slate-100">
+                    {appleCapabilities?.isMacOs
+                      ? 'macOS (MacBook Native Calendar & Reminders ready)'
+                      : `${appleCapabilities?.platform || configFileInfo.platform} (use iCloud CalDAV)`}
+                  </strong>
+                  . WatchOut goes to Calendar; Event Cards go to Reminders.
+                </span>
+                <span className="text-[11px] font-medium text-sky-700 dark:text-sky-300">
+                  Manual Sync Only
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label
+                    htmlFor="apple-sync-mode"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Sync Transport Mode
+                  </label>
+                  <select
+                    id="apple-sync-mode"
+                    value={draft.appleSync?.mode || 'auto'}
+                    onChange={(e) => {
+                      const nextMode = e.target.value as AppleSyncMode;
+                      updateDraft((prev) => ({
+                        ...prev,
+                        appleSync: {
+                          mode: nextMode,
+                          appleId: prev.appleSync?.appleId || '',
+                          appPassword: prev.appleSync?.appPassword || '',
+                          appPasswordConfigured: prev.appleSync?.appPasswordConfigured,
+                          clearAppPassword: prev.appleSync?.clearAppPassword,
+                          calendarName: prev.appleSync?.calendarName || '',
+                          remindersListName: prev.appleSync?.remindersListName || '',
+                        },
+                      }));
+                    }}
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  >
+                    <option value="auto">
+                      Auto (Native Calendar &amp; Reminders on MacBook; iCloud CalDAV otherwise)
+                    </option>
+                    <option value="macos">
+                      MacBook Native Calendar.app &amp; Reminders.app (uses signed-in Mac iCloud session)
+                    </option>
+                    <option value="caldav">
+                      iCloud CalDAV Direct (caldav.icloud.com with App-Specific Password)
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="icloud-apple-id"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    iCloud Apple ID (for CalDAV)
+                  </label>
+                  <input
+                    id="icloud-apple-id"
+                    type="email"
+                    value={draft.appleSync?.appleId || ''}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        appleSync: {
+                          mode: prev.appleSync?.mode || 'auto',
+                          appleId: e.target.value,
+                          appPassword: prev.appleSync?.appPassword || '',
+                          appPasswordConfigured: prev.appleSync?.appPasswordConfigured,
+                          clearAppPassword: prev.appleSync?.clearAppPassword,
+                          calendarName: prev.appleSync?.calendarName || '',
+                          remindersListName: prev.appleSync?.remindersListName || '',
+                        },
+                      }))
+                    }
+                    placeholder="name@icloud.com"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <label
+                      htmlFor="icloud-app-password"
+                      className="block text-xs font-medium text-slate-700 dark:text-slate-300"
+                    >
+                      App-Specific Password (account.apple.com)
+                    </label>
+                    {draft.appleSync?.appPasswordConfigured &&
+                      !draft.appleSync?.clearAppPassword && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateDraft((prev) => ({
+                              ...prev,
+                              appleSync: {
+                                mode: prev.appleSync?.mode || 'auto',
+                                appleId: prev.appleSync?.appleId || '',
+                                appPassword: '',
+                                appPasswordConfigured: false,
+                                clearAppPassword: true,
+                                calendarName: prev.appleSync?.calendarName || '',
+                                remindersListName: prev.appleSync?.remindersListName || '',
+                              },
+                            }))
+                          }
+                          className="text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                        >
+                          Clear Saved
+                        </button>
+                      )}
+                  </div>
+                  <input
+                    id="icloud-app-password"
+                    type="password"
+                    autoComplete="off"
+                    value={draft.appleSync?.appPassword || ''}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        appleSync: {
+                          mode: prev.appleSync?.mode || 'auto',
+                          appleId: prev.appleSync?.appleId || '',
+                          appPassword: e.target.value,
+                          appPasswordConfigured: prev.appleSync?.appPasswordConfigured,
+                          clearAppPassword: false,
+                          calendarName: prev.appleSync?.calendarName || '',
+                          remindersListName: prev.appleSync?.remindersListName || '',
+                        },
+                      }))
+                    }
+                    placeholder={
+                      draft.appleSync?.appPasswordConfigured &&
+                      !draft.appleSync?.clearAppPassword
+                        ? 'Saved on server (leave blank to keep)'
+                        : 'xxxx-xxxx-xxxx-xxxx'
+                    }
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="apple-calendar-name"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Calendar Name for WatchOut (optional)
+                  </label>
+                  <input
+                    id="apple-calendar-name"
+                    type="text"
+                    value={draft.appleSync?.calendarName || ''}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        appleSync: {
+                          mode: prev.appleSync?.mode || 'auto',
+                          appleId: prev.appleSync?.appleId || '',
+                          appPassword: prev.appleSync?.appPassword || '',
+                          appPasswordConfigured: prev.appleSync?.appPasswordConfigured,
+                          clearAppPassword: prev.appleSync?.clearAppPassword,
+                          calendarName: e.target.value,
+                          remindersListName: prev.appleSync?.remindersListName || '',
+                        },
+                      }))
+                    }
+                    placeholder="Default writable calendar (e.g. Home)"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="apple-reminders-list"
+                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5"
+                  >
+                    Reminders List for Event Cards (optional)
+                  </label>
+                  <input
+                    id="apple-reminders-list"
+                    type="text"
+                    value={draft.appleSync?.remindersListName || ''}
+                    onChange={(e) =>
+                      updateDraft((prev) => ({
+                        ...prev,
+                        appleSync: {
+                          mode: prev.appleSync?.mode || 'auto',
+                          appleId: prev.appleSync?.appleId || '',
+                          appPassword: prev.appleSync?.appPassword || '',
+                          appPasswordConfigured: prev.appleSync?.appPasswordConfigured,
+                          clearAppPassword: prev.appleSync?.clearAppPassword,
+                          calendarName: prev.appleSync?.calendarName || '',
+                          remindersListName: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Default Reminders list"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Note: Apple requires an App-Specific Password from{' '}
+                  <span className="font-mono">account.apple.com</span> for direct CalDAV; MacBook native mode uses macOS automation permissions directly.
+                </p>
+
+                <button
+                  type="button"
+                  disabled={appleSyncTesting}
+                  onClick={async () => {
+                    setAppleSyncTesting(true);
+                    setAppleSyncFeedback(null);
+                    try {
+                      const res = await fetch('/api/apple-sync/test', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ appleSync: draft.appleSync }),
+                      });
+                      const data = (await res.json()) as {
+                        ok?: boolean;
+                        message?: string;
+                        error?: string;
+                        calendars?: string[];
+                        reminderLists?: string[];
+                      };
+                      if (!res.ok || !data.ok) {
+                        throw new Error(
+                          data.message || data.error || `HTTP ${res.status}`,
+                        );
+                      }
+                      const detail = [
+                        data.message,
+                        data.calendars?.length
+                          ? `Calendars: ${data.calendars.join(', ')}`
+                          : '',
+                        data.reminderLists?.length
+                          ? `Reminders: ${data.reminderLists.join(', ')}`
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ');
+                      setAppleSyncFeedback({ ok: true, message: detail });
+                    } catch (err) {
+                      setAppleSyncFeedback({
+                        ok: false,
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : 'Apple Calendar & Reminders connection test failed.',
+                      });
+                    } finally {
+                      setAppleSyncTesting(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${appleSyncTesting ? 'animate-spin' : ''}`}
+                  />
+                  <span>{appleSyncTesting ? 'Testing…' : 'Test Apple Sync'}</span>
+                </button>
+              </div>
+
+              {appleSyncFeedback && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-xs flex items-start gap-2 ${
+                    appleSyncFeedback.ok
+                      ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                      : 'border-amber-200 dark:border-amber-900 bg-amber-50/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200'
+                  }`}
+                >
+                  {appleSyncFeedback.ok ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <span>{appleSyncFeedback.message}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Section 7: Local Configuration File & Report Storage */}
         <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 overflow-hidden">
           <button
             type="button"

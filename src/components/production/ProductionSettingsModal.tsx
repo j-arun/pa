@@ -1,5 +1,6 @@
 import {
   Activity,
+  Calendar,
   CheckCircle2,
   FolderCheck,
   FolderOpen,
@@ -12,7 +13,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { AdapterHealthResult, WorkbenchSettings } from '../../types/workbench';
+import type {
+  AdapterHealthResult,
+  AppleSyncMode,
+  WorkbenchSettings,
+} from '../../types/workbench';
 import {
   buildReferenceContextUrl,
   fetchReferenceContextFromApi,
@@ -55,6 +60,23 @@ export function ProductionSettingsModal({
     message: string;
   }>({ kind: 'idle', message: '' });
   const [testingRefPort, setTestingRefPort] = useState(false);
+
+  const [appleMode, setAppleMode] = useState<AppleSyncMode>(
+    settings.appleSync?.mode || 'auto',
+  );
+  const [appleId, setAppleId] = useState(settings.appleSync?.appleId || '');
+  const [applePassword, setApplePassword] = useState('');
+  const [appleCalendarName, setAppleCalendarName] = useState(
+    settings.appleSync?.calendarName || '',
+  );
+  const [appleRemindersList, setAppleRemindersList] = useState(
+    settings.appleSync?.remindersListName || '',
+  );
+  const [testingAppleSync, setTestingAppleSync] = useState(false);
+  const [appleSyncStatus, setAppleSyncStatus] = useState<{
+    kind: 'idle' | 'ok' | 'error';
+    message: string;
+  }>({ kind: 'idle', message: '' });
 
   useEffect(() => {
     setPortDraft(String(settings.referenceContextApi.port || 3000));
@@ -266,6 +288,69 @@ export function ProductionSettingsModal({
       });
     } finally {
       setTestingRefPort(false);
+    }
+  };
+
+  const handleSaveAppleSync = () => {
+    onUpdateSettings({
+      ...settings,
+      appleSync: {
+        mode: appleMode,
+        appleId: appleId.trim(),
+        appPassword: applePassword.trim(),
+        appPasswordConfigured:
+          Boolean(applePassword.trim()) ||
+          Boolean(settings.appleSync?.appPasswordConfigured),
+        calendarName: appleCalendarName.trim(),
+        remindersListName: appleRemindersList.trim(),
+      },
+    });
+    setApplePassword('');
+    setAppleSyncStatus({
+      kind: 'ok',
+      message: 'Apple Sync settings saved.',
+    });
+  };
+
+  const handleTestAppleSync = async () => {
+    setTestingAppleSync(true);
+    setAppleSyncStatus({ kind: 'idle', message: '' });
+    try {
+      const res = await fetch('/api/apple-sync/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appleSync: {
+            mode: appleMode,
+            appleId: appleId.trim(),
+            appPassword: applePassword.trim(),
+            calendarName: appleCalendarName.trim(),
+            remindersListName: appleRemindersList.trim(),
+          },
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      }
+      setAppleSyncStatus({
+        kind: 'ok',
+        message: data.message || 'Apple Calendar & Reminders connection ready.',
+      });
+    } catch (err) {
+      setAppleSyncStatus({
+        kind: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Apple Calendar & Reminders connection test failed.',
+      });
+    } finally {
+      setTestingAppleSync(false);
     }
   };
 
@@ -607,7 +692,7 @@ export function ProductionSettingsModal({
             URL: {resolvedRefUrlPreview}
           </p>
 
-          {portStatus.message && (
+              {portStatus.message && (
             <p
               className={`text-xs font-medium ${
                 portStatus.kind === 'error'
@@ -622,6 +707,136 @@ export function ProductionSettingsModal({
               {portStatus.message}
             </p>
           )}
+        </section>
+
+        {/* 5. Apple Calendar & Reminders (MacBook / iCloud CalDAV) */}
+        <section className="pa-glass-subwell rounded-2xl p-4 space-y-3">
+          <div
+            className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${
+              isDarkTheme ? 'text-sky-300' : 'text-sky-800'
+            }`}
+          >
+            <Calendar
+              className={`w-4 h-4 shrink-0 ${isDarkTheme ? 'text-sky-400' : 'text-sky-600'}`}
+            />
+            <span>Apple Calendar &amp; Reminders</span>
+          </div>
+
+          <div className="space-y-2">
+            <select
+              aria-label="Apple Sync Mode"
+              value={appleMode}
+              onChange={(e) => setAppleMode(e.target.value as AppleSyncMode)}
+              className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none ${
+                isDarkTheme
+                  ? 'border-white/15 bg-slate-950/65 text-slate-100 focus:border-sky-400'
+                  : 'border-sky-200/90 bg-white/85 text-slate-900 focus:border-sky-500 focus:bg-white'
+              }`}
+            >
+              <option value="auto">Auto (MacBook Native / iCloud CalDAV)</option>
+              <option value="macos">MacBook Native Calendar &amp; Reminders</option>
+              <option value="caldav">iCloud CalDAV (Apple ID + App Password)</option>
+            </select>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="email"
+                value={appleId}
+                onChange={(e) => setAppleId(e.target.value)}
+                placeholder="iCloud Apple ID (optional on Mac)"
+                aria-label="iCloud Apple ID"
+                className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none ${
+                  isDarkTheme
+                    ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                    : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+                }`}
+              />
+              <input
+                type="password"
+                autoComplete="off"
+                value={applePassword}
+                onChange={(e) => setApplePassword(e.target.value)}
+                placeholder={
+                  settings.appleSync?.appPasswordConfigured
+                    ? 'App Password saved on server'
+                    : 'App-Specific Password'
+                }
+                aria-label="iCloud App-Specific Password"
+                className={`w-full rounded-xl border px-3 py-2 text-xs font-mono focus:outline-none ${
+                  isDarkTheme
+                    ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                    : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+                }`}
+              />
+              <input
+                type="text"
+                value={appleCalendarName}
+                onChange={(e) => setAppleCalendarName(e.target.value)}
+                placeholder="Calendar name (default)"
+                aria-label="Target Calendar Name"
+                className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none ${
+                  isDarkTheme
+                    ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                    : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+                }`}
+              />
+              <input
+                type="text"
+                value={appleRemindersList}
+                onChange={(e) => setAppleRemindersList(e.target.value)}
+                placeholder="Reminders list (default)"
+                aria-label="Target Reminders List Name"
+                className={`w-full rounded-xl border px-3 py-2 text-xs focus:outline-none ${
+                  isDarkTheme
+                    ? 'border-white/15 bg-slate-950/65 text-slate-100 placeholder:text-slate-400 focus:border-sky-400'
+                    : 'border-sky-200/90 bg-white/85 text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white'
+                }`}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveAppleSync}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer"
+              >
+                <span>Save Apple Sync</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleTestAppleSync()}
+                disabled={testingAppleSync}
+                className={`pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                  isDarkTheme ? 'text-slate-100' : 'text-slate-700'
+                }`}
+              >
+                {testingAppleSync ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Activity
+                    className={`w-3.5 h-3.5 ${isDarkTheme ? 'text-sky-300' : 'text-sky-600'}`}
+                  />
+                )}
+                <span>{testingAppleSync ? 'Testing…' : 'Test Apple Sync'}</span>
+              </button>
+            </div>
+
+            {appleSyncStatus.message && (
+              <p
+                className={`text-xs font-medium ${
+                  appleSyncStatus.kind === 'error'
+                    ? isDarkTheme
+                      ? 'text-rose-300'
+                      : 'text-rose-700'
+                    : isDarkTheme
+                      ? 'text-emerald-300'
+                      : 'text-emerald-700'
+                }`}
+              >
+                {appleSyncStatus.message}
+              </p>
+            )}
+          </div>
         </section>
       </div>
     </div>

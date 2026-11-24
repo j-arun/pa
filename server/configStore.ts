@@ -233,6 +233,14 @@ export const DEFAULT_WORKBENCH_CONFIG: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  appleSync: {
+    mode: 'auto',
+    appleId: process.env.ICLOUD_APPLE_ID?.trim() || '',
+    appPassword: '',
+    appPasswordConfigured: Boolean(process.env.ICLOUD_APP_PASSWORD?.trim()),
+    calendarName: '',
+    remindersListName: '',
+  },
   promptBuilder: DEFAULT_PROMPT_BUILDER_SETTINGS,
   requestTimeoutSeconds: 0,
 };
@@ -396,6 +404,33 @@ export function mergeConfigWithDefaults(
       ...DEFAULT_WORKBENCH_CONFIG.notifications,
       ...(parsed.notifications || {}),
     },
+    appleSync: {
+      mode:
+        parsed.appleSync?.mode === 'macos' || parsed.appleSync?.mode === 'caldav'
+          ? parsed.appleSync.mode
+          : 'auto',
+      appleId:
+        typeof parsed.appleSync?.appleId === 'string' && parsed.appleSync.appleId.trim()
+          ? parsed.appleSync.appleId.trim()
+          : process.env.ICLOUD_APPLE_ID?.trim() || '',
+      appPassword:
+        typeof parsed.appleSync?.appPassword === 'string'
+          ? parsed.appleSync.appPassword.trim()
+          : '',
+      appPasswordConfigured: Boolean(
+        (typeof parsed.appleSync?.appPassword === 'string' &&
+          parsed.appleSync.appPassword.trim()) ||
+          process.env.ICLOUD_APP_PASSWORD?.trim(),
+      ),
+      calendarName:
+        typeof parsed.appleSync?.calendarName === 'string'
+          ? parsed.appleSync.calendarName.trim()
+          : '',
+      remindersListName:
+        typeof parsed.appleSync?.remindersListName === 'string'
+          ? parsed.appleSync.remindersListName.trim()
+          : '',
+    },
     promptBuilder: normalizePromptBuilderSettings(
       parsed.promptBuilder,
       DEFAULT_WORKBENCH_CONFIG.promptBuilder,
@@ -404,6 +439,22 @@ export function mergeConfigWithDefaults(
       typeof parsed.requestTimeoutSeconds === 'number' && parsed.requestTimeoutSeconds >= 0
         ? Math.round(parsed.requestTimeoutSeconds)
         : 0,
+  };
+}
+
+export function sanitizeConfigForClient(config: WorkbenchSettings): WorkbenchSettings {
+  const hasServerEnvPwd = Boolean(process.env.ICLOUD_APP_PASSWORD?.trim());
+  const hasStoredPwd = Boolean(config.appleSync?.appPassword?.trim());
+  return {
+    ...config,
+    appleSync: {
+      mode: config.appleSync?.mode || 'auto',
+      appleId: config.appleSync?.appleId || process.env.ICLOUD_APPLE_ID?.trim() || '',
+      appPassword: '',
+      appPasswordConfigured: hasStoredPwd || hasServerEnvPwd,
+      calendarName: config.appleSync?.calendarName || '',
+      remindersListName: config.appleSync?.remindersListName || '',
+    },
   };
 }
 
@@ -515,7 +566,50 @@ export function writeLocalConfigFile(next: Partial<WorkbenchSettings>): {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const merged = mergeConfigWithDefaults(next);
+  let existingAppPassword = '';
+  if (fs.existsSync(filePath)) {
+    try {
+      const existingRaw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Partial<WorkbenchSettings>;
+      if (typeof existingRaw.appleSync?.appPassword === 'string') {
+        existingAppPassword = existingRaw.appleSync.appPassword.trim();
+      }
+    } catch {
+      existingAppPassword = '';
+    }
+  }
+
+  const incomingApple = next.appleSync;
+  const shouldClearPassword = Boolean(incomingApple?.clearAppPassword);
+  const incomingPassword =
+    typeof incomingApple?.appPassword === 'string' ? incomingApple.appPassword.trim() : '';
+  const resolvedAppPassword = shouldClearPassword
+    ? ''
+    : incomingPassword || existingAppPassword;
+
+  const nextWithResolvedSecret: Partial<WorkbenchSettings> = {
+    ...next,
+    appleSync: {
+      mode:
+        incomingApple?.mode === 'macos' || incomingApple?.mode === 'caldav'
+          ? incomingApple.mode
+          : 'auto',
+      appleId: typeof incomingApple?.appleId === 'string' ? incomingApple.appleId.trim() : '',
+      appPassword: resolvedAppPassword,
+      appPasswordConfigured: Boolean(
+        resolvedAppPassword || process.env.ICLOUD_APP_PASSWORD?.trim(),
+      ),
+      calendarName:
+        typeof incomingApple?.calendarName === 'string'
+          ? incomingApple.calendarName.trim()
+          : '',
+      remindersListName:
+        typeof incomingApple?.remindersListName === 'string'
+          ? incomingApple.remindersListName.trim()
+          : '',
+    },
+  };
+
+  const merged = mergeConfigWithDefaults(nextWithResolvedSecret);
   const promptFiles = writeDomainPromptsToFiles(merged.promptBuilder.templates);
   fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf-8');
   return {

@@ -1,9 +1,12 @@
 import {
+  CalendarPlus,
+  Check,
   ChevronDown,
   ChevronRight,
   Folder,
   FolderOpen,
   GripHorizontal,
+  Loader2,
   Trash2,
   X,
 } from 'lucide-react';
@@ -22,7 +25,10 @@ interface ProductionReportsMenuProps {
   reports: RatedThreadRecord[];
   activeReportId?: string | null;
   isDarkTheme?: boolean;
+  syncingReportIds?: Record<string, boolean>;
+  syncedReportIds?: Record<string, boolean>;
   onSelectReport: (record: RatedThreadRecord) => void;
+  onSyncReport?: (record: RatedThreadRecord) => void;
   onDeleteReport: (recordId: string) => void;
   onClose: () => void;
 }
@@ -90,7 +96,10 @@ export function ProductionReportsMenu({
   reports,
   activeReportId,
   isDarkTheme = true,
+  syncingReportIds = {},
+  syncedReportIds = {},
   onSelectReport,
+  onSyncReport,
   onDeleteReport,
   onClose,
 }: ProductionReportsMenuProps) {
@@ -518,6 +527,8 @@ export function ProductionReportsMenu({
                                         ) : (
                                           prov.rows.map((entry) => {
                                             const isSelected = activeReportId === entry.record.id;
+                                            const isSyncing = Boolean(syncingReportIds[entry.record.id]);
+                                            const isSynced = Boolean(syncedReportIds[entry.record.id]);
                                             return (
                                               <div
                                                 key={entry.record.id}
@@ -545,6 +556,45 @@ export function ProductionReportsMenu({
                                                     {entry.shortLabel}
                                                   </span>
                                                 </button>
+                                                {onSyncReport && (
+                                                  <button
+                                                    type="button"
+                                                    disabled={isSyncing}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      onSyncReport(entry.record);
+                                                    }}
+                                                    aria-label="Sync report to Calendar and Reminders"
+                                                    title={
+                                                      isSyncing
+                                                        ? 'Syncing WatchOut & Event Cards…'
+                                                        : isSynced
+                                                          ? 'Synced to Calendar & Reminders (click to re-sync)'
+                                                          : 'Sync WatchOut to Calendar & Event Cards to Reminders'
+                                                    }
+                                                    className={`inline-flex h-5 w-5 items-center justify-center rounded-md transition-all shrink-0 cursor-pointer ${
+                                                      isSyncing || isSynced
+                                                        ? 'opacity-100'
+                                                        : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100'
+                                                    } ${
+                                                      isSynced
+                                                        ? isDarkTheme
+                                                          ? 'text-emerald-400 hover:bg-emerald-500/15'
+                                                          : 'text-emerald-600 hover:bg-emerald-500/12'
+                                                        : isDarkTheme
+                                                          ? 'text-sky-300 hover:bg-sky-500/15'
+                                                          : 'text-sky-600 hover:bg-sky-500/12'
+                                                    }`}
+                                                  >
+                                                    {isSyncing ? (
+                                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                                    ) : isSynced ? (
+                                                      <Check className="w-3 h-3" />
+                                                    ) : (
+                                                      <CalendarPlus className="w-3 h-3" />
+                                                    )}
+                                                  </button>
+                                                )}
                                                 <button
                                                   type="button"
                                                   onClick={(e) => {

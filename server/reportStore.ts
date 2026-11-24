@@ -169,7 +169,7 @@ function getStructuredFolderSegments(
   const folderSegments =
     layout === 'production'
       ? [String(yearNum), monthName, adapterDir]
-      : [yearMonthDir, domainDir, adapterDir];
+      : [String(yearNum), monthName, adapterDir];
 
   return {
     folderSegments,
@@ -792,6 +792,30 @@ export function deleteStoredReport(
   return { deleted };
 }
 
+export function deleteStoredReportsBulk(
+  reportIds: string[],
+  customReportsDir?: string,
+): { deletedCount: number; deletedIds: string[] } {
+  const deletedIds: string[] = [];
+  for (const id of reportIds) {
+    if (typeof id !== 'string' || !id.trim()) continue;
+    const res = deleteStoredReport(id.trim(), customReportsDir);
+    if (res.deleted) {
+      deletedIds.push(id.trim());
+    }
+  }
+  return { deletedCount: deletedIds.length, deletedIds };
+}
+
+export function getStoredReportById(
+  reportId: string,
+  customReportsDir?: string,
+  layout: ReportFolderLayout = 'dev',
+): RatedThreadRecord | null {
+  const listed = listStoredReports(customReportsDir, layout);
+  return listed.reports.find((r) => r.id === reportId) ?? null;
+}
+
 export interface ReportMetadataUpdatePayload {
   name?: string;
   comment?: string;
@@ -831,9 +855,8 @@ export function updateStoredReportMetadata(
     if (patch.moveTarget) {
       const monthName = normalizeMonthName(patch.moveTarget.threadMonth);
       const yearNum = normalizeYearNumber(patch.moveTarget.threadYear);
-      const domainDir = DOMAIN_FOLDER_NAMES[normalizeDomain(patch.moveTarget.promptDomain)];
       const adapterDir = ADAPTER_FOLDER_NAMES[normalizeAdapterId(patch.moveTarget.adapterId)];
-      targetDir = path.join(root, `${yearNum} ${monthName}`, domainDir, adapterDir);
+      targetDir = path.join(root, String(yearNum), monthName, adapterDir);
       fs.mkdirSync(targetDir, { recursive: true });
     }
 

@@ -17,10 +17,13 @@ import {
   formatProductionReportsDirDisplay,
   readLocalConfigFile,
   resolveProductionReportsDir,
+  sanitizeConfigForClient,
   writeLocalConfigFile,
 } from './server/configStore.ts';
 import {
   deleteStoredReport,
+  deleteStoredReportsBulk,
+  getStoredReportById,
   listStoredReports,
   readStoredReportHtml,
   saveStoredReport,
@@ -28,6 +31,12 @@ import {
   type ReportFolderLayout,
   type ReportMetadataUpdatePayload,
 } from './server/reportStore.ts';
+import {
+  getAppleSyncCapabilities,
+  syncReportToApple,
+  testAppleSyncConnection,
+  type AppleSyncFallbackPayload,
+} from './server/appleSync.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +84,7 @@ async function startServer() {
       const effectiveProdDir = resolveProductionReportsDir(result.config.prodReportsDir);
       return res.json({
         ...result,
+        config: sanitizeConfigForClient(result.config),
         defaultProductionReportsDir: formatProductionReportsDirDisplay(defaultProdDir),
         productionReportsDir: formatProductionReportsDirDisplay(effectiveProdDir),
       });
@@ -93,6 +103,7 @@ async function startServer() {
       const effectiveProdDir = resolveProductionReportsDir(result.config.prodReportsDir);
       return res.json({
         ...result,
+        config: sanitizeConfigForClient(result.config),
         defaultProductionReportsDir: formatProductionReportsDirDisplay(defaultProdDir),
         productionReportsDir: formatProductionReportsDirDisplay(effectiveProdDir),
       });
@@ -218,6 +229,120 @@ async function startServer() {
           err instanceof Error
             ? err.message
             : 'Unable to delete report from local filesystem.',
+      });
+    }
+  });
+
+  app.post('/api/reports/bulk-delete', (req, res) => {
+    try {
+      const { reportIds, reportsDir, mode } = req.body as {
+        reportIds?: string[];
+        reportsDir?: string;
+        mode?: string;
+      };
+      if (!Array.isArray(reportIds) || reportIds.length === 0) {
+        return res.status(400).json({ error: 'reportIds array is required.' });
+      }
+      const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const explicitDir = typeof reportsDir === 'string' ? reportsDir.trim() : '';
+      const targetDir = isProductionReq
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
+      const result = deleteStoredReportsBulk(reportIds, targetDir);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to bulk delete reports from local filesystem.',
+      });
+    }
+  });
+
+  app.get('/api/apple-sync/capabilities', (_req, res) => {
+    return res.json(getAppleSyncCapabilities());
+  });
+
+  app.post('/api/apple-sync/test', async (req, res) => {
+    try {
+      const { appleSync } = (req.body || {}) as {
+        appleSync?: WorkbenchSettings['appleSync'];
+      };
+      const storedApple = readLocalConfigFile().config.appleSync;
+      const effectiveConfig = {
+        mode: appleSync?.mode ?? storedApple?.mode ?? 'auto',
+        appleId: (appleSync?.appleId ?? storedApple?.appleId ?? '').trim(),
+        appPassword: appleSync?.clearAppPassword
+          ? ''
+          : (appleSync?.appPassword?.trim() || storedApple?.appPassword || ''),
+        calendarName: (appleSync?.calendarName ?? storedApple?.calendarName ?? '').trim(),
+        remindersListName: (
+          appleSync?.remindersListName ??
+          storedApple?.remindersListName ??
+          ''
+        ).trim(),
+      };
+      const result = await testAppleSyncConnection(effectiveConfig);
+      return res.status(result.ok ? 200 : 400).json(result);
+    } catch (err) {
+      return res.status(502).json({
+        ok: false,
+        error: err instanceof Error ? err.message : 'Apple Calendar/Reminders connection test failed.',
+      });
+    }
+  });
+
+  app.post('/api/reports/:id/sync-apple', async (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const { reportsDir, mode, record: clientRecord, fallback, appleSync } = (req.body || {}) as {
+        reportsDir?: string;
+        mode?: string;
+        record?: RatedThreadRecord;
+        fallback?: AppleSyncFallbackPayload;
+        appleSync?: WorkbenchSettings['appleSync'];
+      };
+      const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const explicitDir = typeof reportsDir === 'string' ? reportsDir.trim() : '';
+      const targetDir = isProductionReq
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
+
+      const diskRecord = getStoredReportById(reportId, targetDir, layout);
+      const effectiveRecord =
+        diskRecord ?? (clientRecord && Array.isArray(clientRecord.turns) ? clientRecord : null);
+
+      const storedApple = readLocalConfigFile().config.appleSync;
+      const effectiveConfig = {
+        mode: appleSync?.mode ?? storedApple?.mode ?? 'auto',
+        appleId: (appleSync?.appleId ?? storedApple?.appleId ?? '').trim(),
+        appPassword: appleSync?.clearAppPassword
+          ? ''
+          : (appleSync?.appPassword?.trim() || storedApple?.appPassword || ''),
+        calendarName: (appleSync?.calendarName ?? storedApple?.calendarName ?? '').trim(),
+        remindersListName: (
+          appleSync?.remindersListName ??
+          storedApple?.remindersListName ??
+          ''
+        ).trim(),
+      };
+
+      const result = await syncReportToApple({
+        record: effectiveRecord,
+        fallback,
+        config: effectiveConfig,
+      });
+
+      return res.status(result.ok ? 200 : 400).json(result);
+    } catch (err) {
+      return res.status(502).json({
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to sync report to Apple Calendar & Reminders.',
       });
     }
   });

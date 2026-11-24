@@ -184,6 +184,14 @@ export const DEFAULT_SETTINGS: WorkbenchSettings = {
     soundOnReply: true,
     desktopNotificationOnReply: true,
   },
+  appleSync: {
+    mode: 'auto',
+    appleId: '',
+    appPassword: '',
+    appPasswordConfigured: false,
+    calendarName: '',
+    remindersListName: '',
+  },
   promptBuilder: DEFAULT_PROMPT_BUILDER_SETTINGS,
   requestTimeoutSeconds: 0,
 };
@@ -338,6 +346,26 @@ export function loadSettings(): WorkbenchSettings {
         ...DEFAULT_SETTINGS.notifications,
         ...(parsed.notifications || {}),
       },
+      appleSync: {
+        mode:
+          parsed.appleSync?.mode === 'macos' || parsed.appleSync?.mode === 'caldav'
+            ? parsed.appleSync.mode
+            : 'auto',
+        appleId:
+          typeof parsed.appleSync?.appleId === 'string'
+            ? parsed.appleSync.appleId.trim()
+            : '',
+        appPassword: '',
+        appPasswordConfigured: Boolean(parsed.appleSync?.appPasswordConfigured),
+        calendarName:
+          typeof parsed.appleSync?.calendarName === 'string'
+            ? parsed.appleSync.calendarName.trim()
+            : '',
+        remindersListName:
+          typeof parsed.appleSync?.remindersListName === 'string'
+            ? parsed.appleSync.remindersListName.trim()
+            : '',
+      },
       promptBuilder: normalizePromptBuilderSettings(
         parsed.promptBuilder,
         loadLegacyPromptBuilderSettings(),
@@ -386,7 +414,17 @@ export async function resizeAvatarToDataUrl(file: File): Promise<string> {
 
 export function saveSettings(settings: WorkbenchSettings): void {
   try {
-    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const sanitized: WorkbenchSettings = {
+      ...settings,
+      appleSync: settings.appleSync
+        ? {
+            ...settings.appleSync,
+            appPassword: '',
+            clearAppPassword: undefined,
+          }
+        : DEFAULT_SETTINGS.appleSync,
+    };
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(sanitized));
   } catch {
     // Ignore quota errors
   }

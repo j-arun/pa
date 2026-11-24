@@ -214,6 +214,31 @@ export interface NotificationConfig {
   desktopNotificationOnReply: boolean;
 }
 
+export type AppleSyncMode = 'auto' | 'macos' | 'caldav';
+
+export interface AppleSyncConfig {
+  mode: AppleSyncMode;
+  appleId: string;
+  appPassword?: string;
+  appPasswordConfigured?: boolean;
+  clearAppPassword?: boolean;
+  calendarName: string;
+  remindersListName: string;
+}
+
+export interface AppleSyncResult {
+  ok: boolean;
+  transport: 'macos' | 'caldav' | 'hybrid';
+  providerLabel: string;
+  reportTitle: string;
+  watchOutSyncedCount: number;
+  eventCardsSyncedCount: number;
+  calendarName?: string;
+  remindersListName?: string;
+  warnings?: string[];
+  error?: string;
+}
+
 export interface WorkbenchSettings {
   theme: ThemeMode;
   prodTheme?: 'light' | 'dark';
@@ -227,6 +252,7 @@ export interface WorkbenchSettings {
   publicLlm: PublicLlmConfig;
   voice: VoiceConfig;
   notifications: NotificationConfig;
+  appleSync?: AppleSyncConfig;
   promptBuilder: PromptBuilderSettings;
   requestTimeoutSeconds: number;
 }

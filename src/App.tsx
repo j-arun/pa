@@ -38,6 +38,7 @@ import { ProductionTimelinePanel } from './components/production/ProductionTimel
 import { useSpeechIO } from './hooks/useSpeechIO';
 import type {
   AnyAdapterId,
+  AppleSyncResult,
   CarefulDateItem,
   ConversationScope,
   ConversationTurn,
@@ -196,6 +197,8 @@ export default function App() {
   const [isChatBarOpen, setIsChatBarOpen] = useState(false);
   const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
   const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
+  const [syncingReportIds, setSyncingReportIds] = useState<Record<string, boolean>>({});
+  const [syncedReportIds, setSyncedReportIds] = useState<Record<string, boolean>>({});
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -816,6 +819,221 @@ export default function App() {
       settings.prodReportsDir,
       settings.reportsDir,
     ],
+  );
+
+  const handleDeleteFolderReports = useCallback(
+    async (recordIds: string[], folderLabel: string) => {
+      const idSet = new Set(recordIds.filter(Boolean));
+      if (idSet.size === 0) return;
+
+      const targetTurnIds = new Set<string>();
+      for (const rec of ratedThreads) {
+        if (!idSet.has(rec.id)) continue;
+        for (const t of rec.turns) {
+          if (t.id) targetTurnIds.add(t.id);
+        }
+      }
+
+      setRatedThreads((previous) => previous.filter((item) => !idSet.has(item.id)));
+      if (activeReportExchangeId && idSet.has(activeReportExchangeId)) {
+        setActiveReportExchangeId(null);
+      }
+      setTurns((previous) =>
+        previous.some(
+          (t) =>
+            idSet.has(t.id) ||
+            (t.exchangeId ? idSet.has(t.exchangeId) : false) ||
+            targetTurnIds.has(t.id),
+        )
+          ? []
+          : previous,
+      );
+
+      try {
+        await fetch('/api/reports/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reportIds: Array.from(idSet),
+            mode: isProductionApp ? 'production' : 'dev',
+            reportsDir: isProductionApp
+              ? settingsRef.current.prodReportsDir
+              : settingsRef.current.reportsDir,
+          }),
+        });
+      } catch {
+        // Local state already updated
+      }
+
+      pushContextLog(
+        'info',
+        `Deleted ${idSet.size} report${idSet.size === 1 ? '' : 's'} from ${folderLabel}`,
+      );
+    },
+    [activeReportExchangeId, isProductionApp, pushContextLog, ratedThreads],
+  );
+
+  const handleSyncReportToApple = useCallback(
+    async (recordOrId: string | RatedThreadRecord) => {
+      const targetId = typeof recordOrId === 'string' ? recordOrId : recordOrId.id;
+      if (!targetId) return;
+
+      const resolvedRecord: RatedThreadRecord | undefined =
+        typeof recordOrId !== 'string'
+          ? recordOrId
+          : ratedThreads.find((r) => r.id === targetId) ??
+            (turns.some((t) => t.id === targetId || t.exchangeId === targetId)
+              ? {
+                  id: targetId,
+                  turns,
+                  ratedAt: turns[0]?.timestamp || new Date().toISOString(),
+                }
+              : undefined);
+
+      if (!resolvedRecord) {
+        pushContextLog('error', 'Unable to locate report data for Apple sync.');
+        return;
+      }
+
+      const qTurn = resolvedRecord.turns.find((t) => t.role === 'user');
+      const assistantTurns = resolvedRecord.turns.filter((t) => t.role === 'assistant');
+      const latestAssistant = assistantTurns[assistantTurns.length - 1];
+      const domain = qTurn?.promptDomain;
+
+      const rawAdapterId = latestAssistant?.adapterId ?? qTurn?.adapterId;
+      const rawScope = latestAssistant?.scope ?? qTurn?.scope;
+      const providerLabel =
+        rawAdapterId === 'gemini'
+          ? 'Gemini'
+          : rawAdapterId === 'fable'
+            ? 'Fable'
+            : rawAdapterId === 'claude'
+              ? 'Sonnet'
+              : rawAdapterId === 'chatgpt'
+                ? 'ChatGPT'
+                : rawAdapterId === 'ollama' || rawScope === 'private'
+                  ? 'Local'
+                  : 'Gemini';
+
+      const fallbackCarefulDates: CarefulDateItem[] = [];
+      const fallbackEventCards: EventCardItem[] = [];
+      const seenCareful = new Set<string>();
+      const seenEvents = new Set<string>();
+
+      for (const reply of assistantTurns) {
+        const storedCareful = Array.isArray(reply.carefulDates) ? reply.carefulDates : [];
+        const parsedFromMd =
+          reply.content && reply.content.trim().length > 40
+            ? parseResponseEventsAndReport(reply.content, domain)
+            : { events: [], carefulDates: [] };
+        const htmlCareful =
+          storedCareful.length === 0 && parsedFromMd.carefulDates.length === 0 && reply.htmlReport
+            ? extractCarefulDatesFromHtml(reply.htmlReport, domain)
+            : [];
+
+        const combinedCareful =
+          parsedFromMd.carefulDates.length > 0
+            ? parsedFromMd.carefulDates
+            : storedCareful.length > 0
+              ? storedCareful.map(sanitizeCarefulDateItem)
+              : htmlCareful.map(sanitizeCarefulDateItem);
+
+        for (const item of combinedCareful) {
+          const key = `${item.domain}|${item.date}|${item.note}`.toLowerCase();
+          if (seenCareful.has(key)) continue;
+          seenCareful.add(key);
+          fallbackCarefulDates.push(item);
+        }
+
+        const storedEvents = Array.isArray(reply.eventCards) ? reply.eventCards : [];
+        const combinedEvents =
+          parsedFromMd.events.length > 0
+            ? parsedFromMd.events
+            : storedEvents.map((evt, idx) => normalizeEventCardItem(evt, idx));
+
+        for (const evt of combinedEvents) {
+          const key = `${evt.title}|${evt.when || evt.dateRange || ''}`.toLowerCase();
+          if (seenEvents.has(key)) continue;
+          seenEvents.add(key);
+          fallbackEventCards.push(evt);
+        }
+      }
+
+      setSyncingReportIds((prev) => ({ ...prev, [targetId]: true }));
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(targetId)}/sync-apple`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: isProductionApp ? 'production' : 'dev',
+            reportsDir: isProductionApp
+              ? settingsRef.current.prodReportsDir
+              : settingsRef.current.reportsDir,
+            record: resolvedRecord,
+            fallback: {
+              title: qTurn?.threadName,
+              providerLabel,
+              threadMonth: qTurn?.threadMonth,
+              threadYear: qTurn?.threadYear,
+              promptDomain: domain,
+              carefulDates: fallbackCarefulDates,
+              eventCards: fallbackEventCards,
+            },
+            appleSync: settingsRef.current.appleSync,
+          }),
+        });
+
+        const data = (await res.json().catch(() => null)) as AppleSyncResult | null;
+        if (!res.ok || !data?.ok) {
+          const errMessage =
+            data?.error ||
+            data?.warnings?.[0] ||
+            `Apple Calendar & Reminders sync failed (HTTP ${res.status}).`;
+          pushContextLog('error', errMessage);
+          setReplyToast({
+            title: 'Apple sync failed',
+            preview: errMessage,
+            isError: true,
+          });
+          if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+          replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 6000);
+          return;
+        }
+
+        setSyncedReportIds((prev) => ({ ...prev, [targetId]: true }));
+        const summaryLine = `Calendar: ${data.watchOutSyncedCount} WatchOut · Reminders: ${data.eventCardsSyncedCount} Cards (${data.providerLabel || providerLabel})`;
+        pushContextLog(
+          data.warnings && data.warnings.length > 0 ? 'info' : 'success',
+          `${summaryLine}${data.warnings?.length ? ` · Note: ${data.warnings[0]}` : ''}`,
+        );
+        setReplyToast({
+          title: 'Synced to Apple Calendar & Reminders',
+          preview: summaryLine,
+          isError: false,
+        });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+      } catch (err) {
+        const errMessage =
+          err instanceof Error ? err.message : 'Unable to reach Apple Calendar & Reminders sync API.';
+        pushContextLog('error', errMessage);
+        setReplyToast({
+          title: 'Apple sync failed',
+          preview: errMessage,
+          isError: true,
+        });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 6000);
+      } finally {
+        setSyncingReportIds((prev) => {
+          if (!prev[targetId]) return prev;
+          const next = { ...prev };
+          delete next[targetId];
+          return next;
+        });
+      }
+    },
+    [isProductionApp, pushContextLog, ratedThreads, turns],
   );
 
   const handleRenameReportCommit = useCallback(
@@ -2329,10 +2547,13 @@ export default function App() {
                 activeReportId={activeReportExchangeId}
                 activePeriodMonth={settings.contextCache.activeMonth}
                 activePeriodYear={settings.contextCache.activeYear}
+                syncingReportIds={syncingReportIds}
+                syncedReportIds={syncedReportIds}
                 onSelectReport={(recordId) => {
                   setIsSettingsOpen(false);
                   setActiveReportExchangeId(recordId);
                 }}
+                onSyncReport={(recordId) => void handleSyncReportToApple(recordId)}
                 onRenameReport={(recordId, newName) =>
                   void handleRenameReportCommit(recordId, newName)
                 }
@@ -2344,6 +2565,9 @@ export default function App() {
                 }
                 onDeleteReport={(recordId) =>
                   handleDeleteSidebarReport(recordId)
+                }
+                onDeleteFolderReports={(recordIds, folderLabel) =>
+                  void handleDeleteFolderReports(recordIds, folderLabel)
                 }
               />
             </div>
@@ -2776,6 +3000,9 @@ export default function App() {
               reportsDir={settings.reportsDir}
               isExternalFile={activeReportRecord.isExternalFile}
               comment={activeReportRecord.comment}
+              isSyncing={Boolean(syncingReportIds[activeReportRecord.id])}
+              isSynced={Boolean(syncedReportIds[activeReportRecord.id])}
+              onSyncReport={(id) => void handleSyncReportToApple(id)}
               onUpdateComment={(id, nextComment) =>
                 void handleUpdateReportComment(id, nextComment)
               }
@@ -2887,7 +3114,10 @@ export default function App() {
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
                 isDarkTheme={isProdDarkTheme}
+                syncingReportIds={syncingReportIds}
+                syncedReportIds={syncedReportIds}
                 onSelectReport={handleOpenProductionReport}
+                onSyncReport={(record) => void handleSyncReportToApple(record)}
                 onDeleteReport={handleDeleteSidebarReport}
                 onClose={() => setIsProdReportsMenuOpen(false)}
               />
