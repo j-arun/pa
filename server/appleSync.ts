@@ -424,10 +424,10 @@ function trimClauseAtWordBoundary(text: string, maxChars: number): string {
   return `${cut.replace(/[\s,;:\-–—]+$/g, '').trim()}…`;
 }
 
-function compactAvoidClause(rawClause: string, maxChars: number): string {
+function compactHeadlineClause(rawClause: string, maxChars: number): string {
   let text = rawClause
     .replace(/\s+/g, ' ')
-    .replace(/^(?:any|certain|some|making\s+(?:any|speculative|impulsive|hasty|major|risky)|sending\s+any|taking\s+any|pushing\s+through)\s+/i, (m) => {
+    .replace(/^(?:any|all|certain|some|making\s+(?:any|speculative|impulsive|hasty|major|risky)|sending\s+any|taking\s+any|pushing\s+through)\s+/i, (m) => {
       const keepAdj = m.match(/\b(speculative|impulsive|hasty|major|risky)\b/i);
       return keepAdj ? `${keepAdj[1].toLowerCase()} ` : '';
     })
@@ -457,7 +457,30 @@ function compactAvoidClause(rawClause: string, maxChars: number): string {
   return trimClauseAtWordBoundary(text, maxChars);
 }
 
-export function buildWatchOutAvoidHeadline(rawNote: string): string {
+const NEGATIVE_PREFIX_REGEX =
+  /^(?:what\s+to\s+avoid|things?\s+to\s+avoid|please\s+avoid|strictly\s+avoid|best\s+to\s+avoid|avoid|do\s+not|don't|refrain\s+from|never|watch\s+out\s+for|be\s+careful\s+(?:not\s+to|with|of|around)|exercise\s+(?:extra\s+)?care\s+(?:with|around|during)|resist)\s*[:\-–—]?\s*/i;
+
+const POSITIVE_LEADIN_REGEX =
+  /^(?:you\s+should|please|remember\s+to|make\s+sure\s+to|be\s+sure\s+to|it\s+is\s+(?:best|wise|important|helpful)\s+to|best\s+to|try\s+to|need\s+to|aim\s+to)\s+/i;
+
+const POSITIVE_IMPERATIVE_REGEX =
+  /^(?:follow|keep|stay|focus|prioritize|verify|confirm|review|double-check|check|document|back\s+up|protect|maintain|stick\s+to|wait(?:\s+for)?|pause(?:\s+before)?|take\s+(?:time|breaks?|care|notes)|be\s+(?:patient|calm|clear|cautious|mindful|prepared)|communicate|clarify|listen|prepare|consult|monitor|plan|read|save|seek|track|use|ensure|give\s+(?:time|space)|set\s+boundaries|practice|rest|pace\s+yourself)\b/i;
+
+const NEGATIVE_RISK_SIGNAL_REGEX =
+  /\b(?:avoid|never|don't|do\s+not|impulsive|emotional|apologetic|rejection|overspending|speculative|risky|high-risk|fatigue|exhaustion|burnout|skipping|ignoring|neglecting|treating\b.*\brejection|arguing|conflict|confrontation|escalation|hasty|rash|unplanned|unverified|gossip|panic|overreacting|overthinking|procrastinat\w*|debt|gambling|ego|blame|stubborn|resentment|friction|misunderstanding|strain|excessive|signing\b.*\bwithout|lending\b.*\bmoney|stopping\b.*\bsearch)\b/i;
+
+const POSITIVE_NOUN_SIGNAL_REGEX =
+  /\b(?:patience|calm|clarity|written\s+confirmation|documentation|backup|rest|sleep|hydration|balance|diplomacy|tact|transparency|verification|review|preparation|planning|boundaries|routine|discipline|moderation|listening|careful\s+\w+|steady\s+\w+|protocol|steps|schedule|checklist|guidelines)\b/i;
+
+const FOLLOW_NOUN_REGEX = /\b(?:protocol|steps|routine|schedule|checklist|plan|budget|advice|guidelines|process)\b/i;
+
+function capitalizeHeadlineStart(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  return /^[a-z]/.test(trimmed) ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : trimmed;
+}
+
+export function buildWatchOutHeadline(rawNote: string): string {
   const cleaned = (rawNote || '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return 'Exercise extra care';
 
@@ -469,12 +492,28 @@ export function buildWatchOutAvoidHeadline(rawNote: string): string {
     return 'Exercise extra care';
   }
 
-  const core = firstSentence
-    .replace(
-      /^(?:what\s+to\s+avoid|things?\s+to\s+avoid|please\s+avoid|strictly\s+avoid|best\s+to\s+avoid|avoid|do\s+not|don't|refrain\s+from|never|watch\s+out\s+for|be\s+careful\s+(?:not\s+to|with|of|around)|exercise\s+(?:extra\s+)?care\s+(?:with|around|during))\s*[:\-–—]?\s*/i,
-      '',
-    )
-    .trim();
+  let polarity: 'avoid' | 'imperative' | 'follow' | 'focus' = 'avoid';
+  let core = firstSentence;
+
+  if (NEGATIVE_PREFIX_REGEX.test(firstSentence)) {
+    polarity = 'avoid';
+    core = firstSentence.replace(NEGATIVE_PREFIX_REGEX, '').trim();
+  } else {
+    const strippedLeadIn = firstSentence.replace(POSITIVE_LEADIN_REGEX, '').trim();
+    if (POSITIVE_IMPERATIVE_REGEX.test(strippedLeadIn)) {
+      polarity = 'imperative';
+      core = strippedLeadIn;
+    } else if (
+      POSITIVE_NOUN_SIGNAL_REGEX.test(firstSentence) &&
+      !NEGATIVE_RISK_SIGNAL_REGEX.test(firstSentence)
+    ) {
+      polarity = FOLLOW_NOUN_REGEX.test(firstSentence) ? 'follow' : 'focus';
+      core = firstSentence;
+    } else {
+      polarity = 'avoid';
+      core = firstSentence;
+    }
+  }
 
   if (!core) return 'Exercise extra care';
 
@@ -482,26 +521,38 @@ export function buildWatchOutAvoidHeadline(rawNote: string): string {
     ? core.charAt(0).toLowerCase() + core.slice(1)
     : core;
 
-  const MAX_BODY_CHARS = 56;
+  const MAX_BODY_CHARS = polarity === 'imperative' ? 62 : 56;
+  const formatOutput = (body: string): string => {
+    const cleanBody = body.trim();
+    if (!cleanBody) return 'Exercise extra care';
+    if (polarity === 'imperative') return capitalizeHeadlineStart(cleanBody);
+    if (polarity === 'follow') return `Follow ${cleanBody}`;
+    if (polarity === 'focus') return `Focus on ${cleanBody}`;
+    return `Avoid ${cleanBody}`;
+  };
+
   if (normalizedCore.length <= MAX_BODY_CHARS) {
-    return `Avoid ${normalizedCore}`;
+    return formatOutput(normalizedCore);
   }
 
   const parts = normalizedCore
-    .split(/\s+(?:and|;)\s+|\s+or\s+(?=(?:[a-z]+ing|make|making|take|taking|send|sending|sign|signing|push|pushing|skip|skipping|ignore|ignoring|start|starting|stop|stopping|buy|buying|sell|selling|rush|rushing|react|reacting|bring|bringing|say|saying|do|doing|any)\b)/i)
+    .split(/\s+(?:and|;)\s+|\s+or\s+(?=(?:[a-z]+ing|make|making|take|taking|send|sending|sign|signing|push|pushing|skip|skipping|ignore|ignoring|start|starting|stop|stopping|buy|buying|sell|selling|rush|rushing|react|reacting|bring|bringing|say|saying|do|doing|keep|follow|stay|verify|confirm|review|double-check|check|document|protect|maintain|wait|prepare|consult|monitor|communicate|clarify|any)\b)/i)
     .filter((p) => p.trim().length >= 8);
   if (parts.length >= 2) {
-    const firstPart = compactAvoidClause(parts[0], 26);
-    const secondPart = compactAvoidClause(parts[1], 26);
+    const halfBudget = polarity === 'imperative' ? 29 : 26;
+    const firstPart = compactHeadlineClause(parts[0], halfBudget);
+    const secondPart = compactHeadlineClause(parts[1], halfBudget);
     const combined = `${firstPart} & ${secondPart}`.replace(/\s+/g, ' ').trim();
     if (combined.length <= MAX_BODY_CHARS) {
-      return `Avoid ${combined}`;
+      return formatOutput(combined);
     }
-    return `Avoid ${trimClauseAtWordBoundary(combined, MAX_BODY_CHARS)}`;
+    return formatOutput(trimClauseAtWordBoundary(combined, MAX_BODY_CHARS));
   }
 
-  return `Avoid ${compactAvoidClause(normalizedCore, MAX_BODY_CHARS)}`;
+  return formatOutput(compactHeadlineClause(normalizedCore, MAX_BODY_CHARS));
 }
+
+export const buildWatchOutAvoidHeadline = buildWatchOutHeadline;
 
 export function buildSyncItemsFromReport(
   record: RatedThreadRecord | null,
@@ -609,8 +660,8 @@ export function buildSyncItemsFromReport(
       `${reportId}|${idx}|${itemDomain}|${rawDateLabel}|${item.note}`,
     );
     const description = (item.note || 'Exercise extra care during this window.').trim();
-    const avoidHeadline = buildWatchOutAvoidHeadline(description);
-    const summary = `[${sevLabel}] ${itemDomain} — ${avoidHeadline}`;
+    const actionHeadline = buildWatchOutHeadline(description);
+    const summary = `[${sevLabel}] ${itemDomain} — ${actionHeadline}`;
     const legacySummary = `[${sevLabel}] ${itemDomain} (${providerLabel}) — WatchOut`;
 
     return {
