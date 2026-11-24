@@ -5,6 +5,7 @@ import type {
   AppleSyncConfig,
   AppleSyncMode,
   AppleSyncResult,
+  AppleUnsyncResult,
   CarefulDateItem,
   EventCardItem,
   PromptDomain,
@@ -105,6 +106,34 @@ function getProviderDisplayName(adapterId?: string, scope?: string): string {
     return ADAPTER_DISPLAY_LABELS[adapterId as AnyAdapterId];
   }
   return scope === 'private' ? 'Local' : 'Gemini';
+}
+
+interface ProviderCalendarStyle {
+  targetName: string;
+  hexColor8: string;
+  hexColor6: string;
+  rgbFloat: [number, number, number];
+}
+
+function resolveProviderCalendarStyle(providerLabel: string): ProviderCalendarStyle | null {
+  const lower = providerLabel.trim().toLowerCase();
+  if (lower === 'gemini') {
+    return {
+      targetName: 'Gemini',
+      hexColor8: '#34C759FF',
+      hexColor6: '#34C759',
+      rgbFloat: [0.204, 0.78, 0.349],
+    };
+  }
+  if (lower === 'fable') {
+    return {
+      targetName: 'Fable',
+      hexColor8: '#007AFFFF',
+      hexColor6: '#007AFF',
+      rgbFloat: [0.0, 0.478, 1.0],
+    };
+  }
+  return null;
 }
 
 function getSeverityLabel(sev?: CarefulDateItem['severity']): string {
@@ -416,7 +445,6 @@ export function buildSyncItemsFromReport(
   const providerAttribution = modelName
     ? `${providerLabel} (${modelName})`
     : providerLabel;
-  const periodLabel = [threadMonth, threadYear].filter(Boolean).join(' ');
 
   let carefulDates: CarefulDateItem[] = [];
   let eventCards: EventCardItem[] = [];
@@ -470,12 +498,9 @@ export function buildSyncItemsFromReport(
       `Domain: ${itemDomain}`,
       `WatchOut Window: ${rawDateLabel}`,
       `Provider: ${providerAttribution}`,
-      `Report: ${reportTitle}${periodLabel ? ` (${periodLabel})` : ''}`,
       '',
       'Guidance:',
       (item.note || 'Exercise extra care during this window.').trim(),
-      '',
-      `[PA-UID:${uid}]`,
     ].join('\n');
 
     return {
@@ -511,12 +536,9 @@ export function buildSyncItemsFromReport(
       probabilityLabel ? `Probability: ${probabilityLabel}` : '',
       `Domain: ${category}`,
       `Provider: ${providerAttribution}`,
-      `Report: ${reportTitle}${periodLabel ? ` (${periodLabel})` : ''}`,
       '',
       howText ? 'How it will happen:' : '',
       howText,
-      '',
-      `[PA-UID:${uid}]`,
     ]
       .filter((line, i, arr) => !(line === '' && arr[i - 1] === ''))
       .join('\n')
@@ -614,6 +636,100 @@ function run() {
 
 const JXA_SYNC_SCRIPT = `
 ObjC.import('Foundation');
+try { ObjC.import('EventKit'); } catch (e) {}
+try { ObjC.import('CoreGraphics'); } catch (e) {}
+
+function normText(s) {
+  return String(s || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+}
+
+function sameCalendarDay(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function ensureEventKitCollectionColor(entityType, desiredName, rgbFloat, autoCreate) {
+  var result = { ensured: false, created: false, colored: false, calendarId: '' };
+  if (!desiredName) return result;
+  try {
+    if (typeof $.EKEventStore === 'undefined') return result;
+    var status = $.EKEventStore.authorizationStatusForEntityType(entityType);
+    if (status !== 3 && !(entityType === 0 && status === 4)) {
+      return result;
+    }
+    var store = $.EKEventStore.alloc.init;
+    var existingList = store.calendarsForEntityType(entityType);
+    var desiredLower = desiredName.trim().toLowerCase();
+    var target = null;
+    for (var i = 0; i < existingList.count; i++) {
+      var cal = existingList.objectAtIndex(i);
+      var title = '';
+      try { title = ObjC.unwrap(cal.title) || ''; } catch (e) { title = ''; }
+      if (title.trim().toLowerCase() === desiredLower && cal.allowsContentModifications) {
+        target = cal;
+        break;
+      }
+    }
+
+    if (!target && autoCreate) {
+      var chosenSource = null;
+      var sources = store.sources;
+      for (var s = 0; s < sources.count; s++) {
+        var src = sources.objectAtIndex(s);
+        var srcTitle = '';
+        try { srcTitle = ObjC.unwrap(src.title) || ''; } catch (e) { srcTitle = ''; }
+        if (src.sourceType === 2 && srcTitle.trim().toLowerCase() === 'icloud') {
+          chosenSource = src;
+          break;
+        }
+      }
+      if (!chosenSource) {
+        try {
+          var defCal = entityType === 0
+            ? store.defaultCalendarForNewEvents
+            : store.defaultCalendarForNewReminders();
+          if (defCal && defCal.source) chosenSource = defCal.source;
+        } catch (e) {}
+      }
+      if (!chosenSource) {
+        for (var s2 = 0; s2 < sources.count; s2++) {
+          var src2 = sources.objectAtIndex(s2);
+          if (src2.sourceType === 2 || src2.sourceType === 0) {
+            chosenSource = src2;
+            break;
+          }
+        }
+      }
+      if (chosenSource) {
+        target = $.EKCalendar.calendarForEntityTypeEventStore(entityType, store);
+        target.title = desiredName;
+        target.source = chosenSource;
+        result.created = true;
+      }
+    }
+
+    if (target) {
+      if (Array.isArray(rgbFloat) && rgbFloat.length === 3 && typeof $.CGColorCreateGenericRGB !== 'undefined') {
+        try {
+          var cgCol = $.CGColorCreateGenericRGB(rgbFloat[0], rgbFloat[1], rgbFloat[2], 1.0);
+          target.CGColor = cgCol;
+          result.colored = true;
+        } catch (e) {}
+      }
+      var errRef = Ref();
+      if (store.saveCalendarCommitError(target, true, errRef)) {
+        result.ensured = true;
+        try { result.calendarId = ObjC.unwrap(target.calendarIdentifier) || ''; } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  return result;
+}
+
 function run() {
   var rawEnv = $.NSProcessInfo.processInfo.environment.objectForKey('PA_SYNC_PAYLOAD');
   var payload = JSON.parse(ObjC.unwrap(rawEnv));
@@ -621,23 +737,61 @@ function run() {
   var remindersSynced = 0;
   var usedCalendarName = '';
   var usedRemindersListName = '';
+  var warnings = [];
 
   if (payload.watchOutEvents && payload.watchOutEvents.length > 0) {
     var calApp = Application('Calendar');
-    var cals = calApp.calendars();
-    var targetCal = null;
-    var desiredCal = (payload.calendarName || '').trim().toLowerCase();
-    var writableCals = [];
-    for (var i = 0; i < cals.length; i++) {
+    var desiredCalRaw = (payload.calendarName || '').trim();
+    var desiredCal = desiredCalRaw.toLowerCase();
+
+    var ekCalInfo = { ensured: false, created: false, colored: false, calendarId: '' };
+    if (desiredCalRaw) {
+      ekCalInfo = ensureEventKitCollectionColor(
+        0,
+        desiredCalRaw,
+        payload.providerColorRgb,
+        Boolean(payload.autoCreateCalendar)
+      );
+      if (ekCalInfo.created) {
+        delay(0.35);
+      }
+    }
+
+    var findWritableCalByName = function(targetLower) {
+      var list = calApp.calendars();
+      var writables = [];
+      var found = null;
+      for (var i = 0; i < list.length; i++) {
+        try {
+          if (!list[i].writable()) continue;
+          writables.push(list[i]);
+          if (targetLower && (list[i].name() || '').trim().toLowerCase() === targetLower) {
+            found = list[i];
+          }
+        } catch (e) {}
+      }
+      return { found: found, writables: writables };
+    };
+
+    var scan = findWritableCalByName(desiredCal);
+    var targetCal = scan.found;
+    var writableCals = scan.writables;
+
+    if (!targetCal && desiredCalRaw && payload.autoCreateCalendar) {
       try {
-        if (!cals[i].writable()) continue;
-        writableCals.push(cals[i]);
-        if (desiredCal && (cals[i].name() || '').trim().toLowerCase() === desiredCal) {
-          targetCal = cals[i];
-          break;
-        }
+        var newCal = calApp.Calendar({ name: desiredCalRaw });
+        calApp.calendars.push(newCal);
+        delay(0.25);
+        scan = findWritableCalByName(desiredCal);
+        targetCal = scan.found;
+        writableCals = scan.writables;
       } catch (e) {}
     }
+
+    if (targetCal && Array.isArray(payload.providerColorRgb) && payload.providerColorRgb.length === 3 && !ekCalInfo.colored) {
+      try { targetCal.color = payload.providerColorRgb; } catch (e) {}
+    }
+
     if (!targetCal && writableCals.length > 0) {
       var preferred = ['home', 'personal', 'calendar', 'work'];
       for (var p = 0; p < preferred.length && !targetCal; p++) {
@@ -649,6 +803,11 @@ function run() {
         }
       }
       if (!targetCal) targetCal = writableCals[0];
+      if (desiredCalRaw && payload.autoCreateCalendar && targetCal) {
+        warnings.push(
+          'Synced Calendar events to "' + targetCal.name() + '" because macOS Calendar prevented auto-creating a "' + desiredCalRaw + '" calendar. Create an iCloud calendar named "' + desiredCalRaw + '" (' + (payload.providerLabel === 'Fable' ? 'blue' : 'green') + ') in Apple Calendar to keep provider colors.'
+        );
+      }
     }
     if (!targetCal) {
       throw new Error('No writable calendar found in macOS Calendar.app.');
@@ -662,6 +821,7 @@ function run() {
       var uidTag = '[PA-UID:' + ev.uid + ']';
       var dayBefore = new Date(sDate.getTime() - 36 * 3600 * 1000);
       var dayAfter = new Date(eDate.getTime() + 36 * 3600 * 1000);
+      var targetSummaryNorm = normText(ev.summary);
       var matchedEvent = null;
       try {
         var candidates = targetCal.events.whose({
@@ -672,8 +832,22 @@ function run() {
         })();
         for (var c = 0; c < candidates.length; c++) {
           var desc = '';
+          var candSummary = '';
+          var candStart = null;
           try { desc = candidates[c].description() || ''; } catch (errD) { desc = ''; }
+          try { candSummary = candidates[c].summary() || ''; } catch (errS) { candSummary = ''; }
+          try { candStart = candidates[c].startDate(); } catch (errDt) { candStart = null; }
           if (desc.indexOf(uidTag) !== -1) {
+            matchedEvent = candidates[c];
+            break;
+          }
+          if (
+            normText(candSummary) === targetSummaryNorm &&
+            (
+              (ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1) ||
+              sameCalendarDay(candStart, sDate)
+            )
+          ) {
             matchedEvent = candidates[c];
             break;
           }
@@ -702,22 +876,56 @@ function run() {
 
   if (payload.reminderCards && payload.reminderCards.length > 0) {
     var remApp = Application('Reminders');
-    var lists = remApp.lists();
-    var targetList = null;
-    var desiredList = (payload.remindersListName || '').trim().toLowerCase();
-    for (var l = 0; l < lists.length; l++) {
+    var desiredListRaw = (payload.remindersListName || '').trim();
+    var desiredList = desiredListRaw.toLowerCase();
+
+    var ekRemInfo = { ensured: false, created: false, colored: false, calendarId: '' };
+    if (desiredListRaw) {
+      ekRemInfo = ensureEventKitCollectionColor(
+        1,
+        desiredListRaw,
+        payload.providerColorRgb,
+        Boolean(payload.autoCreateList)
+      );
+      if (ekRemInfo.created) {
+        delay(0.3);
+      }
+    }
+
+    var findListByName = function(targetLower) {
+      var listArr = remApp.lists();
+      for (var l = 0; l < listArr.length; l++) {
+        try {
+          if (targetLower && (listArr[l].name() || '').trim().toLowerCase() === targetLower) {
+            return listArr[l];
+          }
+        } catch (e) {}
+      }
+      return null;
+    };
+
+    var targetList = findListByName(desiredList);
+    if (!targetList && desiredListRaw && payload.autoCreateList) {
       try {
-        if (desiredList && (lists[l].name() || '').trim().toLowerCase() === desiredList) {
-          targetList = lists[l];
-          break;
-        }
+        var listProps = { name: desiredListRaw };
+        if (payload.providerColorHex) listProps.color = payload.providerColorHex;
+        var newList = remApp.List(listProps);
+        remApp.lists.push(newList);
+        delay(0.25);
+        targetList = findListByName(desiredList);
       } catch (e) {}
     }
+
+    if (targetList && payload.providerColorHex && !ekRemInfo.colored) {
+      try { targetList.color = payload.providerColorHex; } catch (e) {}
+    }
+
     if (!targetList) {
       try { targetList = remApp.defaultList(); } catch (e) {}
     }
-    if (!targetList && lists.length > 0) {
-      targetList = lists[0];
+    var fallbackLists = remApp.lists();
+    if (!targetList && fallbackLists.length > 0) {
+      targetList = fallbackLists[0];
     }
     if (!targetList) {
       throw new Error('No reminder list found in macOS Reminders.app.');
@@ -734,11 +942,25 @@ function run() {
     for (var r = 0; r < payload.reminderCards.length; r++) {
       var card = payload.reminderCards[r];
       var remUidTag = '[PA-UID:' + card.uid + ']';
+      var cardTitleNorm = normText(card.title);
       var matchedRem = null;
       for (var er = 0; er < existingRems.length; er++) {
         var rBody = '';
+        var rName = '';
         try { rBody = existingRems[er].body() || ''; } catch (e) { rBody = ''; }
+        try { rName = existingRems[er].name() || ''; } catch (e) { rName = ''; }
         if (rBody.indexOf(remUidTag) !== -1) {
+          matchedRem = existingRems[er];
+          break;
+        }
+        if (
+          normText(rName) === cardTitleNorm &&
+          (
+            (!card.whenLabel && !card.category) ||
+            (card.whenLabel && rBody.indexOf('When: ' + card.whenLabel) !== -1) ||
+            (card.category && rBody.indexOf('Domain: ' + card.category) !== -1)
+          )
+        ) {
           matchedRem = existingRems[er];
           break;
         }
@@ -771,7 +993,165 @@ function run() {
     watchOutSynced: watchOutSynced,
     remindersSynced: remindersSynced,
     calendarName: usedCalendarName,
-    remindersListName: usedRemindersListName
+    remindersListName: usedRemindersListName,
+    warnings: warnings
+  });
+}
+`;
+
+const JXA_UNSYNC_SCRIPT = `
+ObjC.import('Foundation');
+
+function normText(s) {
+  return String(s || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+}
+
+function sameCalendarDay(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function run() {
+  var rawEnv = $.NSProcessInfo.processInfo.environment.objectForKey('PA_SYNC_PAYLOAD');
+  var payload = JSON.parse(ObjC.unwrap(rawEnv));
+  var watchOutRemoved = 0;
+  var remindersRemoved = 0;
+  var warnings = [];
+
+  if (payload.watchOutEvents && payload.watchOutEvents.length > 0) {
+    var calApp = Application('Calendar');
+    var allCals = calApp.calendars();
+    var writableCals = [];
+    for (var i = 0; i < allCals.length; i++) {
+      try {
+        if (allCals[i].writable()) writableCals.push(allCals[i]);
+      } catch (e) {}
+    }
+
+    for (var w = 0; w < payload.watchOutEvents.length; w++) {
+      var ev = payload.watchOutEvents[w];
+      var sDate = new Date(ev.startIso);
+      var eDate = new Date(ev.endIso);
+      var uidTag = '[PA-UID:' + ev.uid + ']';
+      var dayBefore = new Date(sDate.getTime() - 36 * 3600 * 1000);
+      var dayAfter = new Date(eDate.getTime() + 36 * 3600 * 1000);
+      var targetSummaryNorm = normText(ev.summary);
+
+      for (var ci = 0; ci < writableCals.length; ci++) {
+        var cal = writableCals[ci];
+        var toDelete = [];
+        try {
+          var candidates = cal.events.whose({
+            _and: [
+              { startDate: { _greaterThan: dayBefore } },
+              { startDate: { _lessThan: dayAfter } }
+            ]
+          })();
+          for (var c = 0; c < candidates.length; c++) {
+            var desc = '';
+            var candSummary = '';
+            var candStart = null;
+            try { desc = candidates[c].description() || ''; } catch (errD) { desc = ''; }
+            try { candSummary = candidates[c].summary() || ''; } catch (errS) { candSummary = ''; }
+            try { candStart = candidates[c].startDate(); } catch (errDt) { candStart = null; }
+            if (desc.indexOf(uidTag) !== -1) {
+              toDelete.push(candidates[c]);
+              continue;
+            }
+            if (
+              normText(candSummary) === targetSummaryNorm &&
+              (
+                (ev.rawDateLabel && desc.indexOf('WatchOut Window: ' + ev.rawDateLabel) !== -1) ||
+                sameCalendarDay(candStart, sDate)
+              )
+            ) {
+              toDelete.push(candidates[c]);
+            }
+          }
+        } catch (errQ) {}
+
+        for (var di = toDelete.length - 1; di >= 0; di--) {
+          try {
+            calApp.delete(toDelete[di]);
+            watchOutRemoved++;
+          } catch (delErr1) {
+            try {
+              toDelete[di].delete();
+              watchOutRemoved++;
+            } catch (delErr2) {}
+          }
+        }
+      }
+    }
+  }
+
+  if (payload.reminderCards && payload.reminderCards.length > 0) {
+    var remApp = Application('Reminders');
+    var allLists = remApp.lists();
+
+    for (var li = 0; li < allLists.length; li++) {
+      var remList = allLists[li];
+      var existingRems = [];
+      try {
+        existingRems = remList.reminders();
+      } catch (e) {
+        existingRems = [];
+      }
+      if (!existingRems || existingRems.length === 0) continue;
+
+      var remsToDelete = [];
+      for (var er = 0; er < existingRems.length; er++) {
+        var rBody = '';
+        var rName = '';
+        try { rBody = existingRems[er].body() || ''; } catch (e) { rBody = ''; }
+        try { rName = existingRems[er].name() || ''; } catch (e) { rName = ''; }
+        var rNameNorm = normText(rName);
+
+        for (var r = 0; r < payload.reminderCards.length; r++) {
+          var card = payload.reminderCards[r];
+          var remUidTag = '[PA-UID:' + card.uid + ']';
+          var cardTitleNorm = normText(card.title);
+          if (rBody.indexOf(remUidTag) !== -1) {
+            remsToDelete.push(existingRems[er]);
+            break;
+          }
+          if (
+            rNameNorm === cardTitleNorm &&
+            rBody.indexOf('Provider: ') !== -1 &&
+            (
+              (!card.whenLabel && !card.category) ||
+              (card.whenLabel && rBody.indexOf('When: ' + card.whenLabel) !== -1) ||
+              (card.category && rBody.indexOf('Domain: ' + card.category) !== -1)
+            )
+          ) {
+            remsToDelete.push(existingRems[er]);
+            break;
+          }
+        }
+      }
+
+      for (var ri = remsToDelete.length - 1; ri >= 0; ri--) {
+        try {
+          remApp.delete(remsToDelete[ri]);
+          remindersRemoved++;
+        } catch (delR1) {
+          try {
+            remsToDelete[ri].delete();
+            remindersRemoved++;
+          } catch (delR2) {}
+        }
+      }
+    }
+  }
+
+  return JSON.stringify({
+    watchOutRemoved: watchOutRemoved,
+    remindersRemoved: remindersRemoved,
+    warnings: warnings
   });
 }
 `;
@@ -846,6 +1226,15 @@ function extractFirstHrefTag(xml: string, tagLocalName: string): string | null {
   return hrefMatch ? decodeXmlEntities(hrefMatch[1].trim()) : null;
 }
 
+function escapeXmlText(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 interface CalDavCollection {
   url: string;
   displayName: string;
@@ -857,6 +1246,7 @@ async function discoverICloudCollections(
   appleId: string,
   appPassword: string,
 ): Promise<{
+  homeUrl: string;
   calendarCollections: CalDavCollection[];
   reminderCollections: CalDavCollection[];
 }> {
@@ -969,7 +1359,7 @@ async function discoverICloudCollections(
     if (supportsVTodo) reminderCollections.push(item);
   }
 
-  return { calendarCollections, reminderCollections };
+  return { homeUrl, calendarCollections, reminderCollections };
 }
 
 function formatIcsUtcStamp(date: Date): string {
@@ -1072,9 +1462,88 @@ function pickTargetCollection(
   return collections[0];
 }
 
+async function ensureICloudCalDavCollection(params: {
+  homeUrl: string;
+  authHeader: string;
+  collections: CalDavCollection[];
+  desiredName: string;
+  componentType: 'VEVENT' | 'VTODO';
+  colorHex8?: string;
+  autoCreate: boolean;
+}): Promise<CalDavCollection | null> {
+  const desiredLower = params.desiredName.trim().toLowerCase();
+  if (!desiredLower) return null;
+
+  const existing = params.collections.find(
+    (c) => c.displayName.trim().toLowerCase() === desiredLower,
+  );
+  if (existing) {
+    if (params.colorHex8) {
+      try {
+        await calDavFetch(existing.url, params.authHeader, {
+          method: 'PROPPATCH',
+          headers: {
+            'Content-Type': 'application/xml; charset=utf-8',
+          },
+          body: `<?xml version="1.0" encoding="utf-8"?>
+<d:propertyupdate xmlns:d="DAV:" xmlns:a="http://apple.com/ns/ical/">
+  <d:set>
+    <d:prop>
+      <a:calendar-color>${params.colorHex8}</a:calendar-color>
+    </d:prop>
+  </d:set>
+</d:propertyupdate>`,
+        });
+      } catch {
+        // Non-fatal: server may restrict color PROPPATCH
+      }
+    }
+    return existing;
+  }
+
+  if (!params.autoCreate || !params.homeUrl) return null;
+
+  const normalizedHome = params.homeUrl.endsWith('/') ? params.homeUrl : `${params.homeUrl}/`;
+  const newCollectionUrl = `${normalizedHome}${crypto.randomUUID().toUpperCase()}/`;
+  const colorNode = params.colorHex8
+    ? `\n      <a:calendar-color>${params.colorHex8}</a:calendar-color>`
+    : '';
+  const mkRes = await calDavFetch(newCollectionUrl, params.authHeader, {
+    method: 'MKCALENDAR',
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+    },
+    body: `<?xml version="1.0" encoding="utf-8"?>
+<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/">
+  <d:set>
+    <d:prop>
+      <d:displayname>${escapeXmlText(params.desiredName.trim())}</d:displayname>${colorNode}
+      <c:supported-calendar-component-set>
+        <c:comp name="${params.componentType}"/>
+      </c:supported-calendar-component-set>
+    </d:prop>
+  </d:set>
+</c:mkcalendar>`,
+  });
+
+  if (mkRes.status >= 200 && mkRes.status < 300) {
+    const created: CalDavCollection = {
+      url: newCollectionUrl,
+      displayName: params.desiredName.trim(),
+      supportsVEvent: params.componentType === 'VEVENT',
+      supportsVTodo: params.componentType === 'VTODO',
+    };
+    params.collections.push(created);
+    return created;
+  }
+
+  return null;
+}
+
 async function syncViaICloudCalDav(params: {
   appleId: string;
   appPassword: string;
+  providerLabel: string;
   calendarName?: string;
   remindersListName?: string;
   watchOutEvents: WatchOutSyncPayloadItem[];
@@ -1088,11 +1557,17 @@ async function syncViaICloudCalDav(params: {
 }> {
   const { appleId, appPassword, watchOutEvents, reminderCards } = params;
   const warnings: string[] = [];
-  const { calendarCollections, reminderCollections } = await discoverICloudCollections(
+  const { homeUrl, calendarCollections, reminderCollections } = await discoverICloudCollections(
     appleId,
     appPassword,
   );
   const authHeader = `Basic ${Buffer.from(`${appleId}:${appPassword}`, 'utf-8').toString('base64')}`;
+
+  const providerStyle = resolveProviderCalendarStyle(params.providerLabel);
+  const explicitCalName = (params.calendarName || '').trim();
+  const explicitRemName = (params.remindersListName || '').trim();
+  const effectiveCalDesired = explicitCalName || providerStyle?.targetName || '';
+  const effectiveRemDesired = explicitRemName || providerStyle?.targetName || '';
 
   let watchOutSynced = 0;
   let remindersSynced = 0;
@@ -1100,12 +1575,31 @@ async function syncViaICloudCalDav(params: {
   let usedRemName: string | undefined;
 
   if (watchOutEvents.length > 0) {
-    const targetCal = pickTargetCollection(calendarCollections, params.calendarName, [
-      'home',
-      'personal',
-      'calendar',
-      'work',
-    ]);
+    let targetCal: CalDavCollection | null = null;
+    if (effectiveCalDesired) {
+      targetCal = await ensureICloudCalDavCollection({
+        homeUrl,
+        authHeader,
+        collections: calendarCollections,
+        desiredName: effectiveCalDesired,
+        componentType: 'VEVENT',
+        colorHex8: providerStyle?.hexColor8,
+        autoCreate: !explicitCalName && Boolean(providerStyle),
+      });
+    }
+    if (!targetCal) {
+      targetCal = pickTargetCollection(calendarCollections, explicitCalName, [
+        'home',
+        'personal',
+        'calendar',
+        'work',
+      ]);
+      if (!explicitCalName && providerStyle && targetCal) {
+        warnings.push(
+          `Synced Calendar events to "${targetCal.displayName}" because iCloud CalDAV declined creating a "${providerStyle.targetName}" calendar.`,
+        );
+      }
+    }
     if (!targetCal) {
       warnings.push('No writable VEVENT calendar collection was returned by iCloud CalDAV.');
     } else {
@@ -1129,11 +1623,25 @@ async function syncViaICloudCalDav(params: {
   }
 
   if (reminderCards.length > 0) {
-    const targetRem = pickTargetCollection(reminderCollections, params.remindersListName, [
-      'reminders',
-      'tasks',
-      'personal',
-    ]);
+    let targetRem: CalDavCollection | null = null;
+    if (effectiveRemDesired && reminderCollections.length > 0) {
+      targetRem = await ensureICloudCalDavCollection({
+        homeUrl,
+        authHeader,
+        collections: reminderCollections,
+        desiredName: effectiveRemDesired,
+        componentType: 'VTODO',
+        colorHex8: providerStyle?.hexColor8,
+        autoCreate: !explicitRemName && Boolean(providerStyle),
+      });
+    }
+    if (!targetRem) {
+      targetRem = pickTargetCollection(reminderCollections, explicitRemName, [
+        'reminders',
+        'tasks',
+        'personal',
+      ]);
+    }
     if (!targetRem) {
       warnings.push(
         'iCloud CalDAV did not expose a VTODO Reminders collection (Apple restricts CalDAV VTODO on upgraded Reminders accounts). Use "Auto" or "MacBook Calendar & Reminders" mode on macOS to sync Event Cards directly into Reminders.app.',
@@ -1271,6 +1779,11 @@ export async function syncReportToApple(params: {
   const useMacOsNative =
     resolved.mode === 'macos' ||
     (resolved.mode === 'auto' && process.platform === 'darwin');
+  const providerStyle = resolveProviderCalendarStyle(extracted.providerLabel);
+  const targetCalendarName = resolved.calendarName || providerStyle?.targetName || '';
+  const targetRemindersListName = resolved.remindersListName || providerStyle?.targetName || '';
+  const autoCreateProviderCalendar = !resolved.calendarName && Boolean(providerStyle);
+  const autoCreateProviderList = !resolved.remindersListName && Boolean(providerStyle);
 
   if (useMacOsNative) {
     if (process.platform !== 'darwin') {
@@ -1291,9 +1804,15 @@ export async function syncReportToApple(params: {
       remindersSynced?: number;
       calendarName?: string;
       remindersListName?: string;
+      warnings?: string[];
     }>(JXA_SYNC_SCRIPT, {
-      calendarName: resolved.calendarName,
-      remindersListName: resolved.remindersListName,
+      providerLabel: extracted.providerLabel,
+      calendarName: targetCalendarName,
+      remindersListName: targetRemindersListName,
+      autoCreateCalendar: autoCreateProviderCalendar,
+      autoCreateList: autoCreateProviderList,
+      providerColorHex: providerStyle?.hexColor6 || '',
+      providerColorRgb: providerStyle?.rgbFloat || null,
       watchOutEvents: extracted.watchOutEvents,
       reminderCards: extracted.reminderCards,
     });
@@ -1307,6 +1826,7 @@ export async function syncReportToApple(params: {
       eventCardsSyncedCount: osaRes.remindersSynced ?? extracted.reminderCards.length,
       calendarName: osaRes.calendarName || undefined,
       remindersListName: osaRes.remindersListName || undefined,
+      warnings: Array.isArray(osaRes.warnings) && osaRes.warnings.length > 0 ? osaRes.warnings : undefined,
     };
   }
 
@@ -1326,6 +1846,7 @@ export async function syncReportToApple(params: {
   const calDavRes = await syncViaICloudCalDav({
     appleId: resolved.appleId,
     appPassword: resolved.appPassword,
+    providerLabel: extracted.providerLabel,
     calendarName: resolved.calendarName,
     remindersListName: resolved.remindersListName,
     watchOutEvents: extracted.watchOutEvents,
@@ -1348,9 +1869,15 @@ export async function syncReportToApple(params: {
       const remFallback = await runOsaScriptJson<{
         remindersSynced?: number;
         remindersListName?: string;
+        warnings?: string[];
       }>(JXA_SYNC_SCRIPT, {
-        calendarName: resolved.calendarName,
-        remindersListName: resolved.remindersListName,
+        providerLabel: extracted.providerLabel,
+        calendarName: targetCalendarName,
+        remindersListName: targetRemindersListName,
+        autoCreateCalendar: false,
+        autoCreateList: autoCreateProviderList,
+        providerColorHex: providerStyle?.hexColor6 || '',
+        providerColorRgb: providerStyle?.rgbFloat || null,
         watchOutEvents: [],
         reminderCards: extracted.reminderCards,
       });
@@ -1359,6 +1886,9 @@ export async function syncReportToApple(params: {
         finalRemListName = remFallback.remindersListName || finalRemListName;
         transport = 'hybrid';
         warnings = warnings.filter((w) => !w.includes('VTODO'));
+        if (Array.isArray(remFallback.warnings) && remFallback.warnings.length > 0) {
+          warnings.push(...remFallback.warnings);
+        }
       }
     } catch {
       // Keep original CalDAV warning
@@ -1374,6 +1904,214 @@ export async function syncReportToApple(params: {
     eventCardsSyncedCount: finalRemindersSynced,
     calendarName: calDavRes.calendarName,
     remindersListName: finalRemListName,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  };
+}
+
+async function unsyncViaICloudCalDav(params: {
+  appleId: string;
+  appPassword: string;
+  providerLabel: string;
+  calendarName?: string;
+  remindersListName?: string;
+  watchOutEvents: WatchOutSyncPayloadItem[];
+  reminderCards: ReminderCardSyncPayloadItem[];
+}): Promise<{
+  watchOutRemoved: number;
+  remindersRemoved: number;
+  warnings: string[];
+}> {
+  const { appleId, appPassword, watchOutEvents, reminderCards } = params;
+  const warnings: string[] = [];
+  const { calendarCollections, reminderCollections } = await discoverICloudCollections(
+    appleId,
+    appPassword,
+  );
+  const authHeader = `Basic ${Buffer.from(`${appleId}:${appPassword}`, 'utf-8').toString('base64')}`;
+
+  const providerStyle = resolveProviderCalendarStyle(params.providerLabel);
+  const explicitCalName = (params.calendarName || '').trim().toLowerCase();
+  const explicitRemName = (params.remindersListName || '').trim().toLowerCase();
+  const providerCalName = (providerStyle?.targetName || '').trim().toLowerCase();
+
+  const sortCollections = (
+    cols: CalDavCollection[],
+    primaryName: string,
+    secondaryName: string,
+  ): CalDavCollection[] => {
+    const score = (c: CalDavCollection) => {
+      const name = c.displayName.trim().toLowerCase();
+      if (primaryName && name === primaryName) return 0;
+      if (secondaryName && name === secondaryName) return 1;
+      if (['home', 'personal', 'calendar', 'work', 'reminders', 'tasks'].includes(name)) return 2;
+      return 3;
+    };
+    return [...cols].sort((a, b) => score(a) - score(b));
+  };
+
+  let watchOutRemoved = 0;
+  let remindersRemoved = 0;
+
+  if (watchOutEvents.length > 0 && calendarCollections.length > 0) {
+    const orderedCals = sortCollections(calendarCollections, explicitCalName, providerCalName);
+    for (const ev of watchOutEvents) {
+      let deletedThis = false;
+      for (const col of orderedCals) {
+        const icsUrl = `${col.url}${encodeURIComponent(ev.uid)}.ics`;
+        const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
+        if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+          watchOutRemoved += 1;
+          deletedThis = true;
+          break;
+        }
+        if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
+          warnings.push(
+            `Calendar DELETE for "${ev.summary}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
+          );
+        }
+      }
+      void deletedThis;
+    }
+  }
+
+  if (reminderCards.length > 0 && reminderCollections.length > 0) {
+    const orderedRems = sortCollections(reminderCollections, explicitRemName, providerCalName);
+    for (const card of reminderCards) {
+      for (const col of orderedRems) {
+        const icsUrl = `${col.url}${encodeURIComponent(card.uid)}.ics`;
+        const delRes = await calDavFetch(icsUrl, authHeader, { method: 'DELETE' });
+        if ((delRes.status >= 200 && delRes.status < 300) || delRes.status === 204) {
+          remindersRemoved += 1;
+          break;
+        }
+        if (delRes.status !== 404 && delRes.status !== 410 && delRes.status >= 400) {
+          warnings.push(
+            `Reminders DELETE for "${card.title}" in "${col.displayName}" returned HTTP ${delRes.status}.`,
+          );
+        }
+      }
+    }
+  }
+
+  return { watchOutRemoved, remindersRemoved, warnings };
+}
+
+export async function unsyncReportFromApple(params: {
+  record: RatedThreadRecord | null;
+  fallback?: AppleSyncFallbackPayload;
+  config?: Partial<AppleSyncConfig>;
+}): Promise<AppleUnsyncResult> {
+  const resolved = resolveEffectiveCredentials(params.config);
+  const extracted = buildSyncItemsFromReport(params.record, params.fallback);
+
+  if (extracted.watchOutEvents.length === 0 && extracted.reminderCards.length === 0) {
+    return {
+      ok: true,
+      transport: process.platform === 'darwin' ? 'macos' : 'caldav',
+      providerLabel: extracted.providerLabel,
+      reportTitle: extracted.reportTitle,
+      watchOutRemovedCount: 0,
+      eventCardsRemovedCount: 0,
+    };
+  }
+
+  const useMacOsNative =
+    resolved.mode === 'macos' ||
+    (resolved.mode === 'auto' && process.platform === 'darwin');
+
+  if (useMacOsNative) {
+    if (process.platform !== 'darwin') {
+      return {
+        ok: false,
+        transport: 'macos',
+        providerLabel: extracted.providerLabel,
+        reportTitle: extracted.reportTitle,
+        watchOutRemovedCount: 0,
+        eventCardsRemovedCount: 0,
+        error:
+          'MacBook native Calendar & Reminders unsync requires running on macOS. Configure iCloud CalDAV credentials in Settings if running from another OS.',
+      };
+    }
+
+    const osaRes = await runOsaScriptJson<{
+      watchOutRemoved?: number;
+      remindersRemoved?: number;
+      warnings?: string[];
+    }>(JXA_UNSYNC_SCRIPT, {
+      watchOutEvents: extracted.watchOutEvents,
+      reminderCards: extracted.reminderCards,
+    });
+
+    return {
+      ok: true,
+      transport: 'macos',
+      providerLabel: extracted.providerLabel,
+      reportTitle: extracted.reportTitle,
+      watchOutRemovedCount: osaRes.watchOutRemoved ?? 0,
+      eventCardsRemovedCount: osaRes.remindersRemoved ?? 0,
+      warnings: Array.isArray(osaRes.warnings) && osaRes.warnings.length > 0 ? osaRes.warnings : undefined,
+    };
+  }
+
+  if (!resolved.appleId || !resolved.appPassword) {
+    return {
+      ok: false,
+      transport: 'caldav',
+      providerLabel: extracted.providerLabel,
+      reportTitle: extracted.reportTitle,
+      watchOutRemovedCount: 0,
+      eventCardsRemovedCount: 0,
+      error:
+        'iCloud Apple ID and App-Specific Password are required in Settings -> Apple Sync (or run Node.js directly on your MacBook for native Calendar & Reminders sync).',
+    };
+  }
+
+  const calDavRes = await unsyncViaICloudCalDav({
+    appleId: resolved.appleId,
+    appPassword: resolved.appPassword,
+    providerLabel: extracted.providerLabel,
+    calendarName: resolved.calendarName,
+    remindersListName: resolved.remindersListName,
+    watchOutEvents: extracted.watchOutEvents,
+    reminderCards: extracted.reminderCards,
+  });
+
+  let finalRemindersRemoved = calDavRes.remindersRemoved;
+  const warnings = [...calDavRes.warnings];
+  let transport: AppleUnsyncResult['transport'] = 'caldav';
+
+  if (
+    process.platform === 'darwin' &&
+    extracted.reminderCards.length > 0 &&
+    calDavRes.remindersRemoved === 0
+  ) {
+    try {
+      const remFallback = await runOsaScriptJson<{
+        remindersRemoved?: number;
+        warnings?: string[];
+      }>(JXA_UNSYNC_SCRIPT, {
+        watchOutEvents: [],
+        reminderCards: extracted.reminderCards,
+      });
+      if ((remFallback.remindersRemoved ?? 0) > 0) {
+        finalRemindersRemoved = remFallback.remindersRemoved ?? 0;
+        transport = 'hybrid';
+      }
+      if (Array.isArray(remFallback.warnings) && remFallback.warnings.length > 0) {
+        warnings.push(...remFallback.warnings);
+      }
+    } catch {
+      // Keep original CalDAV state
+    }
+  }
+
+  return {
+    ok: true,
+    transport,
+    providerLabel: extracted.providerLabel,
+    reportTitle: extracted.reportTitle,
+    watchOutRemovedCount: calDavRes.watchOutRemoved,
+    eventCardsRemovedCount: finalRemindersRemoved,
     warnings: warnings.length > 0 ? warnings : undefined,
   };
 }

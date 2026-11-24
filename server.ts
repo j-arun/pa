@@ -35,6 +35,7 @@ import {
   getAppleSyncCapabilities,
   syncReportToApple,
   testAppleSyncConnection,
+  unsyncReportFromApple,
   type AppleSyncFallbackPayload,
 } from './server/appleSync.ts';
 
@@ -343,6 +344,60 @@ async function startServer() {
           err instanceof Error
             ? err.message
             : 'Unable to sync report to Apple Calendar & Reminders.',
+      });
+    }
+  });
+
+  app.post('/api/reports/:id/unsync-apple', async (req, res) => {
+    try {
+      const reportId = decodeURIComponent(req.params.id || '');
+      const { reportsDir, mode, record: clientRecord, fallback, appleSync } = (req.body || {}) as {
+        reportsDir?: string;
+        mode?: string;
+        record?: RatedThreadRecord;
+        fallback?: AppleSyncFallbackPayload;
+        appleSync?: WorkbenchSettings['appleSync'];
+      };
+      const isProductionReq = req.query.mode === 'production' || mode === 'production';
+      const layout: ReportFolderLayout = isProductionReq ? 'production' : 'dev';
+      const explicitDir = typeof reportsDir === 'string' ? reportsDir.trim() : '';
+      const targetDir = isProductionReq
+        ? resolveEffectiveProdReportsDir(explicitDir)
+        : explicitDir || readLocalConfigFile().config.reportsDir;
+
+      const diskRecord = getStoredReportById(reportId, targetDir, layout);
+      const effectiveRecord =
+        diskRecord ?? (clientRecord && Array.isArray(clientRecord.turns) ? clientRecord : null);
+
+      const storedApple = readLocalConfigFile().config.appleSync;
+      const effectiveConfig = {
+        mode: appleSync?.mode ?? storedApple?.mode ?? 'auto',
+        appleId: (appleSync?.appleId ?? storedApple?.appleId ?? '').trim(),
+        appPassword: appleSync?.clearAppPassword
+          ? ''
+          : (appleSync?.appPassword?.trim() || storedApple?.appPassword || ''),
+        calendarName: (appleSync?.calendarName ?? storedApple?.calendarName ?? '').trim(),
+        remindersListName: (
+          appleSync?.remindersListName ??
+          storedApple?.remindersListName ??
+          ''
+        ).trim(),
+      };
+
+      const result = await unsyncReportFromApple({
+        record: effectiveRecord,
+        fallback,
+        config: effectiveConfig,
+      });
+
+      return res.status(result.ok ? 200 : 400).json(result);
+    } catch (err) {
+      return res.status(502).json({
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to unsync report from Apple Calendar & Reminders.',
       });
     }
   });

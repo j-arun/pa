@@ -39,6 +39,7 @@ import { useSpeechIO } from './hooks/useSpeechIO';
 import type {
   AnyAdapterId,
   AppleSyncResult,
+  AppleUnsyncResult,
   CarefulDateItem,
   ConversationScope,
   ConversationTurn,
@@ -198,7 +199,28 @@ export default function App() {
   const [switchingMonthKey, setSwitchingMonthKey] = useState<string | null>(null);
   const [monthSwitchError, setMonthSwitchError] = useState<string | null>(null);
   const [syncingReportIds, setSyncingReportIds] = useState<Record<string, boolean>>({});
-  const [syncedReportIds, setSyncedReportIds] = useState<Record<string, boolean>>({});
+  const [unsyncingReportIds, setUnsyncingReportIds] = useState<Record<string, boolean>>({});
+  const [syncedReportIds, setSyncedReportIds] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = window.localStorage.getItem('pa_workbench_synced_reports_v1');
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, boolean>;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('pa_workbench_synced_reports_v1', JSON.stringify(syncedReportIds));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [syncedReportIds]);
   const [leftRailWidth, setLeftRailWidth] = useState<number>(() => {
     const raw = Number(window.localStorage.getItem('pa_left_rail_width'));
     return Number.isFinite(raw) && raw >= 168 && raw <= 380 ? raw : 224;
@@ -784,6 +806,12 @@ export default function App() {
         (targetRecord?.turns ?? []).map((t) => t.id).filter(Boolean),
       );
       setRatedThreads((previous) => previous.filter((item) => item.id !== recordId));
+      setSyncedReportIds((prev) => {
+        if (!prev[recordId]) return prev;
+        const next = { ...prev };
+        delete next[recordId];
+        return next;
+      });
       if (activeReportExchangeId === recordId) {
         setActiveReportExchangeId(null);
       }
@@ -1026,6 +1054,179 @@ export default function App() {
         replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 6000);
       } finally {
         setSyncingReportIds((prev) => {
+          if (!prev[targetId]) return prev;
+          const next = { ...prev };
+          delete next[targetId];
+          return next;
+        });
+      }
+    },
+    [isProductionApp, pushContextLog, ratedThreads, turns],
+  );
+
+  const handleUnsyncReportFromApple = useCallback(
+    async (recordOrId: string | RatedThreadRecord) => {
+      const targetId = typeof recordOrId === 'string' ? recordOrId : recordOrId.id;
+      if (!targetId) return;
+
+      const resolvedRecord: RatedThreadRecord | undefined =
+        typeof recordOrId !== 'string'
+          ? recordOrId
+          : ratedThreads.find((r) => r.id === targetId) ??
+            (turns.some((t) => t.id === targetId || t.exchangeId === targetId)
+              ? {
+                  id: targetId,
+                  turns,
+                  ratedAt: turns[0]?.timestamp || new Date().toISOString(),
+                }
+              : undefined);
+
+      if (!resolvedRecord) {
+        pushContextLog('error', 'Unable to locate report data for Apple unsync.');
+        return;
+      }
+
+      const qTurn = resolvedRecord.turns.find((t) => t.role === 'user');
+      const assistantTurns = resolvedRecord.turns.filter((t) => t.role === 'assistant');
+      const latestAssistant = assistantTurns[assistantTurns.length - 1];
+      const domain = qTurn?.promptDomain;
+
+      const rawAdapterId = latestAssistant?.adapterId ?? qTurn?.adapterId;
+      const rawScope = latestAssistant?.scope ?? qTurn?.scope;
+      const providerLabel =
+        rawAdapterId === 'gemini'
+          ? 'Gemini'
+          : rawAdapterId === 'fable'
+            ? 'Fable'
+            : rawAdapterId === 'claude'
+              ? 'Sonnet'
+              : rawAdapterId === 'chatgpt'
+                ? 'ChatGPT'
+                : rawAdapterId === 'ollama' || rawScope === 'private'
+                  ? 'Local'
+                  : 'Gemini';
+
+      const fallbackCarefulDates: CarefulDateItem[] = [];
+      const fallbackEventCards: EventCardItem[] = [];
+      const seenCareful = new Set<string>();
+      const seenEvents = new Set<string>();
+
+      for (const reply of assistantTurns) {
+        const storedCareful = Array.isArray(reply.carefulDates) ? reply.carefulDates : [];
+        const parsedFromMd =
+          reply.content && reply.content.trim().length > 40
+            ? parseResponseEventsAndReport(reply.content, domain)
+            : { events: [], carefulDates: [] };
+        const htmlCareful =
+          storedCareful.length === 0 && parsedFromMd.carefulDates.length === 0 && reply.htmlReport
+            ? extractCarefulDatesFromHtml(reply.htmlReport, domain)
+            : [];
+
+        const combinedCareful =
+          parsedFromMd.carefulDates.length > 0
+            ? parsedFromMd.carefulDates
+            : storedCareful.length > 0
+              ? storedCareful.map(sanitizeCarefulDateItem)
+              : htmlCareful.map(sanitizeCarefulDateItem);
+
+        for (const item of combinedCareful) {
+          const key = `${item.domain}|${item.date}|${item.note}`.toLowerCase();
+          if (seenCareful.has(key)) continue;
+          seenCareful.add(key);
+          fallbackCarefulDates.push(item);
+        }
+
+        const storedEvents = Array.isArray(reply.eventCards) ? reply.eventCards : [];
+        const combinedEvents =
+          parsedFromMd.events.length > 0
+            ? parsedFromMd.events
+            : storedEvents.map((evt, idx) => normalizeEventCardItem(evt, idx));
+
+        for (const evt of combinedEvents) {
+          const key = `${evt.title}|${evt.when || evt.dateRange || ''}`.toLowerCase();
+          if (seenEvents.has(key)) continue;
+          seenEvents.add(key);
+          fallbackEventCards.push(evt);
+        }
+      }
+
+      setUnsyncingReportIds((prev) => ({ ...prev, [targetId]: true }));
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(targetId)}/unsync-apple`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: isProductionApp ? 'production' : 'dev',
+            reportsDir: isProductionApp
+              ? settingsRef.current.prodReportsDir
+              : settingsRef.current.reportsDir,
+            record: resolvedRecord,
+            fallback: {
+              title: qTurn?.threadName,
+              providerLabel,
+              threadMonth: qTurn?.threadMonth,
+              threadYear: qTurn?.threadYear,
+              promptDomain: domain,
+              carefulDates: fallbackCarefulDates,
+              eventCards: fallbackEventCards,
+            },
+            appleSync: settingsRef.current.appleSync,
+          }),
+        });
+
+        const data = (await res.json().catch(() => null)) as AppleUnsyncResult | null;
+        if (!res.ok || !data?.ok) {
+          const errMessage =
+            data?.error ||
+            data?.warnings?.[0] ||
+            `Apple Calendar & Reminders unsync failed (HTTP ${res.status}).`;
+          pushContextLog('error', errMessage);
+          setReplyToast({
+            title: 'Apple unsync failed',
+            preview: errMessage,
+            isError: true,
+          });
+          if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+          replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 6000);
+          return;
+        }
+
+        setSyncedReportIds((prev) => {
+          if (!prev[targetId]) return prev;
+          const next = { ...prev };
+          delete next[targetId];
+          return next;
+        });
+
+        const totalRemoved =
+          (data.watchOutRemovedCount || 0) + (data.eventCardsRemovedCount || 0);
+        const summaryLine =
+          totalRemoved > 0
+            ? `Removed ${data.watchOutRemovedCount} Calendar & ${data.eventCardsRemovedCount} Reminders (${data.providerLabel || providerLabel})`
+            : `No matching Calendar or Reminders entries found on Mac/iPhone (${data.providerLabel || providerLabel})`;
+        pushContextLog('info', summaryLine);
+        setReplyToast({
+          title: 'Unsynced from Apple Calendar & Reminders',
+          preview: summaryLine,
+          isError: false,
+        });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 5000);
+      } catch (err) {
+        const errMessage =
+          err instanceof Error
+            ? err.message
+            : 'Unable to reach Apple Calendar & Reminders unsync API.';
+        pushContextLog('error', errMessage);
+        setReplyToast({
+          title: 'Apple unsync failed',
+          preview: errMessage,
+          isError: true,
+        });
+        if (replyToastTimerRef.current) window.clearTimeout(replyToastTimerRef.current);
+        replyToastTimerRef.current = window.setTimeout(() => setReplyToast(null), 6000);
+      } finally {
+        setUnsyncingReportIds((prev) => {
           if (!prev[targetId]) return prev;
           const next = { ...prev };
           delete next[targetId];
@@ -2973,6 +3174,27 @@ export default function App() {
                 rawReportMarkdown={productionStageData.latestReplyTurn?.content}
                 carefulDatesCount={activeCarefulDates.length}
                 onOpenWatchOut={() => setIsContextRailOpen(true)}
+                canSyncToApple={
+                  !productionStageData.isWaitingForReply &&
+                  !productionStageData.errorDetail &&
+                  Boolean(activeProductionReportId) &&
+                  (productionStageData.cards.length > 0 || activeCarefulDates.length > 0)
+                }
+                isSynced={Boolean(activeProductionReportId && syncedReportIds[activeProductionReportId])}
+                isSyncing={Boolean(activeProductionReportId && syncingReportIds[activeProductionReportId])}
+                isUnsyncing={Boolean(
+                  activeProductionReportId && unsyncingReportIds[activeProductionReportId],
+                )}
+                onSyncToApple={() => {
+                  if (activeProductionReportId) {
+                    void handleSyncReportToApple(activeProductionReportId);
+                  }
+                }}
+                onUnsyncFromApple={() => {
+                  if (activeProductionReportId) {
+                    void handleUnsyncReportFromApple(activeProductionReportId);
+                  }
+                }}
               />
             )
           ) : isSettingsOpen ? (
@@ -3114,10 +3336,7 @@ export default function App() {
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
                 isDarkTheme={isProdDarkTheme}
-                syncingReportIds={syncingReportIds}
-                syncedReportIds={syncedReportIds}
                 onSelectReport={handleOpenProductionReport}
-                onSyncReport={(record) => void handleSyncReportToApple(record)}
                 onDeleteReport={handleDeleteSidebarReport}
                 onClose={() => setIsProdReportsMenuOpen(false)}
               />
@@ -3181,7 +3400,11 @@ export default function App() {
                 className="w-2 h-2 rounded-full shrink-0 bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.75)]"
                 aria-hidden="true"
               />
-              <span className="truncate font-medium text-xs">
+              <span
+                className={`truncate font-mono text-[11px] font-semibold ${
+                  isProdDarkTheme ? 'text-yellow-400' : 'text-yellow-600'
+                }`}
+              >
                 {settings.publicLlm.activeAdapter === 'fable' ? 'Fable' : 'Gemini'}
               </span>
               <div

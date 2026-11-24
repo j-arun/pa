@@ -239,6 +239,17 @@ export interface AppleSyncResult {
   error?: string;
 }
 
+export interface AppleUnsyncResult {
+  ok: boolean;
+  transport: 'macos' | 'caldav' | 'hybrid';
+  providerLabel: string;
+  reportTitle: string;
+  watchOutRemovedCount: number;
+  eventCardsRemovedCount: number;
+  warnings?: string[];
+  error?: string;
+}
+
 export interface WorkbenchSettings {
   theme: ThemeMode;
   prodTheme?: 'light' | 'dark';

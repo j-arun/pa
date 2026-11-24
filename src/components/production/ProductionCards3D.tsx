@@ -1,11 +1,15 @@
 import {
   Briefcase,
+  CalendarPlus,
+  CalendarX2,
+  Check,
   ChevronLeft,
   ChevronRight,
   Coins,
   FileText,
   Heart,
   Home,
+  Loader2,
   MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
@@ -53,6 +57,12 @@ interface ProductionCards3DProps {
   rawReportMarkdown?: string;
   carefulDatesCount?: number;
   onOpenWatchOut?: () => void;
+  canSyncToApple?: boolean;
+  isSynced?: boolean;
+  isSyncing?: boolean;
+  isUnsyncing?: boolean;
+  onSyncToApple?: () => void;
+  onUnsyncFromApple?: () => void;
 }
 
 const CARD_FLIP_DURATION_SEC = 60;
@@ -732,6 +742,12 @@ export function ProductionCards3D({
   rawReportMarkdown,
   carefulDatesCount = 0,
   onOpenWatchOut,
+  canSyncToApple = false,
+  isSynced = false,
+  isSyncing = false,
+  isUnsyncing = false,
+  onSyncToApple,
+  onUnsyncFromApple,
 }: ProductionCards3DProps) {
   const waitingCanvasRef = useRef<HTMLDivElement | null>(null);
   const followUpInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1938,17 +1954,94 @@ export function ProductionCards3D({
               </div>
             )}
 
-            {/* Bottom Control Strip: + New Thread (Left) · Dots (Center) · Ask for Follow-up + Arrow Box (Right) */}
-            <div className="flex items-center justify-between gap-3 pt-0.5">
-              <button
-                type="button"
-                onClick={handleNewThreadClick}
-                title="Start New Thread"
-                className="pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold hover:brightness-110 transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span>New Thread</span>
-              </button>
+            {/* Bottom Control Strip: + New Thread & Sync/Unsync (Left) · Dots (Center) · Ask for Follow-up + Arrow Box (Right) */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-0.5">
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleNewThreadClick}
+                  title="Start New Thread"
+                  className="pa-glass-pill inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold hover:brightness-110 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>New Thread</span>
+                </button>
+
+                {canSyncToApple && onSyncToApple && onUnsyncFromApple && (
+                  <div
+                    role="group"
+                    aria-label="Apple Calendar and Reminders Sync"
+                    className="pa-glass-pill inline-flex items-center p-0.5 rounded-xl gap-0.5 shrink-0"
+                  >
+                    <button
+                      type="button"
+                      disabled={isSyncing || isUnsyncing}
+                      aria-pressed={isSynced}
+                      onClick={onSyncToApple}
+                      title={
+                        isSyncing
+                          ? 'Syncing WatchOut dates & Event Cards to Apple Calendar & Reminders…'
+                          : isSynced
+                            ? 'Synced to Mac & iPhone (click to re-sync)'
+                            : 'Sync WatchOut dates to Calendar & Event Cards to Reminders'
+                      }
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                        isSyncing || isUnsyncing ? 'cursor-wait opacity-75' : 'cursor-pointer'
+                      } ${
+                        isSynced
+                          ? isDarkTheme
+                            ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/50 shadow-2xs'
+                            : 'bg-emerald-500/15 text-emerald-800 border border-emerald-500/40 shadow-2xs'
+                          : isDarkTheme
+                            ? 'text-slate-100 hover:bg-white/10'
+                            : 'text-slate-800 hover:bg-white/75'
+                      }`}
+                    >
+                      {isSyncing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400 shrink-0" />
+                      ) : isSynced ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      ) : (
+                        <CalendarPlus
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isDarkTheme ? 'text-sky-300' : 'text-sky-600'
+                          }`}
+                        />
+                      )}
+                      <span>{isSyncing ? 'Syncing…' : isSynced ? 'Synced' : 'Sync'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSyncing || isUnsyncing}
+                      onClick={onUnsyncFromApple}
+                      title={
+                        isUnsyncing
+                          ? 'Removing from Apple Calendar & Reminders…'
+                          : 'Unsync (remove this report’s events & reminders completely from Mac & iPhone)'
+                      }
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
+                        isSyncing || isUnsyncing ? 'cursor-wait opacity-75' : 'cursor-pointer'
+                      } ${
+                        isDarkTheme
+                          ? 'text-slate-200 hover:text-rose-200 hover:bg-rose-500/20'
+                          : 'text-slate-700 hover:text-rose-700 hover:bg-rose-500/12'
+                      }`}
+                    >
+                      {isUnsyncing ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400 shrink-0" />
+                      ) : (
+                        <CalendarX2
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isDarkTheme ? 'text-rose-300' : 'text-rose-600'
+                          }`}
+                        />
+                      )}
+                      <span>{isUnsyncing ? 'Unsyncing…' : 'Unsync'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {totalPages > 1 && (
                 <div className="hidden sm:flex items-center gap-1.5">
