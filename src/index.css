@@ -318,59 +318,59 @@
 
   .pa-glass-card {
     background:
-      linear-gradient(132deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0.18) 34%, transparent 62%),
-      radial-gradient(130% 100% at 88% 8%, rgba(251, 191, 146, 0.18), transparent 54%),
-      linear-gradient(158deg, rgba(255, 255, 255, 0.72) 0%, rgba(241, 248, 255, 0.56) 54%, rgba(226, 240, 254, 0.62) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.92);
+      linear-gradient(132deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0.10) 38%, transparent 66%),
+      radial-gradient(130% 100% at 88% 8%, rgba(251, 191, 146, 0.12), transparent 56%),
+      linear-gradient(158deg, rgba(255, 255, 255, 0.34) 0%, rgba(241, 248, 255, 0.24) 54%, rgba(226, 240, 254, 0.28) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.72);
     box-shadow:
-      0 26px 60px -18px rgba(15, 23, 42, 0.18),
-      0 10px 28px -8px rgba(56, 189, 248, 0.16),
-      inset 0 1.5px 0 rgba(255, 255, 255, 0.98),
-      inset 1px 0 0 rgba(255, 255, 255, 0.75),
-      inset 0 -1.5px 0 rgba(148, 197, 244, 0.36);
-    backdrop-filter: blur(32px) saturate(1.36);
-    -webkit-backdrop-filter: blur(32px) saturate(1.36);
+      0 24px 56px -18px rgba(15, 23, 42, 0.14),
+      0 10px 26px -8px rgba(56, 189, 248, 0.14),
+      inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+      inset 1px 0 0 rgba(255, 255, 255, 0.55),
+      inset 0 -1.5px 0 rgba(148, 197, 244, 0.26);
+    backdrop-filter: blur(26px) saturate(1.38);
+    -webkit-backdrop-filter: blur(26px) saturate(1.38);
     color: #0f172a;
   }
 
   [data-pa-theme="dark"] .pa-glass-card,
   .dark .pa-glass-card {
     background:
-      linear-gradient(132deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.04) 30%, transparent 58%),
-      radial-gradient(125% 95% at 88% 8%, rgba(226, 148, 118, 0.18), transparent 54%),
-      radial-gradient(110% 90% at 12% 10%, rgba(96, 165, 250, 0.16), transparent 56%),
-      linear-gradient(158deg, rgba(46, 60, 92, 0.48) 0%, rgba(26, 36, 58, 0.56) 55%, rgba(16, 23, 40, 0.68) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.22);
+      linear-gradient(132deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 62%),
+      radial-gradient(125% 95% at 88% 8%, rgba(226, 148, 118, 0.11), transparent 56%),
+      radial-gradient(110% 90% at 12% 10%, rgba(96, 165, 250, 0.11), transparent 58%),
+      linear-gradient(158deg, rgba(30, 41, 59, 0.28) 0%, rgba(17, 25, 44, 0.32) 55%, rgba(10, 16, 30, 0.40) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     box-shadow:
-      0 28px 66px -16px rgba(2, 6, 23, 0.80),
-      0 10px 28px -8px rgba(56, 189, 248, 0.14),
-      inset 0 1.5px 0 rgba(255, 255, 255, 0.30),
-      inset 1px 0 0 rgba(255, 255, 255, 0.16),
-      inset 0 -1px 0 rgba(125, 211, 252, 0.10);
-    backdrop-filter: blur(34px) saturate(1.42);
-    -webkit-backdrop-filter: blur(34px) saturate(1.42);
+      0 26px 62px -18px rgba(2, 6, 23, 0.64),
+      0 10px 26px -8px rgba(56, 189, 248, 0.12),
+      inset 0 1.5px 0 rgba(255, 255, 255, 0.24),
+      inset 1px 0 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 0 rgba(125, 211, 252, 0.08);
+    backdrop-filter: blur(26px) saturate(1.42);
+    -webkit-backdrop-filter: blur(26px) saturate(1.42);
     color: #f8fafc;
   }
 
   .pa-glass-subwell {
-    background: linear-gradient(160deg, rgba(255, 255, 255, 0.54) 0%, rgba(238, 246, 255, 0.38) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.78);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.24) 0%, rgba(238, 246, 255, 0.14) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.52);
     box-shadow:
-      inset 0 1px 2px rgba(255, 255, 255, 0.86),
-      0 4px 14px -8px rgba(15, 23, 42, 0.08);
-    backdrop-filter: blur(18px) saturate(1.22);
-    -webkit-backdrop-filter: blur(18px) saturate(1.22);
+      inset 0 1px 2px rgba(255, 255, 255, 0.62),
+      0 4px 14px -8px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(14px) saturate(1.22);
+    -webkit-backdrop-filter: blur(14px) saturate(1.22);
   }
 
   [data-pa-theme="dark"] .pa-glass-subwell,
   .dark .pa-glass-subwell {
-    background: linear-gradient(160deg, rgba(16, 25, 45, 0.46) 0%, rgba(9, 15, 30, 0.54) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.13);
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.20) 0%, rgba(9, 15, 30, 0.26) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow:
-      inset 0 1px 2px rgba(255, 255, 255, 0.09),
-      inset 0 -2px 6px rgba(2, 6, 23, 0.36);
-    backdrop-filter: blur(18px) saturate(1.25);
-    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+      inset 0 1px 2px rgba(255, 255, 255, 0.07),
+      inset 0 -2px 6px rgba(2, 6, 23, 0.22);
+    backdrop-filter: blur(14px) saturate(1.25);
+    -webkit-backdrop-filter: blur(14px) saturate(1.25);
   }
 
   .pa-glass-pill {
@@ -430,28 +430,30 @@
 }
 
 .fluent-event-card {
-  background: linear-gradient(168deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.96) 60%, rgba(241, 245, 249, 0.93) 100%);
-  border: 1px solid rgba(226, 232, 240, 0.92);
+  background: linear-gradient(168deg, rgba(255, 255, 255, 0.62) 0%, rgba(248, 250, 252, 0.48) 60%, rgba(241, 245, 249, 0.42) 100%);
+  border: 1px solid rgba(226, 232, 240, 0.75);
   box-shadow:
     0 12px 26px -14px rgba(15, 23, 42, 0.11),
     0 4px 12px -6px var(--pa-bubble-glow),
     0 1.5px 3px -1px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -2px 5px rgba(148, 163, 184, 0.10);
-  backdrop-filter: blur(16px) saturate(1.1);
-  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 5px rgba(148, 163, 184, 0.08);
+  backdrop-filter: blur(22px) saturate(1.22);
+  -webkit-backdrop-filter: blur(22px) saturate(1.22);
   transition: box-shadow 220ms ease, border-color 220ms ease, transform 220ms ease;
 }
 
 .dark .fluent-event-card {
-  background: linear-gradient(168deg, rgba(30, 41, 59, 0.92) 0%, rgba(15, 23, 42, 0.95) 60%, rgba(9, 17, 34, 0.96) 100%);
-  border: 1px solid rgba(100, 116, 139, 0.36);
+  background: linear-gradient(168deg, rgba(30, 41, 59, 0.44) 0%, rgba(15, 23, 42, 0.50) 60%, rgba(9, 17, 34, 0.56) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.24);
   box-shadow:
-    0 14px 28px -14px rgba(2, 6, 23, 0.72),
+    0 14px 28px -14px rgba(2, 6, 23, 0.64),
     0 5px 14px -6px var(--pa-bubble-glow),
-    0 2px 4px -1px rgba(2, 6, 23, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -2px 6px rgba(2, 6, 23, 0.48);
+    0 2px 4px -1px rgba(2, 6, 23, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -2px 6px rgba(2, 6, 23, 0.42);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
 }
 
 .fluent-event-card:hover {
@@ -459,17 +461,17 @@
   box-shadow:
     0 16px 32px -14px var(--pa-bubble-glow),
     0 6px 14px -6px rgba(15, 23, 42, 0.09),
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -2px 5px rgba(148, 163, 184, 0.14);
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -2px 5px rgba(148, 163, 184, 0.12);
 }
 
 .dark .fluent-event-card:hover {
   border-color: var(--pa-bubble-rim);
   box-shadow:
     0 18px 34px -14px var(--pa-bubble-glow),
-    0 6px 16px -6px rgba(2, 6, 23, 0.68),
-    inset 0 1px 0 rgba(255, 255, 255, 0.20),
-    inset 0 -2px 6px rgba(2, 6, 23, 0.54);
+    0 6px 16px -6px rgba(2, 6, 23, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -2px 6px rgba(2, 6, 23, 0.48);
 }
 
 @keyframes paFlashGlimmerSweep {

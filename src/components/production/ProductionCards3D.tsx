@@ -195,80 +195,68 @@ function Stage2ProviderIcon({
   );
 }
 
-function Glossy3DDomainEmblem({
+function BlurredDomainWatermark({
   domain,
-  size = 'md',
+  isDarkTheme,
 }: {
   domain: PromptDomain;
-  size?: 'sm' | 'md';
+  isDarkTheme: boolean;
 }) {
-  const dim = size === 'sm' ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl';
-  const iconCls = size === 'sm' ? 'w-5 h-5' : 'w-6 h-6';
-
-  const palette =
+  const colorClass =
     domain === 'astrology'
-      ? {
-          bg: 'linear-gradient(145deg, #fde68a 0%, #f59e0b 48%, #b45309 100%)',
-          glow: 'rgba(245, 158, 11, 0.36)',
-          ring: 'rgba(254, 243, 199, 0.55)',
-        }
-      : domain === 'general'
-        ? {
-            bg: 'linear-gradient(145deg, #fecdd3 0%, #fb7185 48%, #be123c 100%)',
-            glow: 'rgba(244, 63, 94, 0.34)',
-            ring: 'rgba(255, 228, 230, 0.55)',
-          }
-        : domain === 'family'
-          ? {
-              bg: 'linear-gradient(145deg, #a7f3d0 0%, #10b981 50%, #047857 100%)',
-              glow: 'rgba(16, 185, 129, 0.34)',
-              ring: 'rgba(209, 250, 229, 0.55)',
-            }
-          : domain === 'finance'
-            ? {
-                bg: 'linear-gradient(145deg, #fef08a 0%, #eab308 50%, #a16207 100%)',
-                glow: 'rgba(234, 179, 8, 0.36)',
-                ring: 'rgba(254, 249, 195, 0.55)',
-              }
+      ? isDarkTheme
+        ? 'text-sky-300/30'
+        : 'text-sky-600/22'
+      : domain === 'family'
+        ? isDarkTheme
+          ? 'text-emerald-300/30'
+          : 'text-emerald-600/22'
+        : domain === 'finance'
+          ? isDarkTheme
+            ? 'text-amber-300/30'
+            : 'text-amber-600/22'
+          : domain === 'general'
+            ? isDarkTheme
+              ? 'text-rose-300/30'
+              : 'text-rose-600/22'
             : domain === 'litigation'
-              ? {
-                  bg: 'linear-gradient(145deg, #fed7aa 0%, #f97316 50%, #c2410c 100%)',
-                  glow: 'rgba(249, 115, 22, 0.36)',
-                  ring: 'rgba(255, 237, 213, 0.55)',
-                }
-              : {
-                  bg: 'linear-gradient(145deg, #ddd6fe 0%, #8b5cf6 50%, #5b21b6 100%)',
-                  glow: 'rgba(139, 92, 246, 0.34)',
-                  ring: 'rgba(237, 233, 254, 0.55)',
-                };
+              ? isDarkTheme
+                ? 'text-orange-300/30'
+                : 'text-orange-600/22'
+              : isDarkTheme
+                ? 'text-violet-300/30'
+                : 'text-violet-600/22';
+
+  const glowColor = WAITING_DOMAIN_META[domain].accentHex;
 
   return (
-    <span
-      className={`relative inline-flex ${dim} items-center justify-center shrink-0 select-none`}
-      style={{
-        background: palette.bg,
-        border: `1px solid ${palette.ring}`,
-        boxShadow: `0 10px 22px -6px ${palette.glow}, inset 0 2px 4px rgba(255,255,255,0.65), inset 0 -4px 8px rgba(0,0,0,0.22)`,
-      }}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none select-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden"
     >
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-1.5 top-0.5 h-2 rounded-full bg-white/35 blur-[0.5px]"
-      />
-      {domain === 'astrology' ? (
-        <Briefcase className={`${iconCls} text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.2} />
-      ) : domain === 'general' ? (
-        <Heart className={`${iconCls} text-white fill-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.1} />
-      ) : domain === 'family' ? (
-        <Home className={`${iconCls} text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.2} />
-      ) : domain === 'finance' ? (
-        <Coins className={`${iconCls} text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.2} />
-      ) : domain === 'litigation' ? (
-        <Scale className={`${iconCls} text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.2} />
-      ) : (
-        <ShieldPlus className={`${iconCls} text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]`} strokeWidth={2.2} />
-      )}
-    </span>
+      <div
+        className="relative flex items-center justify-center"
+        style={{ filter: 'blur(2.5px)' }}
+      >
+        <span
+          className="absolute w-28 h-28 rounded-full opacity-25 blur-2xl"
+          style={{ backgroundColor: glowColor }}
+        />
+        {domain === 'astrology' ? (
+          <Briefcase className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        ) : domain === 'general' ? (
+          <Heart className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        ) : domain === 'family' ? (
+          <Home className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        ) : domain === 'finance' ? (
+          <Coins className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        ) : domain === 'litigation' ? (
+          <Scale className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        ) : (
+          <ShieldPlus className={`w-24 h-24 sm:w-28 sm:h-28 ${colorClass}`} strokeWidth={1.6} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1401,29 +1389,41 @@ export function ProductionCards3D({
         <div className="relative z-10 flex-1 min-h-0 flex flex-col justify-between max-w-[1360px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-3.5 pb-3.5 gap-3.5 overflow-y-auto fluent-scroll">
           {/* TOP HALF: Answer Only (Left) + Smaller Timeline-Only Widget (Top-Right Parallel) */}
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.65fr)_minmax(275px,315px)] gap-3.5 items-stretch min-h-0">
-            {/* Top-Left: Answer Window (Answer Alone) */}
+            {/* Top-Left: Answer Window (Question in Header Bar + Transparent Answer Body) */}
             <section
               aria-label="Answer"
-              className="pa-glass-card rounded-[26px] p-4 sm:p-5 flex flex-col min-h-[180px] lg:min-h-[218px]"
+              className="pa-glass-card relative overflow-hidden rounded-[26px] p-4 sm:p-5 flex flex-col min-h-[180px] lg:min-h-[218px]"
             >
-              <div className="flex items-center justify-between gap-3 mb-2.5 shrink-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <MessageSquare
-                    className={`w-4 h-4 shrink-0 ${
-                      isDarkTheme ? 'text-sky-300' : 'text-sky-600'
-                    }`}
-                  />
-                  <h2
-                    className={`font-sans text-xs font-bold uppercase tracking-wider ${
-                      isDarkTheme ? 'text-sky-300' : 'text-sky-700'
-                    }`}
-                  >
-                    Answer
-                  </h2>
-                  <Stage2ProviderIcon
-                    provider={providerAdapter}
-                    isDarkTheme={isDarkTheme}
-                  />
+              <div className="flex items-start justify-between gap-3 mb-2.5 shrink-0">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MessageSquare
+                      className={`w-4 h-4 shrink-0 ${
+                        isDarkTheme ? 'text-sky-300' : 'text-sky-600'
+                      }`}
+                    />
+                    <h2
+                      className={`font-sans text-xs font-bold uppercase tracking-wider shrink-0 ${
+                        isDarkTheme ? 'text-sky-300' : 'text-sky-700'
+                      }`}
+                    >
+                      Answer
+                    </h2>
+                    <Stage2ProviderIcon
+                      provider={providerAdapter}
+                      isDarkTheme={isDarkTheme}
+                    />
+                  </div>
+                  {questionText?.trim() && (
+                    <p
+                      title={questionText.trim()}
+                      className={`text-xs sm:text-[13px] font-medium leading-snug line-clamp-2 break-words ${
+                        isDarkTheme ? 'text-sky-100/90' : 'text-slate-800'
+                      }`}
+                    >
+                      {questionText.trim()}
+                    </p>
+                  )}
                 </div>
 
                 {isSpeakerEnabled && Boolean(answerText || summaryText) && (
@@ -1773,6 +1773,12 @@ export function ProductionCards3D({
                       const ringOffset =
                         circumference * (1 - secondsLeft / CARD_FLIP_DURATION_SEC);
 
+                      const contentText = (card.how || card.summary || '').trim();
+                      const rawRatingLabel = (card.probability || card.likelihood || '')
+                        .replace(/\b\d{1,3}\s*%/g, '')
+                        .replace(/^[\s·|/-]+|[\s·|/-]+$/g, '')
+                        .trim();
+
                       return (
                         <motion.div
                           key={card.id}
@@ -1781,13 +1787,13 @@ export function ProductionCards3D({
                           animate={{ opacity: 1, x: 0, scale: 1 }}
                           exit={{ opacity: 0, x: -24, scale: 0.97 }}
                           transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-                          className="pa-flip-scene h-[178px] sm:h-[192px]"
+                          className="pa-flip-scene h-[204px] sm:h-[218px]"
                         >
                           <div
                             className="pa-flip-inner"
                             data-flipped={isFlipped ? 'true' : 'false'}
                           >
-                            {/* FRONT FACE: Domain Symbol + % + Full Event Name & Timing + '>' Chevron */}
+                            {/* FRONT FACE: Blurred Domain Watermark + Points on Top + Weather-Style Centered % + Content & Timeline + Right Arrow Flip */}
                             <div
                               role="button"
                               tabIndex={0}
@@ -1799,50 +1805,80 @@ export function ProductionCards3D({
                                 }
                               }}
                               aria-label={`${card.title}, ${pct}%. Click to view how it will happen.`}
-                              className="pa-flip-face pa-glass-card rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between gap-2 cursor-pointer group hover:border-sky-400/65 transition-all text-left"
+                              className="pa-flip-face pa-glass-card relative overflow-hidden rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between gap-1.5 cursor-pointer group hover:border-sky-400/65 transition-all text-left"
                             >
-                              <div className="flex items-center justify-between gap-2 shrink-0">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <Glossy3DDomainEmblem domain={effectiveDomain} size="sm" />
-                                  <span
-                                    className={`font-display text-3xl sm:text-[32px] font-light tracking-tight leading-none tabular-nums ${
-                                      isDarkTheme ? 'text-white' : 'text-slate-900'
-                                    }`}
-                                  >
-                                    {pct}%
-                                  </span>
-                                </div>
-                                <span
-                                  aria-hidden="true"
-                                  className={`pa-glass-pill inline-flex h-7 w-7 items-center justify-center rounded-xl transition-transform duration-200 group-hover:translate-x-0.5 shrink-0 ${
-                                    isDarkTheme ? 'text-slate-200' : 'text-slate-700'
-                                  }`}
-                                >
-                                  <ChevronRight className="w-4 h-4" />
-                                </span>
-                              </div>
+                              <BlurredDomainWatermark
+                                domain={effectiveDomain}
+                                isDarkTheme={isDarkTheme}
+                              />
 
-                              <div className="pa-glass-subwell rounded-2xl px-3.5 py-2.5 flex-1 min-h-0 overflow-y-auto fluent-scroll flex flex-col justify-center gap-1">
+                              <span
+                                aria-hidden="true"
+                                className={`pa-glass-pill absolute right-3.5 top-3.5 z-20 inline-flex h-7 w-7 items-center justify-center rounded-xl transition-transform duration-200 group-hover:translate-x-0.5 ${
+                                  isDarkTheme ? 'text-slate-200' : 'text-slate-700'
+                                }`}
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </span>
+
+                              {/* Top Points overlaid cleanly on top of blurred domain icon */}
+                              <div className="relative z-10 pr-9 shrink-0">
                                 <h3
-                                  className={`font-display text-[13.5px] sm:text-[14px] font-bold leading-snug break-words ${
+                                  className={`font-display text-[13px] sm:text-[13.5px] font-bold leading-snug line-clamp-2 break-words ${
                                     isDarkTheme ? 'text-white' : 'text-slate-900'
                                   }`}
                                 >
                                   {card.title}
                                 </h3>
-                                {fullWhenText && (
+                              </div>
+
+                              {/* Middle: Weather-Card Style Percentage */}
+                              <div className="relative z-10 flex items-center justify-center py-0.5 shrink-0">
+                                <span
+                                  className={`font-display text-4xl sm:text-[42px] font-light tracking-tight leading-none tabular-nums ${
+                                    isDarkTheme
+                                      ? 'text-white drop-shadow-[0_2px_12px_rgba(56,189,248,0.22)]'
+                                      : 'text-slate-900'
+                                  }`}
+                                >
+                                  {pct}%
+                                </span>
+                              </div>
+
+                              {/* Rest of the portion: Content + Timeline & Rating */}
+                              <div className="relative z-10 min-h-0 flex flex-col justify-end gap-1">
+                                {contentText && (
                                   <p
-                                    className={`text-xs leading-snug break-words ${
-                                      isDarkTheme ? 'text-slate-200/85' : 'text-slate-600'
+                                    className={`text-[11px] leading-snug line-clamp-2 break-words ${
+                                      isDarkTheme ? 'text-slate-200/90' : 'text-slate-700'
                                     }`}
                                   >
-                                    {fullWhenText}
+                                    {contentText}
                                   </p>
+                                )}
+                                {(fullWhenText || rawRatingLabel) && (
+                                  <div
+                                    className={`flex items-center gap-1.5 text-[11px] font-medium tabular-nums truncate ${
+                                      isDarkTheme ? 'text-sky-200/90' : 'text-sky-800'
+                                    }`}
+                                  >
+                                    {fullWhenText && (
+                                      <span className="truncate">{fullWhenText}</span>
+                                    )}
+                                    {fullWhenText && rawRatingLabel && (
+                                      <span aria-hidden="true" className="opacity-60 shrink-0">
+                                        ·
+                                      </span>
+                                    )}
+                                    {rawRatingLabel && (
+                                      <span className="truncate opacity-85">{rawRatingLabel}</span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>
 
-                            {/* BACK FACE: "How it will happen" + 60s Auto-Flip Ring (NO Close / NO Ask Follow-up) */}
+                            {/* BACK FACE: Transparent Theme Glass + Blurred Domain Watermark + "How it will happen" + 60s Auto-Flip Ring */}
                             <div
                               role="button"
                               tabIndex={0}
@@ -1854,9 +1890,14 @@ export function ProductionCards3D({
                                 }
                               }}
                               aria-label={`${card.title} explanation. Automatically flips back in ${secondsLeft} seconds.`}
-                              className="pa-flip-face pa-flip-back pa-glass-card rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between cursor-pointer text-left"
+                              className="pa-flip-face pa-flip-back pa-glass-card relative overflow-hidden rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between cursor-pointer text-left"
                             >
-                              <div className="flex items-start justify-between gap-2 shrink-0 mb-1.5">
+                              <BlurredDomainWatermark
+                                domain={effectiveDomain}
+                                isDarkTheme={isDarkTheme}
+                              />
+
+                              <div className="relative z-10 flex items-start justify-between gap-2 shrink-0 mb-1.5">
                                 <div className="min-w-0 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                                   <span
                                     className={`text-xs font-bold leading-snug break-words ${
@@ -1910,7 +1951,7 @@ export function ProductionCards3D({
                               </div>
 
                               <div
-                                className="pa-glass-subwell rounded-2xl px-3.5 py-2.5 flex-1 min-h-0 overflow-y-auto fluent-scroll select-text"
+                                className="relative z-10 flex-1 min-h-0 overflow-y-auto fluent-scroll select-text pr-1"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div
