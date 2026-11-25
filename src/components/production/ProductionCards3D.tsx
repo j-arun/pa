@@ -6,25 +6,22 @@ import {
   ChevronLeft,
   ChevronRight,
   Coins,
-  FileText,
   Heart,
   Home,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
-  MoreHorizontal,
   Pause,
   Plus,
   RotateCcw,
   Scale,
   Send,
-  ShieldAlert,
   ShieldPlus,
   Sparkles,
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { EventCardItem, PromptDomain } from '../../types/workbench';
@@ -54,9 +51,6 @@ interface ProductionCards3DProps {
   onCancelRequest: () => void;
   onRetry: () => void;
   onStartNewThread: () => void;
-  rawReportMarkdown?: string;
-  carefulDatesCount?: number;
-  onOpenWatchOut?: () => void;
   canSyncToApple?: boolean;
   isSynced?: boolean;
   isSyncing?: boolean;
@@ -590,125 +584,6 @@ function WindowsSpeakerIcon({
   );
 }
 
-function renderInlineBold(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, idx) => {
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return (
-        <strong key={idx} className="font-semibold">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-    return <Fragment key={idx}>{part}</Fragment>;
-  });
-}
-
-function CleanMarkdownReader({
-  markdown,
-  isDarkTheme,
-}: {
-  markdown: string;
-  isDarkTheme: boolean;
-}) {
-  const cleaned = useMemo(
-    () =>
-      markdown
-        .replace(/<pa_events>[\s\S]*?<\/pa_events>/gi, '')
-        .replace(/<pa_caution_dates>[\s\S]*?<\/pa_caution_dates>/gi, '')
-        .trim(),
-    [markdown],
-  );
-
-  const blocks = useMemo(() => cleaned.split(/\n{2,}/), [cleaned]);
-
-  if (!cleaned) {
-    return (
-      <p className={`text-sm ${isDarkTheme ? 'text-slate-300' : 'text-slate-600'}`}>
-        Full report narrative is not available for this entry.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {blocks.map((block, bIdx) => {
-        const lines = block
-          .split('\n')
-          .map((l) => l.trimEnd())
-          .filter(Boolean);
-        if (lines.length === 0) return null;
-
-        if (lines.length === 1 && /^#{1,3}\s+/.test(lines[0])) {
-          const level = lines[0].match(/^(#{1,3})/)?.[1].length ?? 2;
-          const headingText = lines[0].replace(/^#{1,3}\s+/, '').trim();
-          return (
-            <h3
-              key={bIdx}
-              className={`font-display font-bold tracking-tight ${
-                level === 1
-                  ? 'text-lg'
-                  : level === 2
-                    ? 'text-base pt-1'
-                    : 'text-sm'
-              } ${isDarkTheme ? 'text-white' : 'text-slate-900'}`}
-            >
-              {renderInlineBold(headingText)}
-            </h3>
-          );
-        }
-
-        const isList = lines.every((l) => /^([-*]|\d+\.)\s+/.test(l.trim()));
-        if (isList) {
-          return (
-            <ul
-              key={bIdx}
-              className={`space-y-1.5 pl-4 list-disc text-xs sm:text-[13.5px] leading-relaxed ${
-                isDarkTheme ? 'text-slate-200' : 'text-slate-700'
-              }`}
-            >
-              {lines.map((line, lIdx) => (
-                <li key={lIdx}>
-                  {renderInlineBold(line.trim().replace(/^([-*]|\d+\.)\s+/, ''))}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-
-        return (
-          <div key={bIdx} className="space-y-1.5">
-            {lines.map((line, lIdx) => {
-              if (/^#{1,4}\s+/.test(line.trim())) {
-                return (
-                  <h4
-                    key={lIdx}
-                    className={`font-display text-sm font-bold pt-1 ${
-                      isDarkTheme ? 'text-white' : 'text-slate-900'
-                    }`}
-                  >
-                    {renderInlineBold(line.trim().replace(/^#{1,4}\s+/, ''))}
-                  </h4>
-                );
-              }
-              return (
-                <p
-                  key={lIdx}
-                  className={`text-xs sm:text-[13.5px] leading-relaxed ${
-                    isDarkTheme ? 'text-slate-200/95' : 'text-slate-700'
-                  }`}
-                >
-                  {renderInlineBold(line)}
-                </p>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function ProductionCards3D({
   cards,
   readOutSections,
@@ -727,9 +602,6 @@ export function ProductionCards3D({
   onCancelRequest,
   onRetry,
   onStartNewThread,
-  rawReportMarkdown,
-  carefulDatesCount = 0,
-  onOpenWatchOut,
   canSyncToApple = false,
   isSynced = false,
   isSyncing = false,
@@ -741,8 +613,6 @@ export function ProductionCards3D({
   const followUpInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [selectedTimelineIdx, setSelectedTimelineIdx] = useState(0);
-  const [isOverviewMenuOpen, setIsOverviewMenuOpen] = useState(false);
-  const [isFullReportOpen, setIsFullReportOpen] = useState(false);
 
   // Movable priority-ordered bottom carousel window
   const [carouselStartIdx, setCarouselStartIdx] = useState(0);
@@ -786,8 +656,6 @@ export function ProductionCards3D({
     setCarouselStartIdx(0);
     setSelectedTimelineIdx(0);
     setFlippedUntilMap({});
-    setIsOverviewMenuOpen(false);
-    setIsFullReportOpen(false);
   }, [cards]);
 
   // 1-second timer tick to update 60s countdown rings and auto-flip expired cards back to front
@@ -825,16 +693,8 @@ export function ProductionCards3D({
           setIsFollowUpOpen(false);
           return;
         }
-        if (isFullReportOpen) {
-          setIsFullReportOpen(false);
-          return;
-        }
-        if (isOverviewMenuOpen) {
-          setIsOverviewMenuOpen(false);
-          return;
-        }
       }
-      if (isFollowUpOpen || isFullReportOpen || isWaitingForReply || errorDetail) return;
+      if (isFollowUpOpen || isWaitingForReply || errorDetail) return;
       if (e.key === 'ArrowRight') {
         setCarouselStartIdx((prev) =>
           Math.min(Math.max(0, cards.length - visibleSlots), prev + 1),
@@ -849,8 +709,6 @@ export function ProductionCards3D({
     cards.length,
     errorDetail,
     isFollowUpOpen,
-    isFullReportOpen,
-    isOverviewMenuOpen,
     isWaitingForReply,
     visibleSlots,
   ]);
@@ -1190,7 +1048,6 @@ export function ProductionCards3D({
 
   const answerText = readOutSections?.answer?.trim() || '';
   const summaryText = readOutSections?.summary?.trim() || '';
-  const monthlySummaryText = summaryText || answerText;
 
   // Priority-ordered cards with normalized percent + full timing text
   const cardItems = useMemo(
@@ -1276,7 +1133,6 @@ export function ProductionCards3D({
     setIsFollowUpOpen(false);
     setFollowUpDraft('');
     setFollowUpError(null);
-    setIsFullReportOpen(false);
     setFlippedUntilMap({});
     onStartNewThread();
   };
@@ -1470,7 +1326,7 @@ export function ProductionCards3D({
               aria-label="Timeline"
               className="pa-glass-card rounded-[26px] p-3.5 sm:p-4 flex flex-col justify-between gap-2 relative w-full lg:max-w-[315px] justify-self-end"
             >
-              {/* Header: Timeline · Domain · Period + Provider + Options */}
+              {/* Header: Timeline · Domain · Period + Provider Icon */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <Stage2DomainEmblem domain={effectiveDomain} />
@@ -1484,63 +1340,11 @@ export function ProductionCards3D({
                   </h2>
                 </div>
 
-                <div className="relative flex items-center gap-1 shrink-0">
+                <div className="relative flex items-center shrink-0">
                   <Stage2ProviderIcon
                     provider={providerAdapter}
                     isDarkTheme={isDarkTheme}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setIsOverviewMenuOpen((prev) => !prev)}
-                    aria-label="Timeline options"
-                    className={`pa-glass-pill inline-flex h-6 w-6 items-center justify-center rounded-lg transition-all cursor-pointer ${
-                      isDarkTheme
-                        ? 'text-slate-200 hover:text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
-                  </button>
-
-                  {isOverviewMenuOpen && (
-                    <div
-                      className="pa-glass-card absolute right-0 top-7 z-30 w-44 rounded-xl p-1.5 shadow-xl space-y-0.5"
-                      onMouseLeave={() => setIsOverviewMenuOpen(false)}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsOverviewMenuOpen(false);
-                          setIsFullReportOpen(true);
-                        }}
-                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left cursor-pointer ${
-                          isDarkTheme
-                            ? 'text-slate-100 hover:bg-white/10'
-                            : 'text-slate-800 hover:bg-white/75'
-                        }`}
-                      >
-                        <FileText className="w-3.5 h-3.5 text-sky-400" />
-                        <span>See full report</span>
-                      </button>
-                      {carefulDatesCount > 0 && onOpenWatchOut && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsOverviewMenuOpen(false);
-                            onOpenWatchOut();
-                          }}
-                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left cursor-pointer ${
-                            isDarkTheme
-                              ? 'text-amber-200 hover:bg-white/10'
-                              : 'text-amber-800 hover:bg-white/75'
-                          }`}
-                        >
-                          <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Watch Out ({carefulDatesCount})</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -1700,9 +1504,9 @@ export function ProductionCards3D({
                 )}
               </div>
 
-              {/* Footer: Timeline Pagination Dots + See Full Report */}
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <div className="flex items-center gap-1">
+              {/* Footer: Timeline Pagination Dots */}
+              {timelineBars.length > 0 && (
+                <div className="flex items-center justify-center gap-1 pt-0.5">
                   {timelineBars.slice(0, 6).map((bar, idx) => (
                     <button
                       key={bar.card.id}
@@ -1721,15 +1525,7 @@ export function ProductionCards3D({
                     />
                   ))}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsFullReportOpen(true)}
-                  className="pa-glass-pill rounded-full px-3 py-0.5 text-[10.5px] font-semibold hover:brightness-110 transition-all cursor-pointer"
-                >
-                  See full report
-                </button>
-              </div>
+              )}
             </section>
           </div>
 
@@ -2161,70 +1957,6 @@ export function ProductionCards3D({
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Full Report Modal ("See full report" from Overview Widget) */}
-      {isFullReportOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="prod-full-report-title"
-          onClick={() => setIsFullReportOpen(false)}
-          className="fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6 bg-slate-950/45 backdrop-blur-xs"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="pa-glass-card w-full max-w-2xl max-h-[82vh] rounded-[26px] flex flex-col overflow-hidden"
-          >
-            <div
-              className={`px-5 py-3.5 border-b flex items-center justify-between gap-3 shrink-0 ${
-                isDarkTheme ? 'border-white/12' : 'border-slate-200/80'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Stage2DomainEmblem domain={effectiveDomain} />
-                <div className="min-w-0">
-                  <h2
-                    id="prod-full-report-title"
-                    className={`font-display text-sm sm:text-base font-bold truncate ${
-                      isDarkTheme ? 'text-white' : 'text-slate-900'
-                    }`}
-                  >
-                    {domainShortLabel}
-                    {compactPeriod ? ` · ${compactPeriod}` : ''} — Full Report
-                  </h2>
-                  <p
-                    className={`text-[11px] truncate ${
-                      isDarkTheme ? 'text-slate-300' : 'text-slate-600'
-                    }`}
-                  >
-                    Prepared by {providerAdapter === 'fable' ? 'Fable' : 'Gemini'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsFullReportOpen(false)}
-                aria-label="Close full report"
-                className={`pa-glass-pill inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all cursor-pointer ${
-                  isDarkTheme
-                    ? 'text-slate-200 hover:text-white'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto fluent-scroll p-4 sm:p-5 select-text">
-              <div className="pa-glass-subwell rounded-2xl p-4 sm:p-5">
-                <CleanMarkdownReader
-                  markdown={rawReportMarkdown || monthlySummaryText}
-                  isDarkTheme={isDarkTheme}
-                />
               </div>
             </div>
           </div>

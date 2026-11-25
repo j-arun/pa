@@ -2694,10 +2694,10 @@ export default function App() {
     isSending || (isProductionApp && productionStageData.isWaitingForReply);
 
   useEffect(() => {
-    if (isReportRunning) {
+    if (isReportRunning || turns.length > 0) {
       setIsProdReportsMenuOpen(false);
     }
-  }, [isReportRunning]);
+  }, [isReportRunning, turns.length]);
 
   return (
     <div
@@ -2813,7 +2813,7 @@ export default function App() {
           /* Minimal Production Header: Left Reports Toggle + Right Watch Out Toggle / Home Settings Icon */
           <header className="pa-glass-chrome relative h-14 shrink-0 px-4 sm:px-6 border-b flex items-center justify-between gap-4 transition-colors">
             <div className="flex items-center gap-2 shrink-0">
-              {!isReportRunning && (
+              {turns.length === 0 && !isReportRunning && (
                 <button
                   type="button"
                   data-prod-reports-toggle="true"
@@ -3180,9 +3180,6 @@ export default function App() {
                   }
                 }}
                 onStartNewThread={handleStartNewThread}
-                rawReportMarkdown={productionStageData.latestReplyTurn?.content}
-                carefulDatesCount={activeCarefulDates.length}
-                onOpenWatchOut={() => setIsContextRailOpen(true)}
                 canSyncToApple={
                   !productionStageData.isWaitingForReply &&
                   !productionStageData.errorDetail &&
@@ -3340,7 +3337,10 @@ export default function App() {
 
           {/* Floating Left-Hand Production Reports Slider */}
           <AnimatePresence>
-            {isProductionApp && !isReportRunning && isProdReportsMenuOpen && (
+            {isProductionApp &&
+              turns.length === 0 &&
+              !isReportRunning &&
+              isProdReportsMenuOpen && (
               <ProductionReportsMenu
                 reports={ratedThreads}
                 activeReportId={activeProductionReportId}
