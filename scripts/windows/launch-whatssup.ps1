@@ -89,12 +89,13 @@ function Ensure-AppHomes {
 
     $refHome = Get-EnvHome -VarName 'REF_APP_HOME'
     $wbHome = Get-EnvHome -VarName 'WORKBENCH_APP_HOME' -FallbackPath $wbDefault
+    $studioHome = Get-EnvHome -VarName 'ASTRO_AI_STUDIO_HOME'
 
     if ($ForcePrompt -or [string]::IsNullOrWhiteSpace($refHome) -or -not (Test-Path (Join-Path $refHome 'package.json'))) {
-        $chosenRef = Select-FolderDialog -Description 'Select your Reference React App folder (runs on port 3000) - saved to REF_APP_HOME' -InitialPath $refHome
+        $chosenRef = Select-FolderDialog -Description 'Select your Astro Star (Reference React App) folder (runs on port 3000) - saved to REF_APP_HOME' -InitialPath $refHome
         if ([string]::IsNullOrWhiteSpace($chosenRef) -or -not (Test-Path (Join-Path $chosenRef 'package.json'))) {
             [System.Windows.Forms.MessageBox]::Show(
-                "REF_APP_HOME is missing or does not contain a package.json.`n`nSet the User Environment Variable REF_APP_HOME to your Reference app folder and try again.",
+                "REF_APP_HOME is missing or does not contain a package.json.`n`nSet the User Environment Variable REF_APP_HOME to your Astro Star folder and try again.",
                 "What's up Launcher",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Warning
@@ -126,9 +127,26 @@ function Ensure-AppHomes {
         $env:WORKBENCH_APP_HOME = $wbHome
     }
 
+    if ($ForcePrompt -or [string]::IsNullOrWhiteSpace($studioHome) -or -not (Test-Path $studioHome)) {
+        $chosenStudio = Select-FolderDialog -Description 'Select your Astro AI Studio startup folder - saved to ASTRO_AI_STUDIO_HOME' -InitialPath $studioHome
+        if ([string]::IsNullOrWhiteSpace($chosenStudio) -or -not (Test-Path $chosenStudio)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "ASTRO_AI_STUDIO_HOME is missing or does not exist.`n`nSet the User Environment Variable ASTRO_AI_STUDIO_HOME to your Astro AI Studio folder and try again.",
+                "What's up Launcher",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            ) | Out-Null
+            return $null
+        }
+        $studioHome = $chosenStudio
+        [Environment]::SetEnvironmentVariable('ASTRO_AI_STUDIO_HOME', $studioHome, 'User')
+        $env:ASTRO_AI_STUDIO_HOME = $studioHome
+    }
+
     return @{
-        RefHome = $refHome
-        WbHome  = $wbHome
+        RefHome    = $refHome
+        WbHome     = $wbHome
+        StudioHome = $studioHome
     }
 }
 
@@ -325,6 +343,114 @@ function Start-HiddenNpmApp {
     return $proc
 }
 
+function Resolve-StudioPlan {
+    param(
+        [string]$AppDir,
+        [string]$TargetMode
+    )
+    $port = 0
+    $portRaw = Get-EnvHome -VarName 'ASTRO_AI_STUDIO_PORT'
+    if (-not [string]::IsNullOrWhiteSpace($portRaw)) {
+        $parsedPort = 0
+        if ([int]::TryParse($portRaw.Trim(), [ref]$parsedPort) -and $parsedPort -gt 0 -and $parsedPort -le 65535) {
+            $port = $parsedPort
+        }
+    }
+
+    $cmdOverride = Get-EnvHome -VarName 'ASTRO_AI_STUDIO_CMD'
+    if (-not [string]::IsNullOrWhiteSpace($cmdOverride)) {
+        return @{
+            Command = $cmdOverride.Trim()
+            Port    = $port
+        }
+    }
+
+    $pkgPath = Join-Path $AppDir 'package.json'
+    if (Test-Path $pkgPath) {
+        $plan = Resolve-NpmPlan -AppDir $AppDir -TargetMode $TargetMode -OverrideEnvVar 'ASTRO_AI_STUDIO_SCRIPT'
+        if ($port -le 0) {
+            try {
+                $pkg = Get-Content -Path $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $scriptCmd = [string]($pkg.scripts.($plan.Script))
+                if ($scriptCmd -match '(?:--port|-p|PORT=)\s*=?\s*(\d{2,5})') {
+                    $detected = [int]$Matches[1]
+                    if ($detected -gt 0 -and $detected -le 65535) {
+                        $port = $detected
+                    }
+                }
+            } catch {}
+        }
+        $cmdBody = if ($plan.PreBuild) {
+            "set PORT=& npm.cmd run build && npm.cmd run $($plan.Script)"
+        } else {
+            "set PORT=& npm.cmd run $($plan.Script)"
+        }
+        return @{
+            Command = $cmdBody
+            Port    = $port
+        }
+    }
+
+    foreach ($candidateName in @('start.cmd', 'start.bat', 'run.cmd', 'run.bat', 'dev.cmd', 'dev.bat')) {
+        $candidatePath = Join-Path $AppDir $candidateName
+        if (Test-Path $candidatePath) {
+            return @{
+                Command = "`"$candidatePath`""
+                Port    = $port
+            }
+        }
+    }
+
+    $anyBatch = Get-ChildItem -Path $AppDir -Filter '*.cmd' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $anyBatch) {
+        $anyBatch = Get-ChildItem -Path $AppDir -Filter '*.bat' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if ($anyBatch) {
+        return @{
+            Command = "`"$($anyBatch.FullName)`""
+            Port    = $port
+        }
+    }
+
+    return @{
+        Command = ''
+        Port    = $port
+    }
+}
+
+function Start-StudioApp {
+    param(
+        [string]$AppDir,
+        [string]$CommandBody,
+        [string]$OutLog,
+        [string]$ErrLog
+    )
+    if ([string]::IsNullOrWhiteSpace($CommandBody)) {
+        return $null
+    }
+
+    $visibleSetting = (Get-EnvHome -VarName 'ASTRO_AI_STUDIO_VISIBLE' -FallbackPath '1').ToLowerInvariant()
+    $runHidden = ($visibleSetting -eq '0' -or $visibleSetting -eq 'false' -or $visibleSetting -eq 'hidden')
+
+    if ($runHidden) {
+        if (Test-Path $OutLog) { Remove-Item $OutLog -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $ErrLog) { Remove-Item $ErrLog -Force -ErrorAction SilentlyContinue }
+        return Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList "/c $CommandBody" `
+            -WorkingDirectory $AppDir `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $OutLog `
+            -RedirectStandardError $ErrLog `
+            -PassThru
+    }
+
+    return Start-Process -FilePath 'cmd.exe' `
+        -ArgumentList "/k title Astro AI Studio && $CommandBody" `
+        -WorkingDirectory $AppDir `
+        -WindowStyle Normal `
+        -PassThru
+}
+
 $HandIconPng = Join-Path $ScriptDir 'whatsup.png'
 
 function New-HandTrayIcon {
@@ -388,8 +514,10 @@ $State = @{
     ActiveMode  = $Mode       # prod | dev
     RefPort     = 3000
     WbPort      = $(if ($Mode -eq 'dev') { 4000 } else { 5000 })
+    StudioPort  = 0
     RefProc     = $null
     WbProc      = $null
+    StudioProc  = $null
     StartTime   = [DateTime]::MinValue
     BrowserOpened = $false
 }
@@ -406,7 +534,7 @@ $ItemLaunchProd = New-Object System.Windows.Forms.ToolStripMenuItem('Launch in P
 $ItemLaunchDev  = New-Object System.Windows.Forms.ToolStripMenuItem('Launch in Dev (Port 4000)')
 $ItemViewLogs  = New-Object System.Windows.Forms.ToolStripMenuItem('Open Logs Folder')
 $ItemConfigEnv = New-Object System.Windows.Forms.ToolStripMenuItem('Configure App Folders (Env Vars)...')
-$ItemExit      = New-Object System.Windows.Forms.ToolStripMenuItem('Stop Both & Exit Tray')
+$ItemExit      = New-Object System.Windows.Forms.ToolStripMenuItem('Stop All & Exit Tray')
 
 $Menu.Items.Add($ItemStatus) | Out-Null
 $Menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
@@ -430,14 +558,14 @@ function Update-TrayUI {
 
     if ($State.Status -eq 'Running') {
         $NotifyIcon.Icon = if ($State.ActiveMode -eq 'dev') { $IconDevRun } else { $IconRunning }
-        $tip = "What's up ($modeLabel) - Running ($($State.RefPort) & $wbPort). Click to stop."
+        $tip = "What's up ($modeLabel) - Running ($($State.RefPort), $wbPort + Studio)."
         $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
-        $ItemStatus.Text = "What's up: Running ($modeLabel $wbPort + Ref $($State.RefPort))"
+        $ItemStatus.Text = "What's up: Running ($modeLabel $wbPort + Star $($State.RefPort) + Studio)"
         $ItemToggle.Text = "Stop What's up ($modeLabel)"
         $ItemOpenHome.Enabled = $true
     } elseif ($State.Status -eq 'Starting') {
         $NotifyIcon.Icon = $IconStarting
-        $tip = "What's up ($modeLabel) - Starting ($($State.RefPort) & $wbPort)..."
+        $tip = "What's up ($modeLabel) - Starting ($($State.RefPort), $wbPort + Studio)..."
         $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
         $ItemStatus.Text = "What's up: Starting ($modeLabel $wbPort)..."
         $ItemToggle.Text = 'Cancel & Stop'
@@ -480,16 +608,28 @@ function Stop-BothApps {
         } catch {}
         $State.WbProc = $null
     }
+    if ($State.StudioProc) {
+        try {
+            if (-not $State.StudioProc.HasExited) {
+                Stop-ProcessTree -ProcessId $State.StudioProc.Id
+            }
+            $State.StudioProc.Dispose()
+        } catch {}
+        $State.StudioProc = $null
+    }
 
-    # Guarantee both ports (and alternate mode port) are released cleanly
-    Stop-PortListeners -Ports @(3000, 4000, 5000)
+    $portsToFree = @(3000, 4000, 5000)
+    if ($State.StudioPort -gt 0 -and ($portsToFree -notcontains $State.StudioPort)) {
+        $portsToFree += $State.StudioPort
+    }
+    Stop-PortListeners -Ports $portsToFree
 
     $State.Status = 'Stopped'
     $State.BrowserOpened = $false
     Update-TrayUI
 
     if (-not $Silent) {
-        $NotifyIcon.ShowBalloonTip(2500, "What's up", 'Stopped both applications (ports 3000 & 4000/5000 freed).', [System.Windows.Forms.ToolTipIcon]::Info)
+        $NotifyIcon.ShowBalloonTip(2500, "What's up", 'Stopped Astro Star, Workbench, and Astro AI Studio.', [System.Windows.Forms.ToolTipIcon]::Info)
     }
 }
 
@@ -514,17 +654,24 @@ function Start-BothApps {
 
     $refPlan = Resolve-NpmPlan -AppDir $homes.RefHome -TargetMode $TargetMode -OverrideEnvVar 'REF_APP_SCRIPT'
     $wbPlan  = Resolve-NpmPlan -AppDir $homes.WbHome  -TargetMode $TargetMode
+    $studioPlan = Resolve-StudioPlan -AppDir $homes.StudioHome -TargetMode $TargetMode
+    $State.StudioPort = $studioPlan.Port
 
-    $refOut = Join-Path $LogsDir 'reference.out.log'
-    $refErr = Join-Path $LogsDir 'reference.err.log'
-    $wbOut  = Join-Path $LogsDir 'workbench.out.log'
-    $wbErr  = Join-Path $LogsDir 'workbench.err.log'
+    $refOut    = Join-Path $LogsDir 'reference.out.log'
+    $refErr    = Join-Path $LogsDir 'reference.err.log'
+    $wbOut     = Join-Path $LogsDir 'workbench.out.log'
+    $wbErr     = Join-Path $LogsDir 'workbench.err.log'
+    $studioOut = Join-Path $LogsDir 'astro-ai-studio.out.log'
+    $studioErr = Join-Path $LogsDir 'astro-ai-studio.err.log'
 
     if (-not (Test-LocalPort -Port $State.RefPort)) {
         $State.RefProc = Start-HiddenNpmApp -AppDir $homes.RefHome -NpmScript $refPlan.Script -OutLog $refOut -ErrLog $refErr -PreBuild $refPlan.PreBuild
     }
     if (-not (Test-LocalPort -Port $State.WbPort)) {
         $State.WbProc = Start-HiddenNpmApp -AppDir $homes.WbHome -NpmScript $wbPlan.Script -OutLog $wbOut -ErrLog $wbErr -PreBuild $wbPlan.PreBuild
+    }
+    if ($studioPlan.Command -and ($State.StudioPort -le 0 -or -not (Test-LocalPort -Port $State.StudioPort))) {
+        $State.StudioProc = Start-StudioApp -AppDir $homes.StudioHome -CommandBody $studioPlan.Command -OutLog $studioOut -ErrLog $studioErr
     }
 
     $State.Status = 'Starting'
@@ -581,9 +728,10 @@ $PollTimer.Add_Tick({
             # Detect premature exit of launched child processes
             $refExited = ($State.RefProc -ne $null -and $State.RefProc.HasExited -and -not (Test-LocalPort -Port $State.RefPort))
             $wbExited  = ($State.WbProc  -ne $null -and $State.WbProc.HasExited  -and -not (Test-LocalPort -Port $State.WbPort))
+            $studioExited = ($State.StudioProc -ne $null -and $State.StudioProc.HasExited -and ($State.StudioPort -le 0 -or -not (Test-LocalPort -Port $State.StudioPort)))
 
-            if ($refExited -or $wbExited) {
-                $which = if ($wbExited) { 'Workbench' } else { 'Reference' }
+            if ($refExited -or $wbExited -or $studioExited) {
+                $which = if ($wbExited) { 'Workbench' } elseif ($studioExited) { 'Astro AI Studio' } else { 'Astro Star' }
                 Stop-BothApps -Silent
                 $NotifyIcon.ShowBalloonTip(4000, "What's up Startup Error", "$which exited unexpectedly. Opening logs folder...", [System.Windows.Forms.ToolTipIcon]::Error)
                 Start-Process explorer.exe $LogsDir
@@ -592,14 +740,19 @@ $PollTimer.Add_Tick({
 
             $refReady = Test-LocalPort -Port $State.RefPort
             $wbReady  = Test-HttpAlive -Url "http://127.0.0.1:$($State.WbPort)/api/health"
+            $studioReady = if ($State.StudioPort -gt 0) {
+                Test-LocalPort -Port $State.StudioPort
+            } else {
+                ($State.StudioProc -eq $null -or -not $State.StudioProc.HasExited)
+            }
 
-            if ($refReady -and $wbReady) {
+            if ($refReady -and $wbReady -and $studioReady) {
                 $State.Status = 'Running'
                 Update-TrayUI
                 if (-not $State.BrowserOpened) {
                     $State.BrowserOpened = $true
                     $modeLabel = if ($State.ActiveMode -eq 'dev') { 'Dev' } else { 'Prod' }
-                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started in $modeLabel mode (ports $($State.RefPort) & $($State.WbPort)). Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
+                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started Astro Star, Workbench ($modeLabel), and Astro AI Studio. Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
                     Open-Homepage
                 }
             } elseif ($elapsed -gt 120) {
@@ -611,7 +764,12 @@ $PollTimer.Add_Tick({
             # If user stopped servers externally, reflect Stopped state in tray
             $refUp = Test-LocalPort -Port $State.RefPort
             $wbUp  = Test-LocalPort -Port $State.WbPort
-            if (-not $refUp -and -not $wbUp) {
+            $studioUp = if ($State.StudioPort -gt 0) {
+                Test-LocalPort -Port $State.StudioPort
+            } else {
+                ($State.StudioProc -ne $null -and -not $State.StudioProc.HasExited)
+            }
+            if (-not $refUp -and -not $wbUp -and -not $studioUp) {
                 $State.Status = 'Stopped'
                 $State.BrowserOpened = $false
                 Update-TrayUI

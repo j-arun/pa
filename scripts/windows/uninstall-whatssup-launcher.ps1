@@ -40,8 +40,16 @@ try {
     }
 } catch {}
 
-# 2. Free ports 3000, 4000, 5000 if still listening
-foreach ($port in @(3000, 4000, 5000)) {
+# 2. Free ports 3000, 4000, 5000 (and optional ASTRO_AI_STUDIO_PORT) if still listening
+$PortsToFree = @(3000, 4000, 5000)
+$StudioPortRaw = [Environment]::GetEnvironmentVariable('ASTRO_AI_STUDIO_PORT', 'User')
+$ParsedStudioPort = 0
+if (-not [string]::IsNullOrWhiteSpace($StudioPortRaw) -and [int]::TryParse($StudioPortRaw.Trim(), [ref]$ParsedStudioPort) -and $ParsedStudioPort -gt 0 -and $ParsedStudioPort -le 65535) {
+    if ($PortsToFree -notcontains $ParsedStudioPort) {
+        $PortsToFree += $ParsedStudioPort
+    }
+}
+foreach ($port in $PortsToFree) {
     try {
         $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
         if ($conns) {
@@ -87,7 +95,7 @@ if (Test-Path $LauncherDataDir) {
 
 # 5. Optionally clear User Environment Variables added by installer
 if (-not $KeepEnvVars) {
-    foreach ($varName in @('WORKBENCH_APP_HOME', 'REF_APP_HOME')) {
+    foreach ($varName in @('WORKBENCH_APP_HOME', 'REF_APP_HOME', 'ASTRO_AI_STUDIO_HOME')) {
         $existing = [Environment]::GetEnvironmentVariable($varName, 'User')
         if (-not [string]::IsNullOrWhiteSpace($existing)) {
             [Environment]::SetEnvironmentVariable($varName, $null, 'User')

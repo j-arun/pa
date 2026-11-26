@@ -1,6 +1,7 @@
 param(
     [string]$RefAppHome = '',
     [string]$WorkbenchAppHome = '',
+    [string]$AstroAiStudioHome = '',
     [switch]$CreateDevDesktopShortcut = $true
 )
 
@@ -26,7 +27,7 @@ if ([string]::IsNullOrWhiteSpace($RefAppHome)) {
         $RefAppHome = $existingRef.Trim()
     } else {
         $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dialog.Description = 'Select your Reference React App folder (runs on port 3000) to save in REF_APP_HOME'
+        $dialog.Description = 'Select your Astro Star (Reference React App) folder (runs on port 3000) to save in REF_APP_HOME'
         $dialog.ShowNewFolderButton = $false
         if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             $RefAppHome = $dialog.SelectedPath
@@ -35,16 +36,38 @@ if ([string]::IsNullOrWhiteSpace($RefAppHome)) {
     }
 }
 
+if ([string]::IsNullOrWhiteSpace($AstroAiStudioHome)) {
+    $existingStudio = [Environment]::GetEnvironmentVariable('ASTRO_AI_STUDIO_HOME', 'User')
+    if (-not [string]::IsNullOrWhiteSpace($existingStudio) -and (Test-Path $existingStudio)) {
+        $AstroAiStudioHome = $existingStudio.Trim()
+    } else {
+        $studioDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        $studioDialog.Description = 'Select your Astro AI Studio startup folder to save in ASTRO_AI_STUDIO_HOME'
+        $studioDialog.ShowNewFolderButton = $false
+        if ($studioDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $AstroAiStudioHome = $studioDialog.SelectedPath
+        }
+        $studioDialog.Dispose()
+    }
+}
+
 if (-not [string]::IsNullOrWhiteSpace($WorkbenchAppHome)) {
     [Environment]::SetEnvironmentVariable('WORKBENCH_APP_HOME', $WorkbenchAppHome, 'User')
-    Write-Host "Set User env WORKBENCH_APP_HOME = $WorkbenchAppHome" -ForegroundColor Green
+    Write-Host "Set User env WORKBENCH_APP_HOME   = $WorkbenchAppHome" -ForegroundColor Green
 }
 
 if (-not [string]::IsNullOrWhiteSpace($RefAppHome)) {
     [Environment]::SetEnvironmentVariable('REF_APP_HOME', $RefAppHome, 'User')
-    Write-Host "Set User env REF_APP_HOME       = $RefAppHome" -ForegroundColor Green
+    Write-Host "Set User env REF_APP_HOME         = $RefAppHome" -ForegroundColor Green
 } else {
     Write-Warning "REF_APP_HOME was not selected yet. What's up will prompt you for it on first launch."
+}
+
+if (-not [string]::IsNullOrWhiteSpace($AstroAiStudioHome)) {
+    [Environment]::SetEnvironmentVariable('ASTRO_AI_STUDIO_HOME', $AstroAiStudioHome, 'User')
+    Write-Host "Set User env ASTRO_AI_STUDIO_HOME = $AstroAiStudioHome" -ForegroundColor Green
+} else {
+    Write-Warning "ASTRO_AI_STUDIO_HOME was not selected yet. What's up will prompt you for it on first launch."
 }
 
 function Save-IcoFromPng {
@@ -136,34 +159,34 @@ foreach ($oldName in @('Whats-sup.lnk', 'Whats-sup (Dev).lnk')) {
     }
 }
 
-# Primary Desktop & Start Menu shortcut: What's up (Prod - Port 5000 + Reference Port 3000)
+# Primary Desktop & Start Menu shortcut: What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $DesktopDir "What's up.lnk") `
     -ModeArg 'prod' `
     -IconPath $ProdIco `
-    -Description "What's up (Prod 5000 + Reference 3000)"
+    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)"
 
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $StartMenuDir "What's up.lnk") `
     -ModeArg 'prod' `
     -IconPath $ProdIco `
-    -Description "What's up (Prod 5000 + Reference 3000)"
+    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)"
 
-# Optional Dev shortcuts (Port 4000 + Reference Port 3000)
+# Optional Dev shortcuts (Port 4000 + Astro Star 3000 + Astro AI Studio)
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $StartMenuDir "What's up (Dev).lnk") `
     -ModeArg 'dev' `
     -IconPath $DevIco `
-    -Description "What's up Dev (4000 + Reference 3000)"
+    -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio)"
 
 if ($CreateDevDesktopShortcut) {
     New-LauncherShortcut `
         -ShortcutPath (Join-Path $DesktopDir "What's up (Dev).lnk") `
         -ModeArg 'dev' `
         -IconPath $DevIco `
-        -Description "What's up Dev (4000 + Reference 3000)"
+        -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio)"
 }
 
 Write-Host ''
 Write-Host "What's up launcher installation complete!" -ForegroundColor Green
-Write-Host "Click `"What's up`" on your Desktop to start Prod (5000) + Reference (3000), or click the tray icon to toggle Start/Stop." -ForegroundColor Gray
+Write-Host "Click `"What's up`" on your Desktop to start Prod (5000) + Astro Star (3000) + Astro AI Studio, or click the tray icon to toggle Start/Stop." -ForegroundColor Gray
