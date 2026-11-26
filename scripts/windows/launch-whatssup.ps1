@@ -128,7 +128,7 @@ function Ensure-AppHomes {
     }
 
     if ($ForcePrompt -or [string]::IsNullOrWhiteSpace($studioHome) -or -not (Test-Path $studioHome)) {
-        $chosenStudio = Select-FolderDialog -Description 'Select your Astro AI Studio startup folder - saved to ASTRO_AI_STUDIO_HOME' -InitialPath $studioHome
+        $chosenStudio = Select-FolderDialog -Description 'Select your Astro AI Studio startup folder (runs on port 6001) - saved to ASTRO_AI_STUDIO_HOME' -InitialPath $studioHome
         if ([string]::IsNullOrWhiteSpace($chosenStudio) -or -not (Test-Path $chosenStudio)) {
             [System.Windows.Forms.MessageBox]::Show(
                 "ASTRO_AI_STUDIO_HOME is missing or does not exist.`n`nSet the User Environment Variable ASTRO_AI_STUDIO_HOME to your Astro AI Studio folder and try again.",
@@ -359,6 +359,7 @@ function Resolve-StudioPlan {
 
     $cmdOverride = Get-EnvHome -VarName 'ASTRO_AI_STUDIO_CMD'
     if (-not [string]::IsNullOrWhiteSpace($cmdOverride)) {
+        if ($port -le 0) { $port = 6001 }
         return @{
             Command = $cmdOverride.Trim()
             Port    = $port
@@ -380,6 +381,7 @@ function Resolve-StudioPlan {
                 }
             } catch {}
         }
+        if ($port -le 0) { $port = 6001 }
         $cmdBody = if ($plan.PreBuild) {
             "set PORT=& npm.cmd run build && npm.cmd run $($plan.Script)"
         } else {
@@ -390,6 +392,8 @@ function Resolve-StudioPlan {
             Port    = $port
         }
     }
+
+    if ($port -le 0) { $port = 6001 }
 
     foreach ($candidateName in @('start.cmd', 'start.bat', 'run.cmd', 'run.bat', 'dev.cmd', 'dev.bat')) {
         $candidatePath = Join-Path $AppDir $candidateName
@@ -504,7 +508,7 @@ $State = @{
     ActiveMode  = $Mode       # prod | dev
     RefPort     = 3000
     WbPort      = $(if ($Mode -eq 'dev') { 4000 } else { 5000 })
-    StudioPort  = 0
+    StudioPort  = 6001
     RefProc     = $null
     WbProc      = $null
     StudioProc  = $null
@@ -548,16 +552,16 @@ function Update-TrayUI {
 
     if ($State.Status -eq 'Running') {
         $NotifyIcon.Icon = if ($State.ActiveMode -eq 'dev') { $IconDevRun } else { $IconRunning }
-        $tip = "What's up ($modeLabel) - Running ($($State.RefPort), $wbPort + Studio)."
+        $tip = "What's up ($modeLabel) - Running ($($State.RefPort), $wbPort, $($State.StudioPort))."
         $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
-        $ItemStatus.Text = "What's up: Running ($modeLabel $wbPort + Star $($State.RefPort) + Studio)"
+        $ItemStatus.Text = "What's up: Running ($modeLabel $wbPort + Star $($State.RefPort) + Studio $($State.StudioPort))"
         $ItemToggle.Text = "Stop What's up ($modeLabel)"
         $ItemOpenHome.Enabled = $true
     } elseif ($State.Status -eq 'Starting') {
         $NotifyIcon.Icon = $IconStarting
-        $tip = "What's up ($modeLabel) - Starting ($($State.RefPort), $wbPort + Studio)..."
+        $tip = "What's up ($modeLabel) - Starting ($($State.RefPort), $wbPort, $($State.StudioPort))..."
         $NotifyIcon.Text = $tip.Substring(0, [Math]::Min(63, $tip.Length))
-        $ItemStatus.Text = "What's up: Starting ($modeLabel $wbPort)..."
+        $ItemStatus.Text = "What's up: Starting ($modeLabel $wbPort + Star $($State.RefPort) + Studio $($State.StudioPort))..."
         $ItemToggle.Text = 'Cancel & Stop'
         $ItemOpenHome.Enabled = $false
     } else {
@@ -608,7 +612,7 @@ function Stop-BothApps {
         $State.StudioProc = $null
     }
 
-    $portsToFree = @(3000, 4000, 5000)
+    $portsToFree = @(3000, 4000, 5000, 6001)
     if ($State.StudioPort -gt 0 -and ($portsToFree -notcontains $State.StudioPort)) {
         $portsToFree += $State.StudioPort
     }
@@ -742,7 +746,7 @@ $PollTimer.Add_Tick({
                 if (-not $State.BrowserOpened) {
                     $State.BrowserOpened = $true
                     $modeLabel = if ($State.ActiveMode -eq 'dev') { 'Dev' } else { 'Prod' }
-                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started Astro Star, Workbench ($modeLabel), and Astro AI Studio. Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
+                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started Workbench ($modeLabel $($State.WbPort)), Astro Star ($($State.RefPort)), and Astro AI Studio ($($State.StudioPort)). Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
                     Open-Homepage
                 }
             } elseif ($elapsed -gt 120) {

@@ -42,7 +42,7 @@ if ([string]::IsNullOrWhiteSpace($AstroAiStudioHome)) {
         $AstroAiStudioHome = $existingStudio.Trim()
     } else {
         $studioDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        $studioDialog.Description = 'Select your Astro AI Studio startup folder to save in ASTRO_AI_STUDIO_HOME'
+        $studioDialog.Description = 'Select your Astro AI Studio startup folder (runs on port 6001) to save in ASTRO_AI_STUDIO_HOME'
         $studioDialog.ShowNewFolderButton = $false
         if ($studioDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             $AstroAiStudioHome = $studioDialog.SelectedPath
@@ -159,34 +159,34 @@ foreach ($oldName in @('Whats-sup.lnk', 'Whats-sup (Dev).lnk')) {
     }
 }
 
-# Primary Desktop & Start Menu shortcut: What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)
+# Primary Desktop & Start Menu shortcut: What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio 6001)
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $DesktopDir "What's up.lnk") `
     -ModeArg 'prod' `
     -IconPath $ProdIco `
-    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)"
+    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio 6001)"
 
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $StartMenuDir "What's up.lnk") `
     -ModeArg 'prod' `
     -IconPath $ProdIco `
-    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio)"
+    -Description "What's up (Prod 5000 + Astro Star 3000 + Astro AI Studio 6001)"
 
-# Optional Dev shortcuts (Port 4000 + Astro Star 3000 + Astro AI Studio)
+# Optional Dev shortcuts (Port 4000 + Astro Star 3000 + Astro AI Studio 6001)
 New-LauncherShortcut `
     -ShortcutPath (Join-Path $StartMenuDir "What's up (Dev).lnk") `
     -ModeArg 'dev' `
     -IconPath $DevIco `
-    -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio)"
+    -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio 6001)"
 
 if ($CreateDevDesktopShortcut) {
     New-LauncherShortcut `
         -ShortcutPath (Join-Path $DesktopDir "What's up (Dev).lnk") `
         -ModeArg 'dev' `
         -IconPath $DevIco `
-        -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio)"
+        -Description "What's up Dev (4000 + Astro Star 3000 + Astro AI Studio 6001)"
 }
 
 Write-Host ''
 Write-Host "What's up launcher installation complete!" -ForegroundColor Green
-Write-Host "Click `"What's up`" on your Desktop to start Prod (5000) + Astro Star (3000) + Astro AI Studio, or click the tray icon to toggle Start/Stop." -ForegroundColor Gray
+Write-Host "Click `"What's up`" on your Desktop to start Prod (5000) + Astro Star (3000) + Astro AI Studio (6001) in the background, or click the tray icon to toggle Start/Stop." -ForegroundColor Gray

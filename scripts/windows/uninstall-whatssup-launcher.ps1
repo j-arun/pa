@@ -40,8 +40,8 @@ try {
     }
 } catch {}
 
-# 2. Free ports 3000, 4000, 5000 (and optional ASTRO_AI_STUDIO_PORT) if still listening
-$PortsToFree = @(3000, 4000, 5000)
+# 2. Free ports 3000, 4000, 5000, 6001 (and optional ASTRO_AI_STUDIO_PORT) if still listening
+$PortsToFree = @(3000, 4000, 5000, 6001)
 $StudioPortRaw = [Environment]::GetEnvironmentVariable('ASTRO_AI_STUDIO_PORT', 'User')
 $ParsedStudioPort = 0
 if (-not [string]::IsNullOrWhiteSpace($StudioPortRaw) -and [int]::TryParse($StudioPortRaw.Trim(), [ref]$ParsedStudioPort) -and $ParsedStudioPort -gt 0 -and $ParsedStudioPort -le 65535) {
