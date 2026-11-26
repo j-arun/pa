@@ -429,25 +429,15 @@ function Start-StudioApp {
         return $null
     }
 
-    $visibleSetting = (Get-EnvHome -VarName 'ASTRO_AI_STUDIO_VISIBLE' -FallbackPath '1').ToLowerInvariant()
-    $runHidden = ($visibleSetting -eq '0' -or $visibleSetting -eq 'false' -or $visibleSetting -eq 'hidden')
-
-    if ($runHidden) {
-        if (Test-Path $OutLog) { Remove-Item $OutLog -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $ErrLog) { Remove-Item $ErrLog -Force -ErrorAction SilentlyContinue }
-        return Start-Process -FilePath 'cmd.exe' `
-            -ArgumentList "/c $CommandBody" `
-            -WorkingDirectory $AppDir `
-            -WindowStyle Hidden `
-            -RedirectStandardOutput $OutLog `
-            -RedirectStandardError $ErrLog `
-            -PassThru
-    }
+    if (Test-Path $OutLog) { Remove-Item $OutLog -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $ErrLog) { Remove-Item $ErrLog -Force -ErrorAction SilentlyContinue }
 
     return Start-Process -FilePath 'cmd.exe' `
-        -ArgumentList "/k title Astro AI Studio && $CommandBody" `
+        -ArgumentList "/c $CommandBody" `
         -WorkingDirectory $AppDir `
-        -WindowStyle Normal `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $OutLog `
+        -RedirectStandardError $ErrLog `
         -PassThru
 }
 
