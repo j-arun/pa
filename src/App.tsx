@@ -1858,37 +1858,74 @@ export default function App() {
     const userTurns = turns.filter((t) => t.role === 'user');
     const latestUserTurn = userTurns[userTurns.length - 1] ?? null;
     const rootUserTurn = userTurns[0] ?? null;
-    const latestReplyTurn = latestUserTurn
-      ? turns.find((t) => t.role === 'assistant' && t.exchangeId === latestUserTurn.id) ??
-        [...turns].reverse().find((t) => t.role === 'assistant') ??
-        null
+    const matchedReplyTurn = latestUserTurn
+      ? turns.find((t) => t.role === 'assistant' && t.exchangeId === latestUserTurn.id) ?? null
       : null;
     const latestErrorTurn = latestUserTurn
       ? turns.find((t) => t.role === 'error' && t.exchangeId === latestUserTurn.id) ?? null
       : null;
+    const latestReplyTurn =
+      matchedReplyTurn ??
+      (!isSending && !latestErrorTurn && latestUserTurn
+        ? [...turns].reverse().find((t) => t.role === 'assistant') ?? null
+        : null);
 
-    let cards: EventCardItem[] = [];
-    if (latestReplyTurn) {
+    const extractCardsForReply = (replyTurn: ConversationTurn): EventCardItem[] => {
       const parsedFromReport = parseResponseEventsAndReport(
-        latestReplyTurn.content,
+        replyTurn.content,
         latestUserTurn?.promptDomain ?? rootUserTurn?.promptDomain,
       ).events;
       const raw =
         parsedFromReport.length > 0
           ? parsedFromReport
-          : Array.isArray(latestReplyTurn.eventCards)
-            ? latestReplyTurn.eventCards
+          : Array.isArray(replyTurn.eventCards)
+            ? replyTurn.eventCards
             : [];
-      cards = raw
+      return raw
         .map((evt, idx) => normalizeEventCardItem(evt, idx))
         .map((evt, idx) => ({ evt, idx, score: getEventRatingSortScore(evt) }))
         .sort((a, b) => (b.score !== a.score ? b.score - a.score : a.idx - b.idx))
         .map((entry) => entry.evt);
+    };
+
+    let cards: EventCardItem[] = [];
+    if (latestReplyTurn) {
+      cards = extractCardsForReply(latestReplyTurn);
+      if (cards.length === 0) {
+        for (let i = turns.length - 1; i >= 0; i -= 1) {
+          const candidate = turns[i];
+          if (candidate.role === 'assistant' && candidate.id !== latestReplyTurn.id) {
+            const candidateCards = extractCardsForReply(candidate);
+            if (candidateCards.length > 0) {
+              cards = candidateCards;
+              break;
+            }
+          }
+        }
+      }
     }
 
-    const readOutSections = latestReplyTurn
+    let readOutSections = latestReplyTurn
       ? extractReadOutSections(latestReplyTurn.content)
       : null;
+    if (latestReplyTurn && !readOutSections?.answer?.trim() && !readOutSections?.summary?.trim()) {
+      const { cleanMarkdown } = parseResponseEventsAndReport(
+        latestReplyTurn.content,
+        latestUserTurn?.promptDomain ?? rootUserTurn?.promptDomain,
+      );
+      const plainAnswer = cleanMarkdown
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (plainAnswer) {
+        readOutSections = { answer: plainAnswer };
+      }
+    }
 
     const isWaitingForReply =
       isSending && Boolean(latestUserTurn) && !latestReplyTurn && !latestErrorTurn;
@@ -2427,9 +2464,12 @@ export default function App() {
     const activeProdPublicAdapter: PublicAdapterId =
       targetProvider === 'fable' || targetProvider === 'gemini'
         ? targetProvider
-        : settings.publicLlm.activeAdapter === 'fable'
-          ? 'fable'
-          : 'gemini';
+        : isFollowUp &&
+            (rootUserTurn?.adapterId === 'fable' || rootUserTurn?.adapterId === 'gemini')
+          ? rootUserTurn.adapterId
+          : settings.publicLlm.activeAdapter === 'fable'
+            ? 'fable'
+            : 'gemini';
     const selectedPublicAdapter: PublicAdapterId = isProductionApp
       ? activeProdPublicAdapter
       : settings.publicLlm.activeAdapter;
@@ -2542,10 +2582,12 @@ export default function App() {
     let resolvedUserTurn = initialUserTurn;
     let resolvedBaseTurns = nextBaseTurns;
     let overrideCachedContext: string | undefined = isFollowUp
-      ? rootUserTurn?.cachedContext
+      ? rootUserTurn?.cachedContext ?? ''
       : undefined;
 
-    if (!isFollowUp) {
+    if (isFollowUp) {
+      setIsSending(true);
+    } else {
       const targetMonthNum =
         getMonthNumberFromName(inheritedMonth) ??
         settingsRef.current.contextCache.activeMonth ??
@@ -2655,15 +2697,29 @@ export default function App() {
 
     const existingUserTurn = turns[targetIndex];
     const rootUserTurn = turns.find((t) => t.role === 'user');
-    const retryScope: ConversationScope = existingUserTurn.scope ?? scope;
+    const retryScope: ConversationScope = isProductionApp
+      ? 'public'
+      : (existingUserTurn.scope ?? scope);
+    const turnProdAdapter: PublicAdapterId | null =
+      existingUserTurn.adapterId === 'fable' || existingUserTurn.adapterId === 'gemini'
+        ? existingUserTurn.adapterId
+        : rootUserTurn?.adapterId === 'fable' || rootUserTurn?.adapterId === 'gemini'
+          ? rootUserTurn.adapterId
+          : null;
     const selectedAdapterId: AnyAdapterId =
       retryScope === 'private'
         ? settings.privateLlm.activeAdapter
-        : settings.publicLlm.activeAdapter;
+        : isProductionApp && turnProdAdapter
+          ? turnProdAdapter
+          : settings.publicLlm.activeAdapter;
     const selectedModelName =
       retryScope === 'private'
         ? settings.privateLlm.selectedModel || 'unselected'
-        : settings.publicLlm.adapters[settings.publicLlm.activeAdapter].model;
+        : settings.publicLlm.adapters[
+            retryScope === 'public'
+              ? (selectedAdapterId as PublicAdapterId)
+              : settings.publicLlm.activeAdapter
+          ].model;
 
     const refreshedUserTurn: ConversationTurn = {
       ...existingUserTurn,
@@ -2679,6 +2735,7 @@ export default function App() {
       .map((t) => (t.id === exchangeId ? refreshedUserTurn : t));
 
     setTurns(cleanedTurns);
+    setIsSending(true);
     setIsChatBarOpen(false);
 
     await executeExchangeRequest({
@@ -2686,7 +2743,8 @@ export default function App() {
       precedingTurns,
       baseThreadTurns: cleanedTurns,
       effectiveDomain: refreshedUserTurn.promptDomain ?? activePromptDomain,
-      overrideCachedContext: existingUserTurn.cachedContext ?? rootUserTurn?.cachedContext,
+      overrideCachedContext:
+        existingUserTurn.cachedContext ?? rootUserTurn?.cachedContext ?? '',
     });
   };
 
@@ -3141,6 +3199,7 @@ export default function App() {
                 })()}
                 isDarkTheme={isProdDarkTheme}
                 canAskFollowUp={
+                  !isSending &&
                   !productionStageData.isWaitingForReply &&
                   !productionStageData.errorDetail &&
                   Boolean(productionStageData.latestReplyTurn) &&
@@ -3165,12 +3224,17 @@ export default function App() {
                 }}
                 onSendFollowUp={(question) => {
                   const rootQ = turns.find((t) => t.role === 'user');
+                  const rootAdapter =
+                    rootQ?.adapterId === 'fable' || rootQ?.adapterId === 'gemini'
+                      ? rootQ.adapterId
+                      : undefined;
                   void handleSendMessage({
                     text: question,
                     inputMode: 'text',
                     threadName: rootQ?.threadName || 'Follow-up',
                     promptDomain: rootQ?.promptDomain ?? activePromptDomain,
                     isFollowUp: true,
+                    targetProvider: rootAdapter,
                   });
                 }}
                 onCancelRequest={handleCancelRequest}
