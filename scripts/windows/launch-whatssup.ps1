@@ -513,7 +513,7 @@ $State = @{
     WbProc      = $null
     StudioProc  = $null
     StartTime   = [DateTime]::MinValue
-    BrowserOpened = $false
+    ReadyNotified = $false
 }
 
 $NotifyIcon = New-Object System.Windows.Forms.NotifyIcon
@@ -619,7 +619,7 @@ function Stop-BothApps {
     Stop-PortListeners -Ports $portsToFree
 
     $State.Status = 'Stopped'
-    $State.BrowserOpened = $false
+    $State.ReadyNotified = $false
     Update-TrayUI
 
     if (-not $Silent) {
@@ -644,7 +644,7 @@ function Start-BothApps {
 
     $State.ActiveMode = $TargetMode
     $State.WbPort = if ($TargetMode -eq 'dev') { 4000 } else { 5000 }
-    $State.BrowserOpened = $false
+    $State.ReadyNotified = $false
 
     $refPlan = Resolve-NpmPlan -AppDir $homes.RefHome -TargetMode $TargetMode -OverrideEnvVar 'REF_APP_SCRIPT'
     $wbPlan  = Resolve-NpmPlan -AppDir $homes.WbHome  -TargetMode $TargetMode
@@ -743,11 +743,10 @@ $PollTimer.Add_Tick({
             if ($refReady -and $wbReady -and $studioReady) {
                 $State.Status = 'Running'
                 Update-TrayUI
-                if (-not $State.BrowserOpened) {
-                    $State.BrowserOpened = $true
+                if (-not $State.ReadyNotified) {
+                    $State.ReadyNotified = $true
                     $modeLabel = if ($State.ActiveMode -eq 'dev') { 'Dev' } else { 'Prod' }
-                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started Workbench ($modeLabel $($State.WbPort)), Astro Star ($($State.RefPort)), and Astro AI Studio ($($State.StudioPort)). Opening homepage...", [System.Windows.Forms.ToolTipIcon]::Info)
-                    Open-Homepage
+                    $NotifyIcon.ShowBalloonTip(2500, "What's up", "Started Workbench ($modeLabel $($State.WbPort)), Astro Star ($($State.RefPort)), and Astro AI Studio ($($State.StudioPort)).", [System.Windows.Forms.ToolTipIcon]::Info)
                 }
             } elseif ($elapsed -gt 120) {
                 Stop-BothApps -Silent
@@ -765,7 +764,7 @@ $PollTimer.Add_Tick({
             }
             if (-not $refUp -and -not $wbUp -and -not $studioUp) {
                 $State.Status = 'Stopped'
-                $State.BrowserOpened = $false
+                $State.ReadyNotified = $false
                 Update-TrayUI
             }
         }
